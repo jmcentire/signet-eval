@@ -38,6 +38,23 @@ enum Command {
         /// Credential value
         value: String,
     },
+    /// Show current policy rules
+    Rules,
+    /// Show recent actions from the vault ledger
+    Log {
+        /// Number of entries to show
+        #[arg(long, default_value = "20")]
+        limit: u32,
+    },
+    /// Test a policy against sample JSON input
+    Test {
+        /// JSON tool call, e.g. '{"tool_name":"Bash","tool_input":{"command":"rm foo"}}'
+        json: String,
+    },
+    /// Unlock vault and refresh session key
+    Unlock,
+    /// Validate the policy file
+    Validate,
     /// Run MCP management server (conversational policy editing)
     #[cfg(feature = "mcp")]
     Serve,
@@ -142,6 +159,118 @@ fn main() {
                     0
                 }
                 None => { eprintln!("Vault not set up or locked."); 1 }
+            }
+        }
+        Some(Command::Rules) => {
+            match policy::load_policy_config(&policy_path) {
+                Ok(config) => {
+                    eprintln!("Policy: {} (v{})", policy_path.display(), config.version);
+                    eprintln!("Default action: {:?}", config.default_action);
+                    eprintln!("Rules: {}\n", config.rules.len());
+                    for rule in &config.rules {
+                        let action = format!("{:?}", rule.action).to_uppercase();
+                        eprintln!("  {} [{}]", rule.name, action);
+                        eprintln!("    tool: {}", rule.tool_pattern);
+                        for cond in &rule.conditions {
+                            eprintln!("    when: {cond}");
+                        }
+                        if let Some(reason) = &rule.reason {
+                            eprintln!("    reason: {reason}");
+                        }
+                        eprintln!();
+                    }
+                    0
+                }
+                Err(e) => { eprintln!("Error: {e}"); 1 }
+            }
+        }
+        Some(Command::Log { limit }) => {
+            match vault::try_load_vault() {
+                Some(v) => {
+                    let actions = v.recent_actions(limit);
+                    if actions.is_empty() {
+                        eprintln!("No actions recorded.");
+                    } else {
+                        eprintln!("{:<24} {:<12} {:<10} {:>8} {}", "TIMESTAMP", "TOOL", "CATEGORY", "AMOUNT", "DECISION");
+                        eprintln!("{}", "-".repeat(70));
+                        for a in &actions {
+                            let ts = a["timestamp"].as_f64().unwrap_or(0.0);
+                            let dt = chrono::DateTime::from_timestamp(ts as i64, 0)
+                                .map(|d| d.format("%Y-%m-%d %H:%M:%S").to_string())
+                                .unwrap_or_else(|| format!("{ts:.0}"));
+                            let tool = a["tool"].as_str().unwrap_or("?");
+                            let cat = a["category"].as_str().unwrap_or("");
+                            let amt = a["amount"].as_f64().unwrap_or(0.0);
+                            let dec = a["decision"].as_str().unwrap_or("?");
+                            let amt_str = if amt > 0.0 { format!("${amt:.2}") } else { "-".into() };
+                            eprintln!("{dt:<24} {tool:<12} {cat:<10} {amt_str:>8} {dec}");
+                        }
+                    }
+                    0
+                }
+                None => { eprintln!("Vault not set up or locked. Run: signet-eval setup"); 1 }
+            }
+        }
+        Some(Command::Test { json }) => {
+            #[derive(serde::Deserialize)]
+            struct TestInput {
+                tool_name: String,
+                #[serde(alias = "tool_input")]
+                parameters: Option<serde_json::Value>,
+            }
+            let input: TestInput = match serde_json::from_str(&json) {
+                Ok(v) => v,
+                Err(e) => {
+                    eprintln!("Invalid JSON: {e}");
+                    std::process::exit(1);
+                }
+            };
+            let compiled = policy::load_policy(&policy_path);
+            let v = vault::try_load_vault();
+            let call = policy::ToolCall {
+                tool_name: input.tool_name,
+                parameters: input.parameters.unwrap_or(serde_json::Value::Object(Default::default())),
+            };
+            let result = policy::evaluate(&call, &compiled, v.as_ref());
+            eprintln!("Decision:     {:?}", result.decision);
+            if let Some(rule) = &result.matched_rule {
+                eprintln!("Matched rule: {rule}");
+            } else {
+                eprintln!("Matched rule: (none — default action)");
+            }
+            if let Some(reason) = &result.reason {
+                eprintln!("Reason:       {reason}");
+            }
+            eprintln!("Eval time:    {}us", result.evaluation_time_us);
+            0
+        }
+        Some(Command::Unlock) => {
+            if !vault::vault_exists() {
+                eprintln!("No vault found. Run: signet-eval setup");
+                1
+            } else {
+                let pass = rpassword::prompt_password("Vault passphrase: ").unwrap_or_default();
+                match vault::unlock_vault(&pass) {
+                    Ok(_) => { eprintln!("Vault unlocked. Session key refreshed."); 0 }
+                    Err(e) => { eprintln!("Error: {e}"); 1 }
+                }
+            }
+        }
+        Some(Command::Validate) => {
+            match policy::load_policy_config(&policy_path) {
+                Ok(config) => {
+                    let errors = policy::validate_policy(&config);
+                    if errors.is_empty() {
+                        eprintln!("Policy valid: {} rules", config.rules.len());
+                        0
+                    } else {
+                        for e in &errors {
+                            eprintln!("ERROR: {e}");
+                        }
+                        1
+                    }
+                }
+                Err(e) => { eprintln!("ERROR: {e}"); 1 }
             }
         }
         #[cfg(feature = "mcp")]

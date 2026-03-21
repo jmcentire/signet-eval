@@ -3,52 +3,63 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>signet-eval — Policy Enforcement for AI Agents</title>
+<title>signet-eval — Deterministic Policy Enforcement for AI Agents</title>
+<meta name="description" content="Enforce spending limits, block destructive commands, and control what AI agents can do. 5ms cold start. No LLM in the authorization path.">
 <style>
-  :root { --bg: #0d1117; --fg: #c9d1d9; --accent: #58a6ff; --border: #30363d; --code-bg: #161b22; --green: #3fb950; --red: #f85149; --yellow: #d29922; }
+  :root { --bg: #0d1117; --fg: #c9d1d9; --accent: #58a6ff; --border: #30363d; --code-bg: #161b22; --green: #3fb950; --red: #f85149; --yellow: #d29922; --muted: #8b949e; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; background: var(--bg); color: var(--fg); line-height: 1.6; padding: 2rem; max-width: 800px; margin: 0 auto; }
-  h1 { color: #f0f6fc; font-size: 2rem; margin-bottom: 0.5rem; }
-  h2 { color: #f0f6fc; font-size: 1.3rem; margin-top: 2rem; margin-bottom: 0.5rem; border-bottom: 1px solid var(--border); padding-bottom: 0.3rem; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; background: var(--bg); color: var(--fg); line-height: 1.6; }
+  .container { max-width: 900px; margin: 0 auto; padding: 0 2rem; }
+  h1 { color: #f0f6fc; font-size: 2.4rem; margin-bottom: 0.5rem; }
+  h2 { color: #f0f6fc; font-size: 1.4rem; margin-top: 3rem; margin-bottom: 0.75rem; border-bottom: 1px solid var(--border); padding-bottom: 0.3rem; }
+  h3 { color: #f0f6fc; font-size: 1.1rem; margin-top: 1.5rem; margin-bottom: 0.5rem; }
   p { margin-bottom: 1rem; }
   a { color: var(--accent); text-decoration: none; }
   a:hover { text-decoration: underline; }
-  code { background: var(--code-bg); padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.9em; }
+  code { background: var(--code-bg); padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.88em; }
   pre { background: var(--code-bg); padding: 1rem; border-radius: 8px; overflow-x: auto; margin-bottom: 1rem; border: 1px solid var(--border); }
   pre code { padding: 0; background: none; }
-  .badge { display: inline-block; padding: 0.2rem 0.6rem; border-radius: 12px; font-size: 0.8rem; font-weight: 600; margin-right: 0.5rem; }
+  .badge { display: inline-block; padding: 0.2rem 0.6rem; border-radius: 12px; font-size: 0.8rem; font-weight: 600; margin-right: 0.3rem; }
   .deny { background: rgba(248,81,73,0.15); color: var(--red); }
   .allow { background: rgba(63,185,80,0.15); color: var(--green); }
   .ask { background: rgba(210,153,34,0.15); color: var(--yellow); }
-  .hero { text-align: center; padding: 3rem 0 2rem; }
-  .hero p { font-size: 1.1rem; color: #8b949e; }
-  .stats { display: flex; gap: 2rem; justify-content: center; margin: 2rem 0; }
+  .hero { text-align: center; padding: 4rem 0 2rem; }
+  .hero p { font-size: 1.15rem; color: var(--muted); max-width: 600px; margin: 0 auto 2rem; }
+  .stats { display: flex; gap: 2.5rem; justify-content: center; margin: 2rem 0; flex-wrap: wrap; }
   .stat { text-align: center; }
-  .stat .num { font-size: 1.8rem; font-weight: 700; color: var(--accent); }
-  .stat .label { font-size: 0.85rem; color: #8b949e; }
+  .stat .num { font-size: 2rem; font-weight: 700; color: var(--accent); }
+  .stat .label { font-size: 0.85rem; color: var(--muted); }
   table { width: 100%; border-collapse: collapse; margin-bottom: 1rem; }
   th, td { text-align: left; padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--border); }
-  th { color: #8b949e; font-weight: 600; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; }
-  .footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--border); color: #8b949e; font-size: 0.85rem; text-align: center; }
+  th { color: var(--muted); font-weight: 600; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin: 1.5rem 0; }
+  .card { background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px; padding: 1.25rem; }
+  .card h3 { margin-top: 0; font-size: 1rem; }
+  .card p { margin-bottom: 0; font-size: 0.9rem; color: var(--muted); }
+  .footer { margin-top: 3rem; padding: 1.5rem 0; border-top: 1px solid var(--border); color: var(--muted); font-size: 0.85rem; text-align: center; }
+  @media (max-width: 600px) { .grid { grid-template-columns: 1fr; } .stats { gap: 1.5rem; } }
 </style>
 </head>
 <body>
 
+<div class="container">
+
 <div class="hero">
   <h1>signet-eval</h1>
-  <p>Deterministic policy enforcement for AI agent tool calls.<br>No LLM in the authorization path. No prompt injection surface.</p>
+  <p>Deterministic policy enforcement for AI agents. Control what your agent can do — spending limits, destructive command blocking, credential gating — without putting an LLM in the decision path.</p>
   <div class="stats">
     <div class="stat"><div class="num">5ms</div><div class="label">cold start</div></div>
     <div class="stat"><div class="num">&lt;1&mu;s</div><div class="label">policy eval</div></div>
-    <div class="stat"><div class="num">3.7MB</div><div class="label">binary</div></div>
+    <div class="stat"><div class="num">44</div><div class="label">tests</div></div>
+    <div class="stat"><div class="num">14</div><div class="label">condition functions</div></div>
   </div>
+  <pre><code>cargo install signet-eval</code></pre>
 </div>
 
-<h2>Install</h2>
-<pre><code>cargo install signet-eval</code></pre>
+<h2>Three Steps</h2>
 
-<h2>Hook into Claude Code</h2>
-<p>Add to <code>~/.claude/settings.json</code>:</p>
+<p><strong>1.</strong> Install: <code>cargo install signet-eval</code></p>
+<p><strong>2.</strong> Hook into Claude Code:</p>
 <pre><code>{
   "hooks": {
     "PreToolUse": [{
@@ -57,7 +68,7 @@
     }]
   }
 }</code></pre>
-<p>Every tool call now passes through policy evaluation before execution.</p>
+<p><strong>3.</strong> Done. Every tool call now passes through policy evaluation.</p>
 
 <h2>Default Policy</h2>
 <table>
@@ -66,6 +77,8 @@
   <tr><td><code>git push --force</code></td><td><span class="badge ask">ASK</span></td></tr>
   <tr><td><code>mkfs</code>, <code>format</code>, <code>dd if=</code></td><td><span class="badge deny">DENY</span></td></tr>
   <tr><td><code>curl | sh</code>, <code>wget | sh</code></td><td><span class="badge deny">DENY</span></td></tr>
+  <tr><td>Write to <code>.env</code>, <code>.pem</code>, <code>.key</code></td><td><span class="badge deny">DENY</span></td></tr>
+  <tr><td><code>chmod 777</code></td><td><span class="badge ask">ASK</span></td></tr>
   <tr><td>Everything else</td><td><span class="badge allow">ALLOW</span></td></tr>
 </table>
 
@@ -80,28 +93,94 @@ rules:
       - "param_eq(category, 'books')"
       - "spend_plus_amount_gt('books', amount, 200)"
     action: DENY
-    reason: "Books spending limit ($200) exceeded"</code></pre>
+    reason: "Books spending limit ($200) exceeded"
 
-<h2>Encrypted Vault</h2>
-<p>Passphrase-derived key hierarchy (Argon2 + AES-256-GCM). Three-tier data model:</p>
+  - name: block_sudo
+    tool_pattern: ".*"
+    conditions: ["param_contains(command, 'sudo')"]
+    action: ASK
+    reason: "sudo requires confirmation"</code></pre>
+
+<h2>Condition Functions</h2>
 <table>
-  <tr><th>Tier</th><th>Encryption</th><th>Contents</th></tr>
-  <tr><td>1</td><td>None</td><td>Action log, spending ledger</td></tr>
-  <tr><td>2</td><td>Session key</td><td>Session state</td></tr>
-  <tr><td>3</td><td>Compartment key</td><td>CC numbers, API tokens</td></tr>
+  <tr><th>Function</th><th>Description</th></tr>
+  <tr><td><code>contains(parameters, 'X')</code></td><td>Tool input contains string</td></tr>
+  <tr><td><code>any_of(parameters, 'X', 'Y')</code></td><td>Any string present</td></tr>
+  <tr><td><code>param_eq(field, 'value')</code></td><td>Field equals value</td></tr>
+  <tr><td><code>param_ne(field, 'value')</code></td><td>Field not equal</td></tr>
+  <tr><td><code>param_gt(field, N)</code></td><td>Field &gt; number</td></tr>
+  <tr><td><code>param_lt(field, N)</code></td><td>Field &lt; number</td></tr>
+  <tr><td><code>param_contains(field, 'X')</code></td><td>Field contains substring</td></tr>
+  <tr><td><code>matches(field, 'regex')</code></td><td>Field matches regex</td></tr>
+  <tr><td><code>has_credential('name')</code></td><td>Credential exists in vault</td></tr>
+  <tr><td><code>spend_gt('cat', N)</code></td><td>Session spend exceeds limit</td></tr>
+  <tr><td><code>spend_plus_amount_gt('cat', field, N)</code></td><td>Cumulative spend + amount exceeds limit</td></tr>
+  <tr><td><code>not(condition)</code></td><td>Negate any condition</td></tr>
+  <tr><td><code>or(A || B)</code></td><td>Either condition true</td></tr>
+  <tr><td><code>true</code> / <code>false</code></td><td>Literal boolean</td></tr>
 </table>
 
-<h2>Architecture</h2>
-<p>Tier 1 of the <a href="https://github.com/jmcentire/signet">Signet</a> personal sovereign agent stack. The core principle: <strong>the authorization layer must not be an LLM.</strong> It processes structured data only. A rule either matches or it doesn't.</p>
+<h2>Features</h2>
 
-<pre><code>Agent proposes action → signet-eval evaluates policy → allow/deny/ask
-                         (5ms, deterministic, no NLP)</code></pre>
+<div class="grid">
+  <div class="card">
+    <h3>Encrypted Vault</h3>
+    <p>Argon2 + AES-256-GCM. Three tiers: public ledger, session-encrypted state, compartment-encrypted credentials. Your CC number is stored where the agent can't read it.</p>
+  </div>
+  <div class="card">
+    <h3>Spending Limits</h3>
+    <p>Track cumulative spend per category. "Don't spend more than $200 on books" just works — the vault ledger enforces it across every tool call.</p>
+  </div>
+  <div class="card">
+    <h3>MCP Management</h3>
+    <p>Manage policies by talking to Claude. "Add a $50 limit for amazon orders." 12 MCP tools for rules, credentials, status, and testing.</p>
+  </div>
+  <div class="card">
+    <h3>MCP Proxy</h3>
+    <p>Wrap upstream MCP servers with enforcement. The agent connects to the proxy, not directly to servers. No bypass possible.</p>
+  </div>
+  <div class="card">
+    <h3>Policy Testing</h3>
+    <p><code>signet-eval test '{"tool_name":"Bash","tool_input":{"command":"rm foo"}}'</code> — test rules without running as a hook.</p>
+  </div>
+  <div class="card">
+    <h3>Adversarial Testing</h3>
+    <p>44 tests including Goodhart tests: unicode homoglyphs, null bytes, 1MB inputs, SQL injection in conditions, 1000-rule performance bounds.</p>
+  </div>
+</div>
+
+<h2>Architecture</h2>
+<p>Part of the <a href="https://signet.tools">Signet</a> personal sovereign agent stack. The core principle: <strong>the authorization layer must not be an LLM.</strong> It processes structured data only. No natural language, no context window, no persuasion surface. A rule either matches or it doesn't.</p>
+<pre><code>Agent proposes action  ->  signet-eval evaluates policy  ->  allow / deny / ask
+                           (deterministic, 5ms, no NLP)</code></pre>
+
+<h2>All Commands</h2>
+<table>
+  <tr><th>Command</th><th>Purpose</th></tr>
+  <tr><td><code>signet-eval</code></td><td>Hook evaluation (default, 5ms)</td></tr>
+  <tr><td><code>signet-eval init</code></td><td>Write default policy file</td></tr>
+  <tr><td><code>signet-eval rules</code></td><td>Show current rules</td></tr>
+  <tr><td><code>signet-eval validate</code></td><td>Check policy for errors</td></tr>
+  <tr><td><code>signet-eval test '&lt;json&gt;'</code></td><td>Test a tool call</td></tr>
+  <tr><td><code>signet-eval setup</code></td><td>Create encrypted vault</td></tr>
+  <tr><td><code>signet-eval unlock</code></td><td>Refresh vault session</td></tr>
+  <tr><td><code>signet-eval status</code></td><td>Vault status and spending</td></tr>
+  <tr><td><code>signet-eval store &lt;n&gt; &lt;v&gt;</code></td><td>Store Tier 3 credential</td></tr>
+  <tr><td><code>signet-eval log</code></td><td>Recent action log</td></tr>
+  <tr><td><code>signet-eval serve</code></td><td>MCP management server</td></tr>
+  <tr><td><code>signet-eval proxy</code></td><td>MCP proxy</td></tr>
+</table>
+
+</div>
 
 <div class="footer">
-  <a href="https://github.com/jmcentire/signet-eval">GitHub</a> &middot;
-  <a href="https://crates.io/crates/signet-eval">crates.io</a> &middot;
-  MIT License &middot;
-  Jeremy McEntire
+  <div class="container">
+    <a href="https://github.com/jmcentire/signet-eval">GitHub</a> &middot;
+    <a href="https://crates.io/crates/signet-eval">crates.io</a> &middot;
+    <a href="https://signet.tools">Signet</a> &middot;
+    MIT License &middot;
+    <a href="https://perardua.dev">Jeremy McEntire</a>
+  </div>
 </div>
 
 </body>

@@ -14,7 +14,7 @@ use rand::RngCore;
 use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const SALT_LEN: usize = 32;
@@ -218,24 +218,59 @@ impl Vault {
     // --- Credentials ---
 
     pub fn store_credential(&self, name: &str, value: &str, tier: u8) {
+        self.store_credential_with_expiry(name, value, tier, None);
+    }
+
+    pub fn store_credential_with_expiry(&self, name: &str, value: &str, tier: u8, expires_at: Option<f64>) {
         let key = if tier == 3 { &self.compartment_key } else { &self.session_key };
         let encrypted = encrypt(key, value.as_bytes());
         let conn = Connection::open(&self.db_path).unwrap();
         conn.execute(
-            "INSERT OR REPLACE INTO credentials (name, tier, encrypted_value, created_at, metadata) VALUES (?1,?2,?3,?4,'{}')",
-            params![name, tier as i32, encrypted, now_epoch()],
+            "INSERT OR REPLACE INTO credentials (name, tier, encrypted_value, created_at, expires_at, metadata) VALUES (?1,?2,?3,?4,?5,'{}')",
+            params![name, tier as i32, encrypted, now_epoch(), expires_at],
         ).unwrap();
     }
 
     pub fn get_credential(&self, name: &str) -> Option<String> {
         let conn = Connection::open(&self.db_path).ok()?;
-        let (tier, encrypted): (i32, Vec<u8>) = conn.query_row(
-            "SELECT tier, encrypted_value FROM credentials WHERE name = ?1",
-            params![name], |row| Ok((row.get(0)?, row.get(1)?))
+        let (tier, encrypted, expires_at): (i32, Vec<u8>, Option<f64>) = conn.query_row(
+            "SELECT tier, encrypted_value, expires_at FROM credentials WHERE name = ?1",
+            params![name], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?))
         ).ok()?;
+
+        // Enforce expiration
+        if let Some(exp) = expires_at {
+            if now_epoch() > exp {
+                return None;
+            }
+        }
+
         let key = if tier == 3 { &self.compartment_key } else { &self.session_key };
         let plaintext = decrypt(key, &encrypted).ok()?;
         String::from_utf8(plaintext).ok()
+    }
+
+    pub fn delete_credential(&self, name: &str) -> bool {
+        let conn = match Connection::open(&self.db_path) {
+            Ok(c) => c,
+            Err(_) => return false,
+        };
+        let rows = conn.execute(
+            "DELETE FROM credentials WHERE name = ?1",
+            params![name],
+        ).unwrap_or(0);
+        rows > 0
+    }
+
+    pub fn credential_exists(&self, name: &str) -> bool {
+        let conn = match Connection::open(&self.db_path) {
+            Ok(c) => c,
+            Err(_) => return false,
+        };
+        conn.query_row(
+            "SELECT 1 FROM credentials WHERE name = ?1",
+            params![name], |_row| Ok(()),
+        ).is_ok()
     }
 
     pub fn list_credentials(&self) -> Vec<serde_json::Value> {
@@ -433,5 +468,39 @@ mod tests {
         vault.log_action("write", "DENY", "", 0.0, "blocked");
         let actions = vault.recent_actions(10);
         assert_eq!(actions.len(), 2);
+    }
+
+    #[test]
+    fn test_credential_exists() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault = make_test_vault(dir.path(), "testpass123");
+        assert!(!vault.credential_exists("api_key"));
+        vault.store_credential("api_key", "secret123", 2);
+        assert!(vault.credential_exists("api_key"));
+        assert!(!vault.credential_exists("nonexistent"));
+    }
+
+    #[test]
+    fn test_delete_credential() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault = make_test_vault(dir.path(), "testpass123");
+        vault.store_credential("to_delete", "val", 2);
+        assert!(vault.credential_exists("to_delete"));
+        assert!(vault.delete_credential("to_delete"));
+        assert!(!vault.credential_exists("to_delete"));
+        assert!(!vault.delete_credential("to_delete")); // already gone
+    }
+
+    #[test]
+    fn test_get_credential_expired() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault = make_test_vault(dir.path(), "testpass123");
+        // Store with expiry in the past
+        let past = now_epoch() - 3600.0;
+        vault.store_credential_with_expiry("expired_key", "secret", 2, Some(past));
+        assert_eq!(vault.get_credential("expired_key"), None);
+        // Store without expiry — should work
+        vault.store_credential("valid_key", "secret2", 2);
+        assert_eq!(vault.get_credential("valid_key").as_deref(), Some("secret2"));
     }
 }

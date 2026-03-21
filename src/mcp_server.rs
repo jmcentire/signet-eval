@@ -111,6 +111,21 @@ impl ServerHandler for SignetMcpServer {
                     "required": ["name", "value"]
                 })),
                 make_tool("signet_list_credentials", "List credential names (not values).", serde_json::json!({"type": "object", "properties": {}})),
+                make_tool("signet_delete_credential", "Delete a credential from the vault.", serde_json::json!({
+                    "type": "object",
+                    "properties": {"name": {"type": "string", "description": "Credential name to delete"}},
+                    "required": ["name"]
+                })),
+                make_tool("signet_validate", "Validate the current policy file for errors (bad regex, unknown functions).", serde_json::json!({"type": "object", "properties": {}})),
+                make_tool("signet_test", "Test a tool call against the current policy without executing it.", serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "tool_name": {"type": "string", "description": "Tool name (e.g. 'Bash', 'Write')"},
+                        "tool_input": {"type": "object", "description": "Tool arguments as JSON object"}
+                    },
+                    "required": ["tool_name"]
+                })),
+                make_tool("signet_condition_help", "Show all available condition functions with descriptions and examples.", serde_json::json!({"type": "object", "properties": {}})),
             ];
             Ok(ListToolsResult { tools, next_cursor: None, meta: None })
         }
@@ -134,6 +149,10 @@ impl ServerHandler for SignetMcpServer {
                 "signet_recent_actions" => handle_recent_actions(args),
                 "signet_store_credential" => handle_store_credential(args),
                 "signet_list_credentials" => handle_list_credentials(),
+                "signet_delete_credential" => handle_delete_credential(args),
+                "signet_validate" => handle_validate(),
+                "signet_test" => handle_test(args),
+                "signet_condition_help" => handle_condition_help(),
                 _ => format!("Unknown tool: {}", request.name),
             };
             Ok(CallToolResult::success(vec![Content::text(result)]))
@@ -316,6 +335,94 @@ fn handle_list_credentials() -> String {
         }
         None => "Vault not set up or locked.".into(),
     }
+}
+
+fn handle_delete_credential(args: &serde_json::Map<String, Value>) -> String {
+    let name = args.get("name").and_then(|v| v.as_str()).unwrap_or("");
+    match vault::try_load_vault() {
+        Some(v) => {
+            if v.delete_credential(name) {
+                format!("Deleted credential '{name}'.")
+            } else {
+                format!("Credential '{name}' not found.")
+            }
+        }
+        None => "Vault not set up or locked.".into(),
+    }
+}
+
+fn handle_validate() -> String {
+    let path = policy_path();
+    match crate::policy::load_policy_config(&path) {
+        Ok(config) => {
+            let errors = crate::policy::validate_policy(&config);
+            if errors.is_empty() {
+                format!("Policy valid: {} rules, no errors.", config.rules.len())
+            } else {
+                let mut lines = vec![format!("Policy has {} error(s):", errors.len())];
+                for e in &errors {
+                    lines.push(format!("  - {e}"));
+                }
+                lines.join("\n")
+            }
+        }
+        Err(e) => format!("Cannot load policy: {e}"),
+    }
+}
+
+fn handle_test(args: &serde_json::Map<String, Value>) -> String {
+    let tool_name = args.get("tool_name").and_then(|v| v.as_str()).unwrap_or("");
+    let tool_input = args.get("tool_input").cloned().unwrap_or(serde_json::Value::Object(Default::default()));
+
+    let path = policy_path();
+    let policy = crate::policy::load_policy(&path);
+    let v = vault::try_load_vault();
+    let call = crate::policy::ToolCall {
+        tool_name: tool_name.to_string(),
+        parameters: tool_input,
+    };
+    let result = crate::policy::evaluate(&call, &policy, v.as_ref());
+    let mut lines = vec![
+        format!("Decision: {:?}", result.decision),
+    ];
+    if let Some(rule) = &result.matched_rule {
+        lines.push(format!("Matched rule: {rule}"));
+    } else {
+        lines.push("Matched rule: (none — default action)".into());
+    }
+    if let Some(reason) = &result.reason {
+        lines.push(format!("Reason: {reason}"));
+    }
+    lines.push(format!("Eval time: {}us", result.evaluation_time_us));
+    lines.join("\n")
+}
+
+fn handle_condition_help() -> String {
+    r#"Available condition functions:
+
+  contains(parameters, 'text')        — serialized tool input contains string
+  any_of(parameters, 'a', 'b', ...)   — any of the strings present in tool input
+  param_eq(field, 'value')             — parameter field equals value
+  param_ne(field, 'value')             — parameter field not equal to value
+  param_gt(field, number)              — parameter field > number
+  param_lt(field, number)              — parameter field < number
+  param_contains(field, 'substr')      — parameter field contains substring
+  matches(field, 'regex')              — parameter field matches regex pattern
+  has_credential('name')               — credential exists in vault
+  spend_gt('category', limit)          — session spend > limit
+  spend_plus_amount_gt('cat', field, limit) — session spend + param > limit
+  not(condition)                       — negate any condition
+  or(cond1 || cond2)                   — either condition is true
+  true / false                         — literal boolean
+
+Multiple conditions on a rule are AND'd together. Use or() for OR logic.
+
+Examples:
+  Block rm:              contains(parameters, 'rm ')
+  Books limit $200:      spend_plus_amount_gt('books', amount, 200)
+  Only allow JSON:       not(param_eq(format, 'json'))
+  Block large purchases: param_gt(amount, 500)
+  Block IP access:       matches(host, '^\d+\.\d+\.\d+\.\d+$')"#.into()
 }
 
 /// Run the MCP management server on stdio.
