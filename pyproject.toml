@@ -4,13 +4,14 @@ build-backend = "hatchling.build"
 
 [project]
 name = "signet-eval"
-version = "0.2.0"
-description = "Claude Code PreToolUse hook policy enforcer with encrypted vault"
+version = "0.3.0"
+description = "Claude Code policy enforcement with encrypted vault and MCP management"
 requires-python = ">=3.12"
-dependencies = ["pyyaml>=6.0", "cryptography>=42.0"]
+dependencies = ["pyyaml>=6.0", "cryptography>=42.0", "mcp>=1.0"]
 
 [project.scripts]
 signet-eval = "signet_eval_tool:main"
+signet-mcp = "signet_eval_tool.mcp_server:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/signet_eval_tool"]
