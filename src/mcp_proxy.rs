@@ -41,7 +41,7 @@ struct UpstreamConnection {
 
 pub struct ProxyServer {
     upstreams: Arc<Mutex<Vec<UpstreamConnection>>>,
-    policy: CompiledPolicy,
+    policy_path: PathBuf,
     vault: Option<Vault>,
 }
 
@@ -90,7 +90,8 @@ impl ServerHandler for ProxyServer {
                 None => return Err(McpError::invalid_params("Tool name must be server__tool format", None)),
             };
 
-            // Evaluate policy
+            // Reload policy on each call (hot-reload)
+            let current_policy = policy::load_policy(&self.policy_path);
             let args_value = request.arguments.as_ref()
                 .map(|a| serde_json::Value::Object(a.clone()))
                 .unwrap_or_default();
@@ -98,7 +99,7 @@ impl ServerHandler for ProxyServer {
                 tool_name: tool_name.clone(),
                 parameters: args_value.clone(),
             };
-            let result = policy::evaluate(&call, &self.policy, self.vault.as_ref());
+            let result = policy::evaluate(&call, &current_policy, self.vault.as_ref());
 
             // Log
             if let Some(ref v) = self.vault {
@@ -201,7 +202,7 @@ pub async fn run_proxy() -> Result<(), Box<dyn std::error::Error>> {
 
     let proxy = ProxyServer {
         upstreams: Arc::new(Mutex::new(upstreams)),
-        policy: policy::load_policy(&vault::signet_dir().join("policy.yaml")),
+        policy_path: vault::signet_dir().join("policy.yaml"),
         vault: vault::try_load_vault(),
     };
 

@@ -50,8 +50,9 @@
   <div class="stats">
     <div class="stat"><div class="num">5ms</div><div class="label">cold start</div></div>
     <div class="stat"><div class="num">&lt;1&mu;s</div><div class="label">policy eval</div></div>
-    <div class="stat"><div class="num">44</div><div class="label">tests</div></div>
+    <div class="stat"><div class="num">70</div><div class="label">tests</div></div>
     <div class="stat"><div class="num">14</div><div class="label">condition functions</div></div>
+    <div class="stat"><div class="num">16</div><div class="label">MCP tools</div></div>
   </div>
   <pre><code>cargo install signet-eval</code></pre>
 </div>
@@ -125,27 +126,35 @@ rules:
 <div class="grid">
   <div class="card">
     <h3>Encrypted Vault</h3>
-    <p>Argon2 + AES-256-GCM. Three tiers: public ledger, session-encrypted state, compartment-encrypted credentials. Your CC number is stored where the agent can't read it.</p>
+    <p>Argon2 + AES-256-GCM. Three tiers: public ledger, session-encrypted state, compartment-encrypted credentials. Session key encrypted with device-specific key. Brute-force lockout after 5 failed attempts.</p>
   </div>
   <div class="card">
     <h3>Spending Limits</h3>
-    <p>Track cumulative spend per category. "Don't spend more than $200 on books" just works — the vault ledger enforces it across every tool call.</p>
+    <p>Track cumulative spend per category. "Don't spend more than $200 on books" just works. Vault ledger enforces across every tool call. Reset with <code>signet-eval reset-session</code>.</p>
+  </div>
+  <div class="card">
+    <h3>Scoped Credentials</h3>
+    <p>Store credentials with domain, purpose, amount caps, and one-time constraints. <code>request_capability</code> enforces all constraints before releasing a credential. One-time tokens auto-invalidate.</p>
   </div>
   <div class="card">
     <h3>MCP Management</h3>
-    <p>Manage policies by talking to Claude. "Add a $50 limit for amazon orders." 12 MCP tools for rules, credentials, status, and testing.</p>
+    <p>Manage policies by talking to Claude. "Add a $50 limit for amazon orders." 16 MCP tools: rules, credentials, testing, validation, reordering, signing.</p>
   </div>
   <div class="card">
     <h3>MCP Proxy</h3>
-    <p>Wrap upstream MCP servers with enforcement. The agent connects to the proxy, not directly to servers. No bypass possible.</p>
+    <p>Wrap upstream MCP servers with enforcement. Hot-reloads policy on every call. The agent connects to the proxy, not directly to servers.</p>
+  </div>
+  <div class="card">
+    <h3>Policy Integrity</h3>
+    <p>HMAC-sign your policy file. Hook verifies integrity on every evaluation. Tampered files fall back to safe defaults automatically.</p>
   </div>
   <div class="card">
     <h3>Policy Testing</h3>
-    <p><code>signet-eval test '{"tool_name":"Bash","tool_input":{"command":"rm foo"}}'</code> — test rules without running as a hook.</p>
+    <p><code>signet-eval test '...'</code> and <code>signet-eval validate</code> — test rules and check for errors without running as a hook.</p>
   </div>
   <div class="card">
-    <h3>Adversarial Testing</h3>
-    <p>44 tests including Goodhart tests: unicode homoglyphs, null bytes, 1MB inputs, SQL injection in conditions, 1000-rule performance bounds.</p>
+    <h3>70 Tests</h3>
+    <p>Unit, integration, and Goodhart/adversarial: unicode homoglyphs, null bytes, 1MB inputs, SQL injection, path traversal, 1000-rule performance bounds. Full subprocess e2e.</p>
   </div>
 </div>
 
@@ -167,6 +176,9 @@ rules:
   <tr><td><code>signet-eval status</code></td><td>Vault status and spending</td></tr>
   <tr><td><code>signet-eval store &lt;n&gt; &lt;v&gt;</code></td><td>Store Tier 3 credential</td></tr>
   <tr><td><code>signet-eval log</code></td><td>Recent action log</td></tr>
+  <tr><td><code>signet-eval delete &lt;n&gt;</code></td><td>Delete credential</td></tr>
+  <tr><td><code>signet-eval reset-session</code></td><td>Clear spending counters</td></tr>
+  <tr><td><code>signet-eval sign</code></td><td>HMAC-sign policy file</td></tr>
   <tr><td><code>signet-eval serve</code></td><td>MCP management server</td></tr>
   <tr><td><code>signet-eval proxy</code></td><td>MCP proxy</td></tr>
 </table>
