@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """
 Signet Evaluation Tool — Claude Code PreToolUse hook policy enforcer.
-Deterministic policy evaluation. No NLP. No network. No dependencies beyond stdlib + yaml.
+Deterministic policy evaluation. No NLP. No network.
 """
 
+import getpass
 import json
 import re
 import time
@@ -123,6 +124,9 @@ class CliArgs:
     init: bool = False
     policy_path: Optional[str] = None
     verbose: bool = False
+    setup: bool = False
+    status: bool = False
+    store: Optional[list] = None
 
 
 # === Dotdict helper for condition evaluation ===
@@ -182,6 +186,10 @@ def parse_args(args: List[str]) -> CliArgs:
     """Parse and validate command-line arguments."""
     parser = argparse.ArgumentParser(prog="signet-eval", description="Signet Policy Evaluation Tool")
     parser.add_argument("--init", action="store_true", help="Initialize default policy file")
+    parser.add_argument("--setup", action="store_true", help="Create encrypted vault with passphrase")
+    parser.add_argument("--status", action="store_true", help="Show vault status and recent actions")
+    parser.add_argument("--store", nargs=2, metavar=("NAME", "VALUE"),
+                        help="Store a Tier 3 credential (e.g. --store cc_visa 4111...)")
     parser.add_argument("--policy-path", type=str,
                         default=os.path.expanduser("~/.signet/policy.yaml"),
                         help="Path to policy configuration file")
@@ -189,7 +197,12 @@ def parse_args(args: List[str]) -> CliArgs:
 
     try:
         parsed = parser.parse_args(args)
-        return CliArgs(init=parsed.init, policy_path=parsed.policy_path, verbose=parsed.verbose)
+        return CliArgs(
+            init=parsed.init, policy_path=parsed.policy_path, verbose=parsed.verbose,
+            setup=getattr(parsed, 'setup', False),
+            status=getattr(parsed, 'status', False),
+            store=getattr(parsed, 'store', None),
+        )
     except SystemExit:
         raise ArgumentError("Invalid arguments")
 
@@ -302,7 +315,7 @@ def parse_hook_input(json_input: str) -> ToolUseRequest:
     )
 
 
-def match_rule_conditions(request: ToolUseRequest, rule: PolicyRule) -> bool:
+def match_rule_conditions(request: ToolUseRequest, rule: PolicyRule, vault=None) -> bool:
     """Check if tool request matches all conditions in a policy rule."""
     try:
         if not rule._compiled_pattern.search(request.tool_name):
@@ -313,14 +326,32 @@ def match_rule_conditions(request: ToolUseRequest, rule: PolicyRule) -> bool:
     if not rule.conditions:
         return True
 
-    # Build eval globals with dot-accessible dicts + safe builtins
+    # Stateful functions available in policy conditions (no-op if no vault)
+    def _session_spend(category=""):
+        return vault.session_spend(category) if vault else 0.0
+
+    def _total_spend(category="", since=0.0):
+        return vault.total_spend(category, since) if vault else 0.0
+
+    def _has_credential(name):
+        if not vault:
+            return False
+        return vault.get_credential(name) is not None
+
+    # Build eval globals with dot-accessible dicts + safe builtins + vault functions
     # Variables must be in globals (not locals) for generator expression scoping
     eval_globals = {
         "__builtins__": {"any": any, "all": all, "str": str, "len": len, "int": int,
-                         "True": True, "False": False},
+                         "float": float, "True": True, "False": False},
         "tool_name": request.tool_name,
         "parameters": _DotDict(request.parameters),
         "context": _DotDict(request.context),
+        # Stateful functions
+        "session_spend": _session_spend,
+        "total_spend": _total_spend,
+        "has_credential": _has_credential,
+        # Convenience: extract amount from parameters if present
+        "amount": float(request.parameters.get("amount", 0)),
     }
 
     for condition in rule.conditions:
@@ -333,7 +364,7 @@ def match_rule_conditions(request: ToolUseRequest, rule: PolicyRule) -> bool:
     return True
 
 
-def evaluate_request(request: ToolUseRequest, policy: PolicyConfig) -> EvaluationResult:
+def evaluate_request(request: ToolUseRequest, policy: PolicyConfig, vault=None) -> EvaluationResult:
     """Evaluate tool use request against policy rules. First-match-wins."""
     start = time.perf_counter()
 
@@ -344,7 +375,7 @@ def evaluate_request(request: ToolUseRequest, policy: PolicyConfig) -> Evaluatio
                 raise EvaluationTimeoutError("Evaluation exceeded 15ms budget")
 
             try:
-                if match_rule_conditions(request, rule):
+                if match_rule_conditions(request, rule, vault=vault):
                     dt = (time.perf_counter() - start) * 1000
                     return EvaluationResult(
                         decision=rule.action,
@@ -391,6 +422,28 @@ def format_output(result: EvaluationResult) -> str:
         raise SerializationError(f"Cannot serialize: {e}")
 
 
+def _try_load_vault():
+    """Try to load vault without passphrase (for hook mode — uses cached session)."""
+    try:
+        from signet_eval_tool.vault import vault_exists, VAULT_META, VaultMeta, _derive_master_key, _make_key_check, Vault
+        if not vault_exists():
+            return None
+        # In hook mode, we can't prompt for passphrase. Check for session key file.
+        session_file = Path.home() / ".signet" / ".session_key"
+        if not session_file.exists():
+            return None
+        import base64
+        master_key = base64.b64decode(session_file.read_text().strip())
+        meta = VaultMeta.load()
+        import hmac, hashlib
+        check = hmac.new(master_key, b"signet-vault-check", hashlib.sha256).digest()
+        if not hmac.compare_digest(check, meta.master_key_check):
+            return None
+        return Vault(master_key)
+    except Exception:
+        return None
+
+
 def main(args: List[str] = None) -> int:
     """Main CLI entry point."""
     if args is None:
@@ -401,6 +454,71 @@ def main(args: List[str] = None) -> int:
     except ArgumentError:
         return 2
 
+    # --- Setup vault ---
+    if cli_args.setup:
+        from signet_eval_tool.vault import setup_vault, vault_exists
+        if vault_exists():
+            print("Vault already exists at ~/.signet/. To reset, delete ~/.signet/vault.meta first.", file=sys.stderr)
+            return 1
+        passphrase = getpass.getpass("Create vault passphrase: ")
+        confirm = getpass.getpass("Confirm passphrase: ")
+        if passphrase != confirm:
+            print("Passphrases don't match.", file=sys.stderr)
+            return 1
+        if len(passphrase) < 8:
+            print("Passphrase must be at least 8 characters.", file=sys.stderr)
+            return 1
+        vault = setup_vault(passphrase)
+        # Cache master key for session use (hook mode can't prompt)
+        import base64
+        session_file = Path.home() / ".signet" / ".session_key"
+        session_file.write_text(base64.b64encode(vault._master_key).decode())
+        session_file.chmod(0o600)
+        print("Vault created. Session key cached at ~/.signet/.session_key")
+        print("Policy evaluation can now use stateful conditions (spending limits, etc.)")
+        return 0
+
+    # --- Status ---
+    if cli_args.status:
+        from signet_eval_tool.vault import vault_exists
+        if not vault_exists():
+            print("No vault. Run: signet-eval --setup")
+            return 1
+        vault = _try_load_vault()
+        if not vault:
+            print("Vault locked. Run: signet-eval --unlock")
+            return 1
+        print(f"Vault: unlocked (session {'valid' if vault.session_valid() else 'expired'})")
+        print(f"Credentials: {len(vault.list_credentials())}")
+        actions = vault.recent_actions(10)
+        if actions:
+            print(f"\nRecent actions ({len(actions)}):")
+            for a in actions:
+                t = time.strftime("%H:%M:%S", time.localtime(a["timestamp"]))
+                amt = f" ${a['amount']:.2f}" if a["amount"] else ""
+                cat = f" [{a['category']}]" if a["category"] else ""
+                print(f"  {t} {a['tool']}{cat}{amt} -> {a['decision']}")
+        spend = vault.session_spend()
+        if spend > 0:
+            print(f"\nSession spend: ${spend:.2f}")
+        return 0
+
+    # --- Store credential ---
+    if cli_args.store:
+        from signet_eval_tool.vault import vault_exists, Tier
+        if not vault_exists():
+            print("No vault. Run: signet-eval --setup", file=sys.stderr)
+            return 1
+        vault = _try_load_vault()
+        if not vault:
+            print("Vault locked.", file=sys.stderr)
+            return 1
+        name, value = cli_args.store
+        vault.store_credential(name, value, Tier.RESTRICTED)
+        print(f"Stored '{name}' as Tier 3 (compartment-encrypted)")
+        return 0
+
+    # --- Init policy ---
     if cli_args.init:
         try:
             init_policy_file(cli_args.policy_path)
@@ -408,22 +526,40 @@ def main(args: List[str] = None) -> int:
         except (FileSystemError, PermissionError, PolicyInitError):
             return 1
 
+    # --- Hook evaluation (default mode) ---
     try:
         policy = load_policy(cli_args.policy_path)
     except (PolicyParseError, RegexCompileError):
-        # Fail secure — use defaults
         policy = get_default_policy()
 
     try:
         raw = sys.stdin.read()
         request = parse_hook_input(raw)
     except (json.JSONDecodeError, ValidationError, InputSizeError):
-        # Fail secure — deny with reason
         out = json.dumps({"permissionDecision": "deny", "permissionDecisionReason": "Malformed hook input"})
         print(out)
         return 0
 
-    result = evaluate_request(request, policy)
+    # Load vault for stateful conditions (optional — works without it)
+    vault = _try_load_vault()
+
+    result = evaluate_request(request, policy, vault=vault)
+
+    # Log action to vault if available
+    if vault:
+        try:
+            # Extract amount/category from tool input if present
+            amount = float(request.parameters.get("amount", 0))
+            category = str(request.parameters.get("category", ""))
+            vault.log_action(
+                tool=request.tool_name,
+                decision=result.decision.value,
+                category=category,
+                amount=amount if result.decision == Decision.ALLOW else 0.0,
+                detail=json.dumps(request.parameters)[:500],
+            )
+        except Exception:
+            pass  # Never let logging break evaluation
 
     # Emit Claude Code hook response format
     hook_response = {"permissionDecision": result.decision.value.lower()}

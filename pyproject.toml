@@ -4,10 +4,10 @@ build-backend = "hatchling.build"
 
 [project]
 name = "signet-eval"
-version = "0.1.0"
-description = "Claude Code PreToolUse hook policy enforcer"
+version = "0.2.0"
+description = "Claude Code PreToolUse hook policy enforcer with encrypted vault"
 requires-python = ">=3.12"
-dependencies = ["pyyaml>=6.0"]
+dependencies = ["pyyaml>=6.0", "cryptography>=42.0"]
 
 [project.scripts]
 signet-eval = "signet_eval_tool:main"

@@ -40,15 +40,14 @@ class TestMainFunction:
     
     def test_main_init_command(self):
         """Main function successfully creates policy file with --init command."""
-        with mock.patch('signet_eval_tool.parse_args') as mock_parse:
-            with mock.patch('signet_eval_tool.init_policy_file') as mock_init:
-                with mock.patch('os.path.exists', return_value=True):
-                    mock_parse.return_value = CliArgs(init=True, policy_path="/tmp/test_policy.yaml", verbose=False)
-                    
-                    result = main(["--init", "--policy-path", "/tmp/test_policy.yaml"])
-                    
-                    assert result == 0
-                    mock_init.assert_called_once_with("/tmp/test_policy.yaml")
+        with mock.patch('signet_eval_tool.signet_eval_tool.parse_args') as mock_parse:
+            with mock.patch('signet_eval_tool.signet_eval_tool.init_policy_file') as mock_init:
+                mock_parse.return_value = CliArgs(init=True, policy_path="/tmp/test_policy.yaml", verbose=False)
+
+                result = main(["--init", "--policy-path", "/tmp/test_policy.yaml"])
+
+                assert result == 0
+                mock_init.assert_called_once_with("/tmp/test_policy.yaml")
     
     def test_main_argument_parsing_error(self):
         """Main function returns non-zero when invalid arguments provided."""
