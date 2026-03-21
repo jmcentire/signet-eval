@@ -1,0 +1,55 @@
+[package]
+name = "signet-eval"
+version = "1.0.0"
+edition = "2021"
+description = "Claude Code policy enforcement — deterministic authorization for AI agent tool calls"
+license = "MIT"
+repository = "https://github.com/jmcentire/signet-eval-rs"
+
+[[bin]]
+name = "signet-eval"
+path = "src/main.rs"
+
+[dependencies]
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+
+# Crypto
+argon2 = "0.5"
+aes-gcm = "0.10"
+hkdf = "0.12"
+sha2 = "0.10"
+rand = "0.8"
+base64 = "0.22"
+hmac = "0.12"
+
+# Database
+rusqlite = { version = "0.31", features = ["bundled"] }
+
+# Regex
+regex = "1"
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+rpassword = "7"
+
+# Time
+chrono = "0.4"
+
+# MCP (optional — only needed for proxy/management server modes)
+rmcp = { version = "1", features = ["server", "client", "transport-io", "transport-child-process"], optional = true }
+tokio = { version = "1", features = ["full"], optional = true }
+
+[features]
+default = ["mcp"]
+mcp = ["dep:rmcp", "dep:tokio"]
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+opt-level = 3
+lto = true
+strip = true
