@@ -158,6 +158,15 @@ fn test_hook_asks_settings_json_write() {
 }
 
 #[test]
+fn test_hook_blocks_symlink_to_signet() {
+    let (out, code) = run_hook(
+        r#"{"tool_name":"Bash","tool_input":{"command":"ln -s ~/.signet /tmp/innocuous"}}"#
+    );
+    assert_eq!(code, 0);
+    assert_eq!(parse_decision(&out), "deny");
+}
+
+#[test]
 fn test_hook_performance() {
     let start = std::time::Instant::now();
     for _ in 0..10 {

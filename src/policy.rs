@@ -436,6 +436,17 @@ pub fn self_protection_rules() -> Vec<PolicyRule> {
             reason: Some("Self-protection: hook config changes require confirmation".into()),
         },
         PolicyRule {
+            name: "protect_signet_symlink".into(),
+            tool_pattern: ".*".into(),
+            conditions: vec![
+                "any_of(parameters, 'ln ', 'ln\t', 'symlink', 'mklink')".into(),
+                "any_of(parameters, '.signet', '.Signet', '.SIGNET', 'signet-eval', 'signet_eval', 'settings.json', 'settings.local.json')".into(),
+            ],
+            action: Decision::Deny,
+            locked: true,
+            reason: Some("Self-protection: symlink creation targeting signet is blocked".into()),
+        },
+        PolicyRule {
             name: "protect_signet_process".into(),
             tool_pattern: ".*".into(),
             conditions: vec![
@@ -982,7 +993,7 @@ mod self_protection_tests {
     #[test]
     fn test_default_policy_has_locked_rules() {
         let rules = self_protection_rules();
-        assert_eq!(rules.len(), 4);
+        assert_eq!(rules.len(), 5);
         assert!(rules.iter().all(|r| r.locked));
     }
 
@@ -1080,6 +1091,40 @@ mod self_protection_tests {
         let result = evaluate(&call, &policy, None);
         assert_eq!(result.decision, Decision::Deny);
         assert_eq!(result.matched_rule.as_deref(), Some("protect_signet_process"));
+    }
+
+    #[test]
+    fn test_blocks_symlink_to_signet() {
+        let policy = default_policy();
+        let call = make_call("Bash", serde_json::json!({
+            "command": "ln -s ~/.signet /tmp/x"
+        }));
+        let result = evaluate(&call, &policy, None);
+        assert_eq!(result.decision, Decision::Deny);
+        assert_eq!(result.matched_rule.as_deref(), Some("protect_signet_symlink"));
+    }
+
+    #[test]
+    fn test_blocks_symlink_to_signet_eval() {
+        let policy = default_policy();
+        let call = make_call("Bash", serde_json::json!({
+            "command": "ln -sf /dev/null /opt/homebrew/bin/signet-eval"
+        }));
+        let result = evaluate(&call, &policy, None);
+        assert_eq!(result.decision, Decision::Deny);
+        // Could match protect_signet_binary or protect_signet_symlink — both deny
+        assert_eq!(result.decision, Decision::Deny);
+    }
+
+    #[test]
+    fn test_allows_normal_symlink() {
+        let policy = default_policy();
+        let call = make_call("Bash", serde_json::json!({
+            "command": "ln -s /tmp/foo /tmp/bar"
+        }));
+        let result = evaluate(&call, &policy, None);
+        // Should not be blocked — no signet references
+        assert_ne!(result.matched_rule.as_deref(), Some("protect_signet_symlink"));
     }
 
     #[test]
