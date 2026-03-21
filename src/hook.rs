@@ -14,8 +14,17 @@ struct HookInput {
     parameters: Option<Value>,
 }
 
+/// Claude Code expects hook responses wrapped in hookSpecificOutput.
+#[derive(Serialize)]
+struct HookResponse {
+    #[serde(rename = "hookSpecificOutput")]
+    hook_specific_output: HookOutput,
+}
+
 #[derive(Serialize)]
 struct HookOutput {
+    #[serde(rename = "hookEventName")]
+    hook_event_name: String,
     #[serde(rename = "permissionDecision")]
     permission_decision: String,
     #[serde(rename = "permissionDecisionReason", skip_serializing_if = "Option::is_none")]
@@ -58,19 +67,24 @@ pub fn run_hook(policy: &CompiledPolicy, vault: Option<&Vault>) -> i32 {
         v.log_action(&call.tool_name, result.decision.as_lowercase(), category, amt, &detail[..detail.len().min(500)]);
     }
 
-    let output = HookOutput {
-        permission_decision: result.decision.as_lowercase().to_string(),
-        reason: if result.decision != Decision::Allow { result.reason } else { None },
-    };
-
-    println!("{}", serde_json::to_string(&output).unwrap());
+    emit_decision(
+        result.decision.as_lowercase(),
+        if result.decision != Decision::Allow { result.reason } else { None },
+    );
     0
 }
 
-fn emit_deny(reason: &str) {
-    let output = HookOutput {
-        permission_decision: "deny".into(),
-        reason: Some(reason.into()),
+fn emit_decision(decision: &str, reason: Option<String>) {
+    let response = HookResponse {
+        hook_specific_output: HookOutput {
+            hook_event_name: "PreToolUse".into(),
+            permission_decision: decision.into(),
+            reason,
+        },
     };
-    println!("{}", serde_json::to_string(&output).unwrap());
+    println!("{}", serde_json::to_string(&response).unwrap());
+}
+
+fn emit_deny(reason: &str) {
+    emit_decision("deny", Some(reason.into()));
 }
