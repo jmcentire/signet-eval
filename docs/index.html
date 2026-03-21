@@ -167,6 +167,11 @@ rules:
 <pre><code>Agent proposes action  ->  signet-eval evaluates policy  ->  allow / deny / ask
                            (deterministic, 25ms, no NLP)</code></pre>
 
+<h2>Security Model</h2>
+<p>signet-eval is a <strong>seatbelt, not a cage.</strong> It enforces policy within a cooperative protocol &mdash; Claude Code calls signet-eval before every tool use and respects the response. This reliably blocks destructive commands, enforces spending limits, and gates credential access during normal operation.</p>
+<p>It does <strong>not</strong> protect against an adversarial agent with shell access. Any process at the same privilege level can use shell indirection (<code>alias</code>, <code>eval</code>, <code>base64 | sh</code>) to evade string matching, read the session key, or replace the binary. No amount of pattern matching fixes this &mdash; it's an infinite regress.</p>
+<p>True containment requires <strong>OS-level controls</strong>: separate user accounts, containers, stripped <code>$PATH</code>, seccomp/AppArmor, or sandboxed environments. signet-eval is the policy engine inside such a perimeter. The OS enforces the perimeter. Neither replaces the other.</p>
+
 <h2>All Commands</h2>
 <table>
   <tr><th>Command</th><th>Purpose</th></tr>

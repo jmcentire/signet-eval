@@ -88,10 +88,13 @@ fn run() -> i32 {
     match cli.command {
         None | Some(Command::Eval) => {
             let v = vault::try_load_vault();
-            // Verify policy integrity if vault exists
+            // If vault exists, verify policy HMAC — tampered files fall back to safe defaults.
+            // Without vault, policy.yaml is loaded as-is (no cryptographic verification).
+            // String matching is defense-in-depth, not a security boundary.
+            // HMAC (requires vault setup) is the real integrity guarantee.
             if let Some(ref vault) = v {
                 if !vault::verify_policy_integrity(vault.session_key(), &policy_path) {
-                    eprintln!("WARNING: Policy file integrity check failed. Using safe defaults.");
+                    eprintln!("WARNING: Policy integrity check failed. Using safe defaults.");
                     let compiled = policy::default_policy();
                     return hook::run_hook(&compiled, Some(vault));
                 }
@@ -116,8 +119,21 @@ fn run() -> i32 {
             if let Some(parent) = policy_path.parent() {
                 std::fs::create_dir_all(parent).ok();
             }
-            match std::fs::write(&policy_path, yaml) {
-                Ok(_) => { eprintln!("Policy written to {}", policy_path.display()); 0 }
+            match std::fs::write(&policy_path, &yaml) {
+                Ok(_) => {
+                    eprintln!("Policy written to {}", policy_path.display());
+                    // Auto-sign if vault exists
+                    if let Some(v) = vault::try_load_vault() {
+                        match vault::sign_policy(v.session_key(), &policy_path) {
+                            Ok(_) => eprintln!("Policy signed (HMAC verified on every eval)."),
+                            Err(e) => eprintln!("Warning: could not sign policy: {e}"),
+                        }
+                    } else {
+                        eprintln!("Warning: no vault. Run 'signet-eval setup' to enable HMAC verification.");
+                        eprintln!("Without vault, only hardcoded default rules are enforced.");
+                    }
+                    0
+                }
                 Err(e) => { eprintln!("Error: {e}"); 1 }
             }
         }

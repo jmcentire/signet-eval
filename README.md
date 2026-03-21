@@ -230,6 +230,60 @@ Agent proposes action  ->  signet-eval evaluates policy  ->  allow / deny / ask
                            (deterministic, 25ms, no NLP)
 ```
 
+## Security Model
+
+signet-eval is a **seatbelt, not a cage**. Understanding what it does and doesn't protect against is critical.
+
+### What it protects against
+
+**A cooperative agent making mistakes.** Claude Code follows the hook protocol — it calls signet-eval before every tool use and respects the allow/deny/ask response. Within that protocol, signet-eval reliably enforces policy:
+
+- Blocks destructive commands (`rm`, `mkfs`, piped remote execution)
+- Enforces spending limits across tool calls
+- Gates credential access with domain, purpose, and amount constraints
+- Requires user confirmation for sensitive operations (`git push --force`)
+- Prevents casual policy tampering via locked rules and MCP guards
+
+This is the normal operating mode. The agent isn't trying to escape — it's trying to be helpful and the policy keeps it in bounds.
+
+### What it does NOT protect against
+
+**An adversarial agent with shell access.** signet-eval runs at the same privilege level as the agent it constrains. Any process with the same UID can:
+
+- Use shell indirection to evade string matching (`alias`, `eval`, `base64 -d | sh`, `python3 -c "..."`)
+- Create symlinks to protected paths under innocent names
+- Read the session key file and forge HMAC signatures
+- Replace the signet-eval binary itself
+- Modify the hook configuration in `settings.json`
+- Use `LD_PRELOAD`, `ptrace`, or process injection
+
+No amount of pattern matching fixes this. Adding rules for `ln` invites `alias`. Blocking `alias` invites `eval`. Blocking `eval` invites `python3 -c`. This is an infinite regress — the fundamental issue is privilege level, not pattern coverage.
+
+### Where real containment lives
+
+Protecting against a truly adversarial agent requires **OS-level controls** that operate above the agent's privilege level:
+
+- **Separate user account** — run the agent as a restricted user with no write access to policy files
+- **Container/sandbox** — Docker, Flatpak, or `bubblewrap` with a read-only mount for `~/.signet/`
+- **Stripped `$PATH`** — remove `ln`, `alias`, and other indirection tools from the agent's environment
+- **seccomp / AppArmor / SELinux** — mandatory access controls that the agent cannot override
+- **Virtual environment** — run Claude Code in a constrained environment with limited filesystem access
+
+signet-eval is the **policy layer** within such a setup. It handles the "what should this agent be allowed to do" question with clear, auditable rules. The OS handles the "can this agent circumvent the policy" question. Neither replaces the other.
+
+### Defense in depth
+
+The layers work together:
+
+| Layer | Protects against | Mechanism |
+|-------|-----------------|-----------|
+| **String matching** | Obvious mistakes, clear UX | Regex, substring, word-boundary conditions |
+| **Locked rules** | Casual MCP-based policy tampering | Immutable rules, position protection |
+| **HMAC signing** | Out-of-band file modification | Cryptographic integrity verification |
+| **OS controls** | Privilege escalation, shell indirection | Sandboxing, RBAC, separate users |
+
+Without OS controls, signet-eval is a speed bump, not a wall. With them, it's the policy engine inside a secure perimeter.
+
 ## License
 
 MIT

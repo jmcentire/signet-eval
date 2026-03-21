@@ -99,7 +99,8 @@ impl ServerHandler for ProxyServer {
                     policy::load_policy(&self.policy_path)
                 }
             } else {
-                policy::load_policy(&self.policy_path)
+                // No vault — cannot verify policy integrity, use hardcoded defaults
+                policy::default_policy()
             };
             let args_value = request.arguments.as_ref()
                 .map(|a| serde_json::Value::Object(a.clone()))
