@@ -14,7 +14,7 @@ fn signet_eval(args: &[&str]) -> (String, String, i32) {
 
 #[test]
 fn test_help() {
-    let (_, stderr, code) = signet_eval(&["--help"]);
+    let (_, stderr, _code) = signet_eval(&["--help"]);
     // clap prints help to stdout
     let (stdout, _, _) = signet_eval(&["--help"]);
     let combined = format!("{stdout}{stderr}");

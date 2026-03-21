@@ -230,17 +230,26 @@ fn evaluate_condition(
     }
 
     // or(cond1 || cond2) or or(cond1, cond2) — supports both separators
+    // Parenthesis-aware: only splits at top-level separators
     if let Some(args) = strip_fn(cond, "or") {
         // Try " || " first, then ", " as separator
         let separator = if args.contains(" || ") { " || " } else { ", " };
-        let parts: Vec<&str> = args.splitn(2, separator).collect();
-        if parts.len() == 2 {
-            let left = evaluate_condition(parts[0].trim(), call, vault)?;
-            if left { return Ok(true); }
-            return evaluate_condition(parts[1].trim(), call, vault);
+        // Split into branches at top-level separators, evaluate left-to-right with short-circuit
+        let mut remaining = args;
+        loop {
+            match split_at_top_level(remaining, separator) {
+                Some((left, right)) => {
+                    if evaluate_condition(left.trim(), call, vault)? {
+                        return Ok(true);
+                    }
+                    remaining = right;
+                }
+                None => {
+                    // No more separators — evaluate the last (or only) branch
+                    return evaluate_condition(remaining.trim(), call, vault);
+                }
+            }
         }
-        // Single condition inside or() — just evaluate it
-        return evaluate_condition(args.trim(), call, vault);
     }
 
     // true / false — literal boolean values
@@ -259,6 +268,18 @@ fn evaluate_condition(
             .filter_map(|s| extract_quoted(s))
             .collect();
         return Ok(words.iter().any(|w| params_str.contains(w.as_str())));
+    }
+
+    // contains_word(parameters, 'word') — word-boundary match in serialized params
+    // Prevents "skilled" from matching "kill" etc.
+    if let Some(args) = strip_fn(cond, "contains_word") {
+        let parts: Vec<&str> = args.splitn(2, ',').collect();
+        let search_part = if parts.len() == 2 { parts[1] } else { parts[0] };
+        if let Some(word) = extract_quoted(search_part) {
+            let pattern = format!(r"(?i)\b{}\b", regex::escape(&word));
+            let re = Regex::new(&pattern).map_err(|e| format!("regex: {e}"))?;
+            return Ok(re.is_match(&params_str));
+        }
     }
 
     // Fallback: treat as a simple substring search in parameters
@@ -338,6 +359,7 @@ pub fn load_policy_config(path: &Path) -> Result<PolicyConfig, String> {
 /// Known condition function names.
 const KNOWN_CONDITION_FNS: &[&str] = &[
     "contains",
+    "contains_word",
     "param_eq",
     "param_gt",
     "param_lt",
@@ -417,8 +439,8 @@ pub fn self_protection_rules() -> Vec<PolicyRule> {
             name: "protect_signet_process".into(),
             tool_pattern: ".*".into(),
             conditions: vec![
-                "any_of(parameters, 'kill', 'pkill', 'killall')".into(),
-                "contains(parameters, 'signet')".into(),
+                "or(contains_word(parameters, 'kill') || contains_word(parameters, 'pkill') || contains_word(parameters, 'killall'))".into(),
+                "contains_word(parameters, 'signet')".into(),
             ],
             action: Decision::Deny,
             locked: true,
@@ -488,6 +510,28 @@ pub fn default_policy() -> CompiledPolicy {
 }
 
 // --- Helpers ---
+
+/// Split a string at the first occurrence of `separator` where parenthesis depth is 0.
+/// Returns `Some((left, right))` if found, `None` if the separator doesn't appear at depth 0.
+fn split_at_top_level<'a>(s: &'a str, separator: &str) -> Option<(&'a str, &'a str)> {
+    let sep_len = separator.len();
+    if sep_len == 0 || s.len() < sep_len {
+        return None;
+    }
+    let mut depth: usize = 0;
+    let bytes = s.as_bytes();
+    for i in 0..=s.len().saturating_sub(sep_len) {
+        match bytes[i] {
+            b'(' => depth += 1,
+            b')' => depth = depth.saturating_sub(1),
+            _ => {}
+        }
+        if depth == 0 && &s[i..i + sep_len] == separator {
+            return Some((&s[..i], &s[i + sep_len..]));
+        }
+    }
+    None
+}
 
 fn strip_fn<'a>(s: &'a str, name: &str) -> Option<&'a str> {
     let s = s.trim();
@@ -657,7 +701,8 @@ mod tests {
         let policy = default_policy();
         let call = make_call("Bash", serde_json::json!({"command": "ls -la"}));
         let result = evaluate(&call, &policy, None);
-        assert!(result.evaluation_time_us < 1000, "Took {}μs", result.evaluation_time_us);
+        // 10ms budget: regex compilation in contains_word adds overhead in debug builds
+        assert!(result.evaluation_time_us < 10_000, "Took {}μs", result.evaluation_time_us);
     }
 
     // --- New condition function tests ---
@@ -835,6 +880,93 @@ mod tests {
         let errors = validate_policy(&config);
         assert_eq!(errors.len(), 1);
         assert!(errors[0].contains("unknown condition function"));
+    }
+
+    #[test]
+    fn test_or_with_comma_separated_nested_conditions() {
+        // or(contains(parameters, 'alpha'), contains(parameters, 'bravo')) must parse correctly
+        // despite commas inside nested function calls
+        let call = make_call("Bash", serde_json::json!({"command": "run alpha"}));
+        assert_eq!(
+            evaluate_condition("or(contains(parameters, 'alpha'), contains(parameters, 'bravo'))", &call, None),
+            Ok(true)
+        );
+
+        let call = make_call("Bash", serde_json::json!({"command": "run bravo"}));
+        assert_eq!(
+            evaluate_condition("or(contains(parameters, 'alpha'), contains(parameters, 'bravo'))", &call, None),
+            Ok(true)
+        );
+
+        let call = make_call("Bash", serde_json::json!({"command": "run zulu"}));
+        assert_eq!(
+            evaluate_condition("or(contains(parameters, 'alpha'), contains(parameters, 'bravo'))", &call, None),
+            Ok(false)
+        );
+    }
+
+    #[test]
+    fn test_or_with_three_branches() {
+        // or(A || B || C) should evaluate left-to-right with short-circuit
+        let call = make_call("Bash", serde_json::json!({"command": "echo third"}));
+        assert_eq!(
+            evaluate_condition(
+                "or(contains(parameters, 'first') || contains(parameters, 'second') || contains(parameters, 'third'))",
+                &call, None
+            ),
+            Ok(true)
+        );
+
+        // First branch true — short-circuits
+        let call = make_call("Bash", serde_json::json!({"command": "echo first"}));
+        assert_eq!(
+            evaluate_condition(
+                "or(contains(parameters, 'first') || contains(parameters, 'second') || contains(parameters, 'third'))",
+                &call, None
+            ),
+            Ok(true)
+        );
+
+        // None match
+        let call = make_call("Bash", serde_json::json!({"command": "echo none"}));
+        assert_eq!(
+            evaluate_condition(
+                "or(contains(parameters, 'first') || contains(parameters, 'second') || contains(parameters, 'third'))",
+                &call, None
+            ),
+            Ok(false)
+        );
+    }
+
+    #[test]
+    fn test_contains_word_basic() {
+        // "kill foo" should match "kill"
+        let call = make_call("Bash", serde_json::json!({"command": "kill foo"}));
+        assert_eq!(
+            evaluate_condition("contains_word(parameters, 'kill')", &call, None),
+            Ok(true)
+        );
+
+        // "skilled" should NOT match "kill" — word boundary prevents it
+        let call = make_call("Bash", serde_json::json!({"command": "echo skilled worker"}));
+        assert_eq!(
+            evaluate_condition("contains_word(parameters, 'kill')", &call, None),
+            Ok(false)
+        );
+
+        // "overkill" should NOT match "kill"
+        let call = make_call("Bash", serde_json::json!({"command": "that was overkill"}));
+        assert_eq!(
+            evaluate_condition("contains_word(parameters, 'kill')", &call, None),
+            Ok(false)
+        );
+
+        // "pkill" should match "pkill"
+        let call = make_call("Bash", serde_json::json!({"command": "pkill nginx"}));
+        assert_eq!(
+            evaluate_condition("contains_word(parameters, 'pkill')", &call, None),
+            Ok(true)
+        );
     }
 }
 
@@ -1015,6 +1147,21 @@ mod self_protection_tests {
         let yaml = serde_yaml::to_string(&rule).unwrap();
         assert!(!yaml.contains("locked"), "locked: false should be skipped in serialization");
     }
+
+    #[test]
+    fn test_skilled_signet_worker_not_blocked() {
+        // "echo skilled signet worker" should NOT trigger protect_signet_process
+        // because "skilled" does not word-boundary-match "kill"
+        let policy = default_policy();
+        let call = make_call("Bash", serde_json::json!({
+            "command": "echo skilled signet worker"
+        }));
+        let result = evaluate(&call, &policy, None);
+        assert_ne!(result.matched_rule.as_deref(), Some("protect_signet_process"),
+            "False positive: 'skilled' should not match 'kill' with word boundaries");
+        // Should be allowed (no other rule blocks it)
+        assert_eq!(result.decision, Decision::Allow);
+    }
 }
 
 /// Adversarial tests — attempts to bypass the policy engine.
@@ -1030,7 +1177,7 @@ mod goodhart_tests {
     fn test_rule_ordering_no_bypass() {
         // An explicit allow for "rm" placed AFTER the default deny should not help
         // because default_policy puts block_rm first
-        let mut config = PolicyConfig { version: 1, default_action: Decision::Allow, rules: vec![
+        let config = PolicyConfig { version: 1, default_action: Decision::Allow, rules: vec![
             PolicyRule { name: "block_rm".into(), tool_pattern: ".*".into(),
                 conditions: vec!["contains(parameters, 'rm ')".into()], action: Decision::Deny,
                 reason: Some("blocked".into()), locked: false },

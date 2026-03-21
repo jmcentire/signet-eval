@@ -152,6 +152,7 @@ pub struct CredentialMeta {
 // === Vault ===
 
 pub struct Vault {
+    #[allow(dead_code)] // retained for future subkey derivation
     master_key: [u8; KEY_LEN],
     session_key: [u8; KEY_LEN],
     compartment_key: [u8; KEY_LEN],
@@ -302,6 +303,7 @@ impl Vault {
         self.store_credential_full(name, value, tier, None, None);
     }
 
+    #[allow(dead_code)] // public API — used by callers with expiry constraints
     pub fn store_credential_with_expiry(&self, name: &str, value: &str, tier: u8, expires_at: Option<f64>) {
         self.store_credential_full(name, value, tier, expires_at, None);
     }

@@ -1,7 +1,7 @@
 //! Signet MCP Proxy — wraps upstream MCP servers with policy enforcement.
 
 use rmcp::model::*;
-use rmcp::{RoleServer, ServerHandler, Error as McpError, Service};
+use rmcp::{RoleServer, ServerHandler, ErrorData as McpError};
 use rmcp::service::RequestContext;
 use rmcp::transport::child_process::TokioChildProcess;
 use serde::Deserialize;
@@ -11,7 +11,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-use crate::policy::{self, CompiledPolicy, Decision, ToolCall};
+use crate::policy::{self, Decision, ToolCall};
 use crate::vault::{self, Vault};
 
 fn proxy_config_path() -> PathBuf {

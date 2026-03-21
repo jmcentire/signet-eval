@@ -1,7 +1,7 @@
 //! Signet MCP Management Server — manage policies conversationally through Claude.
 
 use rmcp::model::*;
-use rmcp::{RoleServer, ServerHandler, Error as McpError, Service};
+use rmcp::{RoleServer, ServerHandler, ErrorData as McpError};
 use rmcp::service::RequestContext;
 use serde_json::Value;
 use std::borrow::Cow;
@@ -567,6 +567,7 @@ fn handle_condition_help() -> String {
     r#"Available condition functions:
 
   contains(parameters, 'text')        — serialized tool input contains string
+  contains_word(parameters, 'word')   — word-boundary match (prevents 'skilled' matching 'kill')
   any_of(parameters, 'a', 'b', ...)   — any of the strings present in tool input
   param_eq(field, 'value')             — parameter field equals value
   param_ne(field, 'value')             — parameter field not equal to value
