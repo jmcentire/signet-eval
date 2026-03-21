@@ -1,0 +1,34 @@
+# Basic signet-eval policy
+# Copy to ~/.signet/policy.yaml or use --policy-path
+#
+# Rules are evaluated top-to-bottom. First match wins.
+# Multiple conditions on a rule are AND'd.
+# Use or(A || B) for OR logic.
+
+version: 1
+default_action: ALLOW
+
+rules:
+  # Block file deletion
+  - name: block_rm
+    tool_pattern: ".*"
+    conditions:
+      - "contains(parameters, 'rm ')"
+    action: DENY
+    reason: "File deletion blocked by policy"
+
+  # Require confirmation for force push
+  - name: ask_force_push
+    tool_pattern: ".*"
+    conditions:
+      - "any_of(parameters, 'push --force', 'push -f')"
+    action: ASK
+    reason: "Force push requires confirmation"
+
+  # Block writes to credential files
+  - name: block_credential_writes
+    tool_pattern: "^(Write|Edit)$"
+    conditions:
+      - "matches(file_path, '\\.(env|pem|key|secret|credentials)$')"
+    action: DENY
+    reason: "Writing to credential files blocked"

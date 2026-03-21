@@ -51,6 +51,15 @@ enum Command {
         /// JSON tool call, e.g. '{"tool_name":"Bash","tool_input":{"command":"rm foo"}}'
         json: String,
     },
+    /// Delete a credential from the vault
+    Delete {
+        /// Credential name to delete
+        name: String,
+    },
+    /// Reset session — clears spending counters for the current session
+    ResetSession,
+    /// Sign the policy file (HMAC integrity protection)
+    Sign,
     /// Unlock vault and refresh session key
     Unlock,
     /// Validate the policy file
@@ -72,14 +81,22 @@ fn expand_home(path: &str) -> PathBuf {
     PathBuf::from(path)
 }
 
-fn main() {
+fn run() -> i32 {
     let cli = Cli::parse();
     let policy_path = expand_home(&cli.policy_path);
 
-    let code = match cli.command {
+    match cli.command {
         None | Some(Command::Eval) => {
-            let compiled = policy::load_policy(&policy_path);
             let v = vault::try_load_vault();
+            // Verify policy integrity if vault exists
+            if let Some(ref vault) = v {
+                if !vault::verify_policy_integrity(vault.session_key(), &policy_path) {
+                    eprintln!("WARNING: Policy file integrity check failed. Using safe defaults.");
+                    let compiled = policy::default_policy();
+                    return hook::run_hook(&compiled, Some(vault));
+                }
+            }
+            let compiled = policy::load_policy(&policy_path);
             hook::run_hook(&compiled, v.as_ref())
         }
         Some(Command::Init) => {
@@ -244,6 +261,41 @@ fn main() {
             eprintln!("Eval time:    {}us", result.evaluation_time_us);
             0
         }
+        Some(Command::Delete { name }) => {
+            match vault::try_load_vault() {
+                Some(v) => {
+                    if v.delete_credential(&name) {
+                        eprintln!("Deleted credential '{name}'.");
+                        0
+                    } else {
+                        eprintln!("Credential '{name}' not found.");
+                        1
+                    }
+                }
+                None => { eprintln!("Vault not set up or locked."); 1 }
+            }
+        }
+        Some(Command::ResetSession) => {
+            match vault::try_load_vault() {
+                Some(mut v) => {
+                    v.reset_session();
+                    eprintln!("Session reset. Spending counters cleared.");
+                    0
+                }
+                None => { eprintln!("Vault not set up or locked."); 1 }
+            }
+        }
+        Some(Command::Sign) => {
+            match vault::try_load_vault() {
+                Some(v) => {
+                    match vault::sign_policy(v.session_key(), &policy_path) {
+                        Ok(_) => { eprintln!("Policy signed: {}", policy_path.with_extension("hmac").display()); 0 }
+                        Err(e) => { eprintln!("Error: {e}"); 1 }
+                    }
+                }
+                None => { eprintln!("Vault not set up or locked (needed for signing key)."); 1 }
+            }
+        }
         Some(Command::Unlock) => {
             if !vault::vault_exists() {
                 eprintln!("No vault found. Run: signet-eval setup");
@@ -289,7 +341,9 @@ fn main() {
                 Err(e) => { eprintln!("MCP proxy error: {e}"); 1 }
             }
         }
-    };
+    }
+}
 
-    std::process::exit(code);
+fn main() {
+    std::process::exit(run());
 }

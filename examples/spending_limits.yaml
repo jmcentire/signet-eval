@@ -1,0 +1,32 @@
+# Spending limit policy
+# Demonstrates cumulative spend tracking with the encrypted vault.
+# Run `signet-eval setup` first to create the vault.
+
+version: 1
+default_action: ALLOW
+
+rules:
+  # Limit books to $200 per session
+  - name: books_limit_200
+    tool_pattern: ".*purchase.*|.*buy.*|.*shop.*|.*order.*"
+    conditions:
+      - "param_eq(category, 'books')"
+      - "spend_plus_amount_gt('books', amount, 200)"
+    action: DENY
+    reason: "Books spending limit ($200/session) exceeded"
+
+  # Limit total spending to $1000 per session
+  - name: total_limit_1000
+    tool_pattern: ".*purchase.*|.*buy.*|.*shop.*|.*order.*"
+    conditions:
+      - "spend_plus_amount_gt('', amount, 1000)"
+    action: DENY
+    reason: "Total spending limit ($1000/session) exceeded"
+
+  # Require confirmation for purchases over $100
+  - name: ask_large_purchase
+    tool_pattern: ".*purchase.*|.*buy.*|.*shop.*|.*order.*"
+    conditions:
+      - "param_gt(amount, 100)"
+    action: ASK
+    reason: "Large purchase requires confirmation"

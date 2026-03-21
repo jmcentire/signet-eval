@@ -1,0 +1,61 @@
+# Enterprise security policy
+# Strict controls for regulated environments.
+
+version: 1
+default_action: ASK    # Default to requiring confirmation
+
+rules:
+  # Allow read-only operations without confirmation
+  - name: allow_reads
+    tool_pattern: "^(Read|Glob|Grep)$"
+    conditions: []
+    action: ALLOW
+    reason: "Read-only operations always allowed"
+
+  # Block all destructive operations
+  - name: block_destructive
+    tool_pattern: ".*"
+    conditions:
+      - "any_of(parameters, 'rm ', 'rmdir', 'mkfs', 'format ', 'dd if=', 'truncate')"
+    action: DENY
+    reason: "Destructive operations prohibited"
+
+  # Block writes to system directories
+  - name: block_system_writes
+    tool_pattern: "^(Write|Edit)$"
+    conditions:
+      - "matches(file_path, '^/(etc|usr|var|sys|proc|boot)/')"
+    action: DENY
+    reason: "System directory writes prohibited"
+
+  # Block credential file access
+  - name: block_credential_files
+    tool_pattern: ".*"
+    conditions:
+      - "matches(file_path, '\\.(env|pem|key|secret|credentials|p12|pfx|jks)$')"
+    action: DENY
+    reason: "Credential file access blocked"
+
+  # Block network operations to internal IPs
+  - name: block_internal_network
+    tool_pattern: ".*"
+    conditions:
+      - "matches(host, '^(10\\.|172\\.(1[6-9]|2[0-9]|3[01])\\.|192\\.168\\.)')"
+    action: DENY
+    reason: "Internal network access prohibited"
+
+  # All write operations require confirmation (default ASK covers this)
+  - name: allow_project_writes
+    tool_pattern: "^(Write|Edit)$"
+    conditions:
+      - "not(matches(file_path, '^/(etc|usr|var|sys|proc|boot)/'))"
+    action: ALLOW
+    reason: "Project file writes allowed"
+
+  # Allow standard tool operations
+  - name: allow_standard_bash
+    tool_pattern: "^Bash$"
+    conditions:
+      - "not(any_of(parameters, 'rm ', 'rmdir', 'mkfs', 'format ', 'dd if=', 'truncate'))"
+    action: ALLOW
+    reason: "Standard shell operations allowed"

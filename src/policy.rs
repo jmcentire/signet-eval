@@ -227,17 +227,18 @@ fn evaluate_condition(
         return Ok(!result);
     }
 
-    // or(cond1, cond2) — split on ` || `
+    // or(cond1 || cond2) or or(cond1, cond2) — supports both separators
     if let Some(args) = strip_fn(cond, "or") {
-        let parts: Vec<&str> = args.splitn(2, " || ").collect();
+        // Try " || " first, then ", " as separator
+        let separator = if args.contains(" || ") { " || " } else { ", " };
+        let parts: Vec<&str> = args.splitn(2, separator).collect();
         if parts.len() == 2 {
             let left = evaluate_condition(parts[0].trim(), call, vault)?;
-            if left {
-                return Ok(true);
-            }
-            let right = evaluate_condition(parts[1].trim(), call, vault)?;
-            return Ok(right);
+            if left { return Ok(true); }
+            return evaluate_condition(parts[1].trim(), call, vault);
         }
+        // Single condition inside or() — just evaluate it
+        return evaluate_condition(args.trim(), call, vault);
     }
 
     // true / false — literal boolean values

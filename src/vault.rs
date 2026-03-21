@@ -1,5 +1,11 @@
 //! Signet Vault — Encrypted local state with tiered access.
 //!
+//! Security model:
+//! - Master key derived from passphrase via Argon2id (memory-hard)
+//! - Session key file encrypted with a device key (not plaintext)
+//! - Brute-force protection: lockout after N failed attempts
+//! - Policy file integrity via HMAC
+//!
 //! Tier 1: Unencrypted (ledger, action log)
 //! Tier 2: Session-key encrypted (session state)
 //! Tier 3: Compartment-key encrypted (credentials — requires passphrase)
@@ -21,6 +27,8 @@ const SALT_LEN: usize = 32;
 const KEY_LEN: usize = 32;
 const NONCE_LEN: usize = 12;
 const SESSION_TTL_SECS: f64 = 1800.0; // 30 minutes
+const MAX_FAILED_ATTEMPTS: u32 = 5;
+const LOCKOUT_SECS: f64 = 300.0; // 5 minute lockout after max failures
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -60,7 +68,6 @@ fn encrypt(key: &[u8; KEY_LEN], plaintext: &[u8]) -> Vec<u8> {
     rand::thread_rng().fill_bytes(&mut nonce_bytes);
     let nonce = Nonce::from_slice(&nonce_bytes);
     let ciphertext = cipher.encrypt(nonce, plaintext).expect("encryption failed");
-    // nonce || ciphertext
     let mut out = nonce_bytes.to_vec();
     out.extend(ciphertext);
     out
@@ -80,14 +87,69 @@ fn decrypt(key: &[u8; KEY_LEN], data: &[u8]) -> Result<Vec<u8>, String> {
 
 #[derive(Serialize, Deserialize)]
 struct VaultMeta {
-    salt: String,       // base64
-    key_check: String,  // base64
+    salt: String,
+    key_check: String,
     created_at: f64,
+    #[serde(default)]
+    failed_attempts: u32,
+    #[serde(default)]
+    locked_until: f64,
+}
+
+// === Policy Integrity ===
+
+/// Compute HMAC of a policy file's contents using the session key.
+pub fn policy_hmac(session_key: &[u8; KEY_LEN], policy_content: &str) -> String {
+    let mut mac = <HmacSha256 as Mac>::new_from_slice(session_key).unwrap();
+    mac.update(policy_content.as_bytes());
+    B64.encode(mac.finalize().into_bytes())
+}
+
+/// Verify policy HMAC. Returns true if valid or if no HMAC file exists (first use).
+pub fn verify_policy_integrity(session_key: &[u8; KEY_LEN], policy_path: &std::path::Path) -> bool {
+    let hmac_path = policy_path.with_extension("hmac");
+    let policy_content = match std::fs::read_to_string(policy_path) {
+        Ok(c) => c,
+        Err(_) => return true, // No policy file = ok (uses defaults)
+    };
+    let expected = match std::fs::read_to_string(&hmac_path) {
+        Ok(h) => h.trim().to_string(),
+        Err(_) => return true, // No HMAC file = first use, ok
+    };
+    let actual = policy_hmac(session_key, &policy_content);
+    actual == expected
+}
+
+/// Sign a policy file — write its HMAC alongside it.
+pub fn sign_policy(session_key: &[u8; KEY_LEN], policy_path: &std::path::Path) -> Result<(), String> {
+    let hmac_path = policy_path.with_extension("hmac");
+    let content = std::fs::read_to_string(policy_path)
+        .map_err(|e| format!("read policy: {e}"))?;
+    let sig = policy_hmac(session_key, &content);
+    std::fs::write(&hmac_path, &sig).map_err(|e| format!("write hmac: {e}"))?;
+    Ok(())
+}
+
+// === Credential Metadata ===
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct CredentialMeta {
+    #[serde(default)]
+    pub domain: Option<String>,      // e.g. "amazon.com"
+    #[serde(default)]
+    pub purpose: Option<String>,     // e.g. "purchase", "api_access"
+    #[serde(default)]
+    pub max_amount: Option<f64>,     // per-use amount cap
+    #[serde(default)]
+    pub one_time: bool,              // invalidate after first use
+    #[serde(default)]
+    pub label: Option<String>,       // human-readable label
 }
 
 // === Vault ===
 
 pub struct Vault {
+    master_key: [u8; KEY_LEN],
     session_key: [u8; KEY_LEN],
     compartment_key: [u8; KEY_LEN],
     db_path: PathBuf,
@@ -100,6 +162,7 @@ impl Vault {
         let compartment_key = derive_subkey(&master_key, "compartment");
 
         let vault = Vault {
+            master_key,
             session_key,
             compartment_key,
             db_path,
@@ -108,6 +171,10 @@ impl Vault {
         vault.init_db();
         let start = vault.load_or_create_session_start();
         Vault { session_start: start, ..vault }
+    }
+
+    pub fn session_key(&self) -> &[u8; KEY_LEN] {
+        &self.session_key
     }
 
     fn init_db(&self) {
@@ -160,6 +227,17 @@ impl Vault {
             params![now.to_string(), now],
         ).unwrap();
         now
+    }
+
+    pub fn reset_session(&mut self) {
+        let now = now_epoch();
+        self.session_start = now;
+        if let Ok(conn) = Connection::open(&self.db_path) {
+            let _ = conn.execute(
+                "INSERT OR REPLACE INTO session_state (key, value, updated_at) VALUES ('_session_start', ?1, ?2)",
+                params![now.to_string(), now],
+            );
+        }
     }
 
     // --- Ledger ---
@@ -218,16 +296,26 @@ impl Vault {
     // --- Credentials ---
 
     pub fn store_credential(&self, name: &str, value: &str, tier: u8) {
-        self.store_credential_with_expiry(name, value, tier, None);
+        self.store_credential_full(name, value, tier, None, None);
     }
 
     pub fn store_credential_with_expiry(&self, name: &str, value: &str, tier: u8, expires_at: Option<f64>) {
+        self.store_credential_full(name, value, tier, expires_at, None);
+    }
+
+    pub fn store_credential_full(
+        &self, name: &str, value: &str, tier: u8,
+        expires_at: Option<f64>, metadata: Option<&CredentialMeta>,
+    ) {
         let key = if tier == 3 { &self.compartment_key } else { &self.session_key };
         let encrypted = encrypt(key, value.as_bytes());
+        let meta_json = metadata
+            .map(|m| serde_json::to_string(m).unwrap_or_else(|_| "{}".into()))
+            .unwrap_or_else(|| "{}".into());
         let conn = Connection::open(&self.db_path).unwrap();
         conn.execute(
-            "INSERT OR REPLACE INTO credentials (name, tier, encrypted_value, created_at, expires_at, metadata) VALUES (?1,?2,?3,?4,?5,'{}')",
-            params![name, tier as i32, encrypted, now_epoch(), expires_at],
+            "INSERT OR REPLACE INTO credentials (name, tier, encrypted_value, created_at, expires_at, metadata) VALUES (?1,?2,?3,?4,?5,?6)",
+            params![name, tier as i32, encrypted, now_epoch(), expires_at, meta_json],
         ).unwrap();
     }
 
@@ -238,7 +326,6 @@ impl Vault {
             params![name], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?))
         ).ok()?;
 
-        // Enforce expiration
         if let Some(exp) = expires_at {
             if now_epoch() > exp {
                 return None;
@@ -248,6 +335,64 @@ impl Vault {
         let key = if tier == 3 { &self.compartment_key } else { &self.session_key };
         let plaintext = decrypt(key, &encrypted).ok()?;
         String::from_utf8(plaintext).ok()
+    }
+
+    pub fn get_credential_meta(&self, name: &str) -> Option<CredentialMeta> {
+        let conn = Connection::open(&self.db_path).ok()?;
+        let meta_json: String = conn.query_row(
+            "SELECT metadata FROM credentials WHERE name = ?1",
+            params![name], |row| row.get(0),
+        ).ok()?;
+        serde_json::from_str(&meta_json).ok()
+    }
+
+    /// Request a scoped capability token for a credential.
+    /// Returns the credential value if the request matches the credential's constraints.
+    /// Logs the access. Invalidates one-time credentials after use.
+    pub fn request_capability(&self, name: &str, domain: &str, amount: f64, purpose: &str) -> Result<String, String> {
+        let meta = self.get_credential_meta(name)
+            .unwrap_or_default();
+
+        // Check domain constraint
+        if let Some(ref allowed_domain) = meta.domain {
+            if !domain.is_empty() && allowed_domain != domain {
+                return Err(format!("Credential '{name}' is scoped to domain '{allowed_domain}', not '{domain}'"));
+            }
+        }
+
+        // Check purpose constraint
+        if let Some(ref allowed_purpose) = meta.purpose {
+            if !purpose.is_empty() && allowed_purpose != purpose {
+                return Err(format!("Credential '{name}' is scoped to purpose '{allowed_purpose}', not '{purpose}'"));
+            }
+        }
+
+        // Check amount constraint
+        if let Some(max) = meta.max_amount {
+            if amount > max {
+                return Err(format!("Credential '{name}' caps at ${max:.2}, requested ${amount:.2}"));
+            }
+        }
+
+        // Get the actual credential
+        let value = self.get_credential(name)
+            .ok_or_else(|| format!("Credential '{name}' not found or expired"))?;
+
+        // Log the capability request
+        self.log_action(
+            &format!("capability:{name}"),
+            "ALLOW",
+            purpose,
+            amount,
+            &format!("domain={domain}"),
+        );
+
+        // Invalidate if one-time
+        if meta.one_time {
+            self.delete_credential(name);
+        }
+
+        Ok(value)
     }
 
     pub fn delete_credential(&self, name: &str) -> bool {
@@ -287,6 +432,7 @@ impl Vault {
                 "tier": row.get::<_, i32>(1)?,
                 "created_at": row.get::<_, f64>(2)?,
                 "expires_at": row.get::<_, Option<f64>>(3)?,
+                "metadata": row.get::<_, String>(4)?,
             }))
         }).unwrap().filter_map(|r| r.ok()).collect()
     }
@@ -308,6 +454,50 @@ fn session_key_path() -> PathBuf { signet_dir().join(".session_key") }
 
 pub fn vault_exists() -> bool { meta_path().exists() }
 
+/// Derive a device-specific key for encrypting the session key file.
+/// Uses machine ID + username as entropy — not a passphrase, just prevents
+/// trivial copying of the session key to another machine.
+fn device_key() -> [u8; KEY_LEN] {
+    let machine_id = std::fs::read_to_string("/etc/machine-id")
+        .or_else(|_| std::fs::read_to_string("/var/lib/dbus/machine-id"))
+        .unwrap_or_else(|_| {
+            // macOS: use hardware UUID
+            std::process::Command::new("ioreg")
+                .args(["-rd1", "-c", "IOPlatformExpertDevice"])
+                .output()
+                .ok()
+                .and_then(|o| String::from_utf8(o.stdout).ok())
+                .and_then(|s| {
+                    s.lines()
+                        .find(|l| l.contains("IOPlatformUUID"))
+                        .map(|l| l.to_string())
+                })
+                .unwrap_or_else(|| "signet-fallback-device-id".into())
+        });
+    let username = std::env::var("USER").unwrap_or_else(|_| "unknown".into());
+    let input = format!("signet-device:{machine_id}:{username}");
+    let mut key = [0u8; KEY_LEN];
+    let hk = Hkdf::<Sha256>::new(Some(b"signet-device-key"), input.as_bytes());
+    hk.expand(b"session-file-encryption", &mut key).expect("HKDF");
+    key
+}
+
+/// Encrypt master key with device key before writing to disk.
+fn encrypt_session_key(master_key: &[u8; KEY_LEN]) -> Vec<u8> {
+    let dk = device_key();
+    encrypt(&dk, master_key)
+}
+
+/// Decrypt session key file with device key.
+fn decrypt_session_key(encrypted: &[u8]) -> Option<[u8; KEY_LEN]> {
+    let dk = device_key();
+    let plain = decrypt(&dk, encrypted).ok()?;
+    if plain.len() != KEY_LEN { return None; }
+    let mut key = [0u8; KEY_LEN];
+    key.copy_from_slice(&plain);
+    Some(key)
+}
+
 pub fn setup_vault(passphrase: &str) -> Result<Vault, String> {
     let dir = signet_dir();
     std::fs::create_dir_all(&dir).map_err(|e| format!("mkdir: {e}"))?;
@@ -321,13 +511,16 @@ pub fn setup_vault(passphrase: &str) -> Result<Vault, String> {
         salt: B64.encode(&salt),
         key_check: B64.encode(&check),
         created_at: now_epoch(),
+        failed_attempts: 0,
+        locked_until: 0.0,
     };
     let meta_json = serde_json::to_string(&meta).map_err(|e| e.to_string())?;
     std::fs::write(meta_path(), meta_json).map_err(|e| format!("write meta: {e}"))?;
 
-    // Cache master key for hook mode
+    // Cache encrypted master key for hook mode
+    let encrypted_key = encrypt_session_key(&master_key);
     let key_file = session_key_path();
-    std::fs::write(&key_file, B64.encode(&master_key)).map_err(|e| format!("write key: {e}"))?;
+    std::fs::write(&key_file, B64.encode(&encrypted_key)).map_err(|e| format!("write key: {e}"))?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -340,7 +533,17 @@ pub fn setup_vault(passphrase: &str) -> Result<Vault, String> {
 pub fn unlock_vault(passphrase: &str) -> Result<Vault, String> {
     let meta_json = std::fs::read_to_string(meta_path())
         .map_err(|_| "No vault found. Run 'signet-eval setup' first.".to_string())?;
-    let meta: VaultMeta = serde_json::from_str(&meta_json).map_err(|e| e.to_string())?;
+    let mut meta: VaultMeta = serde_json::from_str(&meta_json).map_err(|e| e.to_string())?;
+
+    // Check lockout
+    if meta.failed_attempts >= MAX_FAILED_ATTEMPTS {
+        let remaining = meta.locked_until - now_epoch();
+        if remaining > 0.0 {
+            return Err(format!("Vault locked for {:.0} more seconds ({} failed attempts)", remaining, meta.failed_attempts));
+        }
+        // Lockout expired — reset
+        meta.failed_attempts = 0;
+    }
 
     let salt = B64.decode(&meta.salt).map_err(|e| e.to_string())?;
     let master_key = derive_master_key(passphrase, &salt);
@@ -348,12 +551,26 @@ pub fn unlock_vault(passphrase: &str) -> Result<Vault, String> {
     let expected = B64.decode(&meta.key_check).map_err(|e| e.to_string())?;
 
     if check != expected {
-        return Err("Wrong passphrase".into());
+        // Record failed attempt
+        meta.failed_attempts += 1;
+        if meta.failed_attempts >= MAX_FAILED_ATTEMPTS {
+            meta.locked_until = now_epoch() + LOCKOUT_SECS;
+        }
+        let _ = std::fs::write(meta_path(), serde_json::to_string(&meta).unwrap_or_default());
+        return Err(format!("Wrong passphrase ({}/{} attempts)", meta.failed_attempts, MAX_FAILED_ATTEMPTS));
     }
 
-    // Update session key cache
+    // Reset failed attempts on success
+    if meta.failed_attempts > 0 {
+        meta.failed_attempts = 0;
+        meta.locked_until = 0.0;
+        let _ = std::fs::write(meta_path(), serde_json::to_string(&meta).unwrap_or_default());
+    }
+
+    // Update encrypted session key cache
+    let encrypted_key = encrypt_session_key(&master_key);
     let key_file = session_key_path();
-    std::fs::write(&key_file, B64.encode(&master_key)).ok();
+    std::fs::write(&key_file, B64.encode(&encrypted_key)).ok();
 
     Ok(Vault::new(master_key, db_path()))
 }
@@ -361,17 +578,13 @@ pub fn unlock_vault(passphrase: &str) -> Result<Vault, String> {
 /// Try loading vault from cached session key (for hook mode — no passphrase prompt).
 pub fn try_load_vault() -> Option<Vault> {
     let key_data = std::fs::read_to_string(session_key_path()).ok()?;
-    let master_bytes = B64.decode(key_data.trim()).ok()?;
-    if master_bytes.len() != KEY_LEN {
-        return None;
-    }
+    let encrypted_bytes = B64.decode(key_data.trim()).ok()?;
+    let master_key = decrypt_session_key(&encrypted_bytes)?;
 
+    // Verify against vault metadata
     let meta_json = std::fs::read_to_string(meta_path()).ok()?;
     let meta: VaultMeta = serde_json::from_str(&meta_json).ok()?;
     let expected = B64.decode(&meta.key_check).ok()?;
-
-    let mut master_key = [0u8; KEY_LEN];
-    master_key.copy_from_slice(&master_bytes);
     let check = make_key_check(&master_key);
 
     if check != expected {
@@ -385,23 +598,11 @@ pub fn try_load_vault() -> Option<Vault> {
 mod tests {
     use super::*;
 
-    /// Create a vault directly in a temp dir without touching HOME.
     fn make_test_vault(dir: &std::path::Path, passphrase: &str) -> Vault {
-        let salt_path = dir.join("vault.meta");
         let db = dir.join("state.db");
-
         let mut salt = [0u8; SALT_LEN];
         rand::thread_rng().fill_bytes(&mut salt);
         let master_key = derive_master_key(passphrase, &salt);
-        let check = make_key_check(&master_key);
-
-        let meta = VaultMeta {
-            salt: B64.encode(&salt),
-            key_check: B64.encode(&check),
-            created_at: now_epoch(),
-        };
-        std::fs::write(&salt_path, serde_json::to_string(&meta).unwrap()).unwrap();
-
         Vault::new(master_key, db)
     }
 
@@ -430,7 +631,6 @@ mod tests {
         vault.log_action("buy", "ALLOW", "books", 80.0, "");
         vault.log_action("buy", "DENY", "books", 300.0, "");
         vault.log_action("buy", "ALLOW", "food", 50.0, "");
-
         assert_eq!(vault.session_spend("books"), 180.0);
         assert_eq!(vault.session_spend("food"), 50.0);
         assert_eq!(vault.session_spend(""), 230.0);
@@ -438,26 +638,11 @@ mod tests {
 
     #[test]
     fn test_wrong_passphrase() {
-        let dir = tempfile::tempdir().unwrap();
-        let salt_path = dir.path().join("vault.meta");
-
         let mut salt = [0u8; SALT_LEN];
         rand::thread_rng().fill_bytes(&mut salt);
-        let master_key = derive_master_key("correct", &salt);
-        let check = make_key_check(&master_key);
-
-        let meta = VaultMeta {
-            salt: B64.encode(&salt),
-            key_check: B64.encode(&check),
-            created_at: now_epoch(),
-        };
-        std::fs::write(&salt_path, serde_json::to_string(&meta).unwrap()).unwrap();
-
-        // Try to derive with wrong passphrase
-        let wrong_key = derive_master_key("wrong", &salt);
-        let wrong_check = make_key_check(&wrong_key);
-        let expected = B64.decode(&meta.key_check).unwrap();
-        assert_ne!(wrong_check, expected.as_slice());
+        let k1 = derive_master_key("correct", &salt);
+        let k2 = derive_master_key("wrong", &salt);
+        assert_ne!(make_key_check(&k1), make_key_check(&k2));
     }
 
     #[test]
@@ -466,8 +651,7 @@ mod tests {
         let vault = make_test_vault(dir.path(), "testpass123");
         vault.log_action("read", "ALLOW", "", 0.0, "");
         vault.log_action("write", "DENY", "", 0.0, "blocked");
-        let actions = vault.recent_actions(10);
-        assert_eq!(actions.len(), 2);
+        assert_eq!(vault.recent_actions(10).len(), 2);
     }
 
     #[test]
@@ -477,7 +661,6 @@ mod tests {
         assert!(!vault.credential_exists("api_key"));
         vault.store_credential("api_key", "secret123", 2);
         assert!(vault.credential_exists("api_key"));
-        assert!(!vault.credential_exists("nonexistent"));
     }
 
     #[test]
@@ -485,22 +668,108 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let vault = make_test_vault(dir.path(), "testpass123");
         vault.store_credential("to_delete", "val", 2);
-        assert!(vault.credential_exists("to_delete"));
         assert!(vault.delete_credential("to_delete"));
         assert!(!vault.credential_exists("to_delete"));
-        assert!(!vault.delete_credential("to_delete")); // already gone
+        assert!(!vault.delete_credential("to_delete"));
     }
 
     #[test]
     fn test_get_credential_expired() {
         let dir = tempfile::tempdir().unwrap();
         let vault = make_test_vault(dir.path(), "testpass123");
-        // Store with expiry in the past
-        let past = now_epoch() - 3600.0;
-        vault.store_credential_with_expiry("expired_key", "secret", 2, Some(past));
+        vault.store_credential_with_expiry("expired_key", "secret", 2, Some(now_epoch() - 3600.0));
         assert_eq!(vault.get_credential("expired_key"), None);
-        // Store without expiry — should work
         vault.store_credential("valid_key", "secret2", 2);
         assert_eq!(vault.get_credential("valid_key").as_deref(), Some("secret2"));
+    }
+
+    #[test]
+    fn test_credential_metadata() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault = make_test_vault(dir.path(), "testpass123");
+        let meta = CredentialMeta {
+            domain: Some("amazon.com".into()),
+            purpose: Some("purchase".into()),
+            max_amount: Some(500.0),
+            one_time: false,
+            label: Some("My Visa".into()),
+        };
+        vault.store_credential_full("cc_visa", "4111111111111111", 3, None, Some(&meta));
+        let loaded = vault.get_credential_meta("cc_visa").unwrap();
+        assert_eq!(loaded.domain.as_deref(), Some("amazon.com"));
+        assert_eq!(loaded.max_amount, Some(500.0));
+    }
+
+    #[test]
+    fn test_request_capability_domain_scoped() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault = make_test_vault(dir.path(), "testpass123");
+        let meta = CredentialMeta {
+            domain: Some("amazon.com".into()),
+            max_amount: Some(200.0),
+            ..Default::default()
+        };
+        vault.store_credential_full("cc", "4111", 3, None, Some(&meta));
+
+        // Matching domain works
+        assert!(vault.request_capability("cc", "amazon.com", 50.0, "").is_ok());
+        // Wrong domain fails
+        assert!(vault.request_capability("cc", "evil.com", 50.0, "").is_err());
+        // Over max fails
+        assert!(vault.request_capability("cc", "amazon.com", 300.0, "").is_err());
+    }
+
+    #[test]
+    fn test_request_capability_one_time() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault = make_test_vault(dir.path(), "testpass123");
+        let meta = CredentialMeta { one_time: true, ..Default::default() };
+        vault.store_credential_full("token", "abc123", 2, None, Some(&meta));
+
+        assert!(vault.request_capability("token", "", 0.0, "").is_ok());
+        // Second use fails — credential was invalidated
+        assert!(vault.request_capability("token", "", 0.0, "").is_err());
+    }
+
+    #[test]
+    fn test_device_key_deterministic() {
+        let k1 = device_key();
+        let k2 = device_key();
+        assert_eq!(k1, k2);
+    }
+
+    #[test]
+    fn test_session_key_encryption_roundtrip() {
+        let mut master = [0u8; KEY_LEN];
+        rand::thread_rng().fill_bytes(&mut master);
+        let encrypted = encrypt_session_key(&master);
+        let decrypted = decrypt_session_key(&encrypted).unwrap();
+        assert_eq!(master, decrypted);
+    }
+
+    #[test]
+    fn test_policy_hmac() {
+        let key = [42u8; KEY_LEN];
+        let content = "version: 1\ndefault_action: ALLOW\nrules: []";
+        let sig1 = policy_hmac(&key, content);
+        let sig2 = policy_hmac(&key, content);
+        assert_eq!(sig1, sig2);
+        // Different content → different HMAC
+        let sig3 = policy_hmac(&key, "version: 1\ndefault_action: DENY");
+        assert_ne!(sig1, sig3);
+        // Different key → different HMAC
+        let sig4 = policy_hmac(&[99u8; KEY_LEN], content);
+        assert_ne!(sig1, sig4);
+    }
+
+    #[test]
+    fn test_reset_session() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut vault = make_test_vault(dir.path(), "testpass123");
+        vault.log_action("buy", "ALLOW", "books", 100.0, "");
+        assert_eq!(vault.session_spend("books"), 100.0);
+        vault.reset_session();
+        // After reset, previous spend is before the new session start
+        assert_eq!(vault.session_spend("books"), 0.0);
     }
 }

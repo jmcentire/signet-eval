@@ -126,6 +126,27 @@ impl ServerHandler for SignetMcpServer {
                     "required": ["tool_name"]
                 })),
                 make_tool("signet_condition_help", "Show all available condition functions with descriptions and examples.", serde_json::json!({"type": "object", "properties": {}})),
+                make_tool("signet_reorder_rule", "Move a rule to a new position (1-based). Critical since first-match-wins.", serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string", "description": "Rule name to move"},
+                        "position": {"type": "integer", "description": "New position (1-based, 1 = first/highest priority)"}
+                    },
+                    "required": ["name", "position"]
+                })),
+                make_tool("signet_edit_rule", "Edit an existing rule's properties.", serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string", "description": "Rule name to edit"},
+                        "action": {"type": "string", "description": "New action (ALLOW/DENY/ASK)"},
+                        "reason": {"type": "string", "description": "New reason"},
+                        "tool_pattern": {"type": "string", "description": "New tool pattern regex"},
+                        "conditions": {"type": "array", "items": {"type": "string"}, "description": "New conditions (replaces existing)"}
+                    },
+                    "required": ["name"]
+                })),
+                make_tool("signet_sign_policy", "Sign the policy file with HMAC for tamper detection.", serde_json::json!({"type": "object", "properties": {}})),
+                make_tool("signet_reset_session", "Reset session spending counters.", serde_json::json!({"type": "object", "properties": {}})),
             ];
             Ok(ListToolsResult { tools, next_cursor: None, meta: None })
         }
@@ -153,6 +174,10 @@ impl ServerHandler for SignetMcpServer {
                 "signet_validate" => handle_validate(),
                 "signet_test" => handle_test(args),
                 "signet_condition_help" => handle_condition_help(),
+                "signet_reorder_rule" => handle_reorder_rule(args),
+                "signet_edit_rule" => handle_edit_rule(args),
+                "signet_sign_policy" => handle_sign_policy(),
+                "signet_reset_session" => handle_reset_session(),
                 _ => format!("Unknown tool: {}", request.name),
             };
             Ok(CallToolResult::success(vec![Content::text(result)]))
@@ -395,6 +420,82 @@ fn handle_test(args: &serde_json::Map<String, Value>) -> String {
     }
     lines.push(format!("Eval time: {}us", result.evaluation_time_us));
     lines.join("\n")
+}
+
+fn handle_reorder_rule(args: &serde_json::Map<String, Value>) -> String {
+    let name = args.get("name").and_then(|v| v.as_str()).unwrap_or("");
+    let position = args.get("position").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+    if position == 0 { return "Position must be >= 1".into(); }
+
+    let mut config = load_policy_raw();
+    let idx = config.rules.iter().position(|r| r.name == name);
+    match idx {
+        None => format!("Rule '{name}' not found."),
+        Some(old_idx) => {
+            let rule = config.rules.remove(old_idx);
+            let new_idx = (position - 1).min(config.rules.len());
+            config.rules.insert(new_idx, rule);
+            save_policy(&config);
+            format!("Moved rule '{name}' to position {position}.")
+        }
+    }
+}
+
+fn handle_edit_rule(args: &serde_json::Map<String, Value>) -> String {
+    let name = args.get("name").and_then(|v| v.as_str()).unwrap_or("");
+    let mut config = load_policy_raw();
+    let rule = config.rules.iter_mut().find(|r| r.name == name);
+    match rule {
+        None => format!("Rule '{name}' not found."),
+        Some(rule) => {
+            let mut changes = Vec::new();
+            if let Some(action_str) = args.get("action").and_then(|v| v.as_str()) {
+                match action_str.to_uppercase().as_str() {
+                    "ALLOW" => { rule.action = Decision::Allow; changes.push("action"); }
+                    "DENY" => { rule.action = Decision::Deny; changes.push("action"); }
+                    "ASK" => { rule.action = Decision::Ask; changes.push("action"); }
+                    _ => return format!("Invalid action '{action_str}'."),
+                }
+            }
+            if let Some(reason) = args.get("reason").and_then(|v| v.as_str()) {
+                rule.reason = Some(reason.into());
+                changes.push("reason");
+            }
+            if let Some(pattern) = args.get("tool_pattern").and_then(|v| v.as_str()) {
+                rule.tool_pattern = pattern.into();
+                changes.push("tool_pattern");
+            }
+            if let Some(conds) = args.get("conditions").and_then(|v| v.as_array()) {
+                rule.conditions = conds.iter().filter_map(|v| v.as_str().map(String::from)).collect();
+                changes.push("conditions");
+            }
+            save_policy(&config);
+            format!("Updated rule '{name}': changed {}", changes.join(", "))
+        }
+    }
+}
+
+fn handle_sign_policy() -> String {
+    match vault::try_load_vault() {
+        Some(v) => {
+            let path = policy_path();
+            match vault::sign_policy(v.session_key(), &path) {
+                Ok(_) => "Policy signed. HMAC written.".into(),
+                Err(e) => format!("Error signing: {e}"),
+            }
+        }
+        None => "Vault not set up or locked (needed for signing key).".into(),
+    }
+}
+
+fn handle_reset_session() -> String {
+    match vault::try_load_vault() {
+        Some(mut v) => {
+            v.reset_session();
+            "Session reset. Spending counters cleared.".into()
+        }
+        None => "Vault not set up or locked.".into(),
+    }
 }
 
 fn handle_condition_help() -> String {
