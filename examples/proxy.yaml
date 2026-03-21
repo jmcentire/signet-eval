@@ -1,0 +1,21 @@
+# Example proxy config — place at ~/.signet/proxy.yaml
+# Signet proxy wraps these servers, enforcing policy on every tool call.
+# Claude Code connects to signet-proxy instead of directly to these servers.
+
+servers:
+  # Linear issue tracking
+  linear:
+    command: npx
+    args: ["-y", "mcp-linear"]
+    env:
+      LINEAR_API_KEY: "lin_api_your_key_here"
+
+  # GitHub CLI
+  # github:
+  #   command: gh
+  #   args: ["mcp"]
+
+  # Filesystem access (with policy enforcement)
+  # filesystem:
+  #   command: npx
+  #   args: ["-y", "@modelcontextprotocol/server-filesystem", "/Users/you/allowed-dir"]
