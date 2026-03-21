@@ -1,0 +1,94 @@
+# Constraints — signet-eval
+# Synthesized from design conversation, 2026-03-21
+
+constraints:
+  - id: C01
+    name: no_nlp_in_policy_path
+    description: >
+      Policy evaluation must be deterministic. No LLM calls, no natural
+      language processing, no prompt interpretation. Matching is regex
+      and literal only. This is a security invariant — prompt injection
+      must not reach the authorization layer.
+    severity: critical
+    enforcement: compile-time (no NLP dependencies allowed)
+
+  - id: C02
+    name: zero_external_dependencies
+    description: >
+      The tool must use Python stdlib only. No pip packages. This ensures
+      fast process startup (no import overhead), zero supply chain risk
+      in the authorization path, and trivial installation.
+    severity: critical
+    enforcement: import audit
+
+  - id: C03
+    name: latency_budget
+    description: >
+      Total wall-clock time from stdin read to stdout write must be
+      under 15ms for cached policy. Process startup is the dominant
+      cost. Policy evaluation itself must be under 1ms.
+    severity: high
+    enforcement: benchmark test
+
+  - id: C04
+    name: first_match_wins
+    description: >
+      Policy rules are evaluated in declaration order. The first rule
+      that matches determines the decision. If no rule matches, the
+      default decision applies. This makes policy behavior predictable
+      and auditable.
+    severity: high
+    enforcement: contract test
+
+  - id: C05
+    name: fail_secure
+    description: >
+      If policy loading fails, evaluation errors, or stdin is malformed,
+      the decision is "deny" with a clear error reason. Never fail open.
+    severity: critical
+    enforcement: contract test
+
+  - id: C06
+    name: transparent_denials
+    description: >
+      Every deny decision must include a human-readable reason that
+      explains which rule matched and why. The agent must be able to
+      understand the denial and adjust.
+    severity: high
+    enforcement: contract test
+
+  - id: C07
+    name: hook_contract_compliance
+    description: >
+      Input must be valid Claude Code PreToolUse hook JSON. Output must
+      be valid hook response JSON with permissionDecision field. Any
+      deviation from the contract is a bug.
+    severity: critical
+    enforcement: contract test
+
+  - id: C08
+    name: policy_file_location
+    description: >
+      Default policy file at ~/.signet/policy.yaml. Override via
+      SIGNET_POLICY_PATH environment variable. Policy is loaded once
+      and cached for the process lifetime.
+    severity: medium
+    enforcement: integration test
+
+  - id: C09
+    name: no_network_access
+    description: >
+      The tool must never make network calls. All evaluation is local.
+      No telemetry, no update checks, no remote policy fetching.
+    severity: critical
+    enforcement: code review + no socket imports
+
+  - id: C10
+    name: safe_defaults
+    description: >
+      The shipped default policy must block known-destructive operations
+      (rm, format, force-push, piped remote exec, credential file writes)
+      and permit everything else. Users opt into more restriction, not
+      less protection.
+    severity: high
+    enforcement: default policy review

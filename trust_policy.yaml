@@ -1,0 +1,45 @@
+# Trust Policy — signet-eval
+# Synthesized from design conversation, 2026-03-21
+
+trust_model:
+  description: >
+    signet-eval is a security boundary. It sits in the mandatory execution
+    path between an AI agent and system actions. Trust flows one direction:
+    from the user's policy file to the evaluation engine to the decision.
+    The agent is untrusted. The policy is trusted. The tool is the enforcer.
+
+authorities:
+  - domain: policy_authoring
+    owner: user
+    description: Only the user writes policy.yaml. The tool never modifies it.
+
+  - domain: policy_evaluation
+    owner: signet-eval
+    description: Deterministic evaluation. No discretion, no judgment, no override.
+
+  - domain: action_execution
+    owner: claude_code
+    description: Claude Code executes (or doesn't) based on signet-eval's decision.
+
+trust_boundaries:
+  - boundary: stdin_ingress
+    description: >
+      Hook JSON from Claude Code. Untrusted — could contain any tool name
+      or arguments. Must be validated structurally. Malformed input → deny.
+
+  - boundary: policy_file
+    description: >
+      User's policy.yaml. Trusted source. Loaded once, cached. If file
+      is missing or malformed, use built-in safe defaults (not fail-open).
+
+  - boundary: stdout_egress
+    description: >
+      Decision JSON back to Claude Code. Must conform to hook response
+      contract exactly. Claude Code trusts this output.
+
+soak_durations: {}
+
+escalation:
+  on_policy_load_failure: use built-in safe defaults, log warning to stderr
+  on_evaluation_error: deny with error reason
+  on_malformed_input: deny with parse error reason

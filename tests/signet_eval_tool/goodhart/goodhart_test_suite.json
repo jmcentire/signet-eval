@@ -1,0 +1,279 @@
+{
+  "component_id": "signet_eval_tool",
+  "contract_version": 1,
+  "test_cases": [
+    {
+      "id": "test_goodhart_main_preserves_exit_codes_across_error_types",
+      "description": "Main function exit codes should uniquely identify error types for diagnostic purposes",
+      "function": "main",
+      "category": "edge_case",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "args": "['-invalid-flag', '--unknown-option']"
+      },
+      "input_description": "",
+      "expected_output_description": "",
+      "expected_error": "",
+      "assertions": [
+        "exit_code != 0",
+        "exit_code != main(['--init', '/read-only/path'])"
+      ]
+    },
+    {
+      "id": "test_goodhart_parse_args_handles_empty_strings_vs_none",
+      "description": "Argument parser should distinguish between empty string values and missing values",
+      "function": "parse_args",
+      "category": "edge_case",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "args": "['--policy-path', '']"
+      },
+      "input_description": "",
+      "expected_output_description": "",
+      "expected_error": "",
+      "assertions": [
+        "result.policy_path == ''",
+        "result.policy_path is not None"
+      ]
+    },
+    {
+      "id": "test_goodhart_init_policy_file_atomic_creation",
+      "description": "Policy file creation should be atomic to prevent partial writes during interruption",
+      "function": "init_policy_file",
+      "category": "edge_case",
+      "setup_description": "",
+      "mock_dependencies": {
+        "os.makedirs": "side_effect=KeyboardInterrupt"
+      },
+      "input_values": {
+        "policy_path": "/tmp/test_policy.yaml"
+      },
+      "input_description": "",
+      "expected_output_description": "",
+      "expected_error": "",
+      "assertions": [
+        "not os.path.exists('/tmp/test_policy.yaml')"
+      ]
+    },
+    {
+      "id": "test_goodhart_load_policy_handles_unicode_patterns",
+      "description": "Policy loading should properly handle Unicode characters in regex patterns without corruption",
+      "function": "load_policy",
+      "category": "edge_case",
+      "setup_description": "Create policy file with Unicode regex pattern: 'tööl.*ñamé'",
+      "mock_dependencies": {},
+      "input_values": {
+        "policy_path": "policy_with_unicode.yaml"
+      },
+      "input_description": "",
+      "expected_output_description": "",
+      "expected_error": "",
+      "assertions": [
+        "policy.rules[0].tool_pattern.pattern == 'tööl.*ñamé'"
+      ]
+    },
+    {
+      "id": "test_goodhart_parse_hook_input_preserves_numeric_precision",
+      "description": "JSON parsing should preserve numeric precision without floating-point drift",
+      "function": "parse_hook_input",
+      "category": "edge_case",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "json_input": "{\"tool_name\": \"calc\", \"parameters\": {\"value\": 0.12345678901234568}, \"context\": {}}"
+      },
+      "input_description": "",
+      "expected_output_description": "",
+      "expected_error": "",
+      "assertions": [
+        "str(request.parameters['value']) == '0.1234567890123456789'"
+      ]
+    },
+    {
+      "id": "test_goodhart_evaluate_request_rule_order_independence_of_content",
+      "description": "Rule evaluation order should depend only on position, not rule content or pattern complexity",
+      "function": "evaluate_request",
+      "category": "edge_case",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "request": "ToolUseRequest(tool_name='test', parameters={}, context={})",
+        "policy": "PolicyConfig with rules: [simple_allow, complex_deny, simple_allow_duplicate]"
+      },
+      "input_description": "",
+      "expected_output_description": "",
+      "expected_error": "",
+      "assertions": [
+        "result.matched_rule == 'simple_allow'",
+        "result.decision == Decision.ALLOW"
+      ]
+    },
+    {
+      "id": "test_goodhart_match_rule_conditions_empty_conditions_edge",
+      "description": "Rules with empty condition lists should match all requests unconditionally",
+      "function": "match_rule_conditions",
+      "category": "edge_case",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "request": "ToolUseRequest(tool_name='any_tool', parameters={'x': 'y'}, context={'z': 'w'})",
+        "rule": "PolicyRule with empty conditions list"
+      },
+      "input_description": "",
+      "expected_output_description": "",
+      "expected_error": "",
+      "assertions": [
+        "result == True"
+      ]
+    },
+    {
+      "id": "test_goodhart_format_output_preserves_floating_point_precision",
+      "description": "JSON output formatting should preserve floating-point precision without rounding errors",
+      "function": "format_output",
+      "category": "edge_case",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "result": "EvaluationResult(evaluation_time_ms=1.23456789)"
+      },
+      "input_description": "",
+      "expected_output_description": "",
+      "expected_error": "",
+      "assertions": [
+        "'1.23456789' in output_json",
+        "json.loads(output_json)['evaluation_time_ms'] == 1.23456789"
+      ]
+    },
+    {
+      "id": "test_goodhart_get_default_policy_version_consistency",
+      "description": "Default policy version should be consistent across multiple calls and system states",
+      "function": "get_default_policy",
+      "category": "invariant",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {},
+      "input_description": "",
+      "expected_output_description": "",
+      "expected_error": "",
+      "assertions": [
+        "get_default_policy().version == get_default_policy().version",
+        "get_default_policy().version >= 1"
+      ]
+    },
+    {
+      "id": "test_goodhart_tool_name_boundary_exactly_100_chars",
+      "description": "Tool name validation should accept exactly 100 characters as valid boundary case",
+      "function": "ToolUseRequest",
+      "category": "edge_case",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "tool_name": "'a' * 100",
+        "parameters": "{}",
+        "context": "{}"
+      },
+      "input_description": "",
+      "expected_output_description": "",
+      "expected_error": "",
+      "assertions": [
+        "len(request.tool_name) == 100",
+        "request.tool_name == 'a' * 100"
+      ]
+    },
+    {
+      "id": "test_goodhart_policy_rule_name_boundary_exactly_200_chars",
+      "description": "Policy rule name validation should accept exactly 200 characters as valid boundary case",
+      "function": "PolicyRule",
+      "category": "edge_case",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "name": "'x' * 200",
+        "tool_pattern": ".*",
+        "conditions": "[]",
+        "action": "Decision.ALLOW",
+        "reason": "test"
+      },
+      "input_description": "",
+      "expected_output_description": "",
+      "expected_error": "",
+      "assertions": [
+        "len(rule.name) == 200",
+        "rule.name == 'x' * 200"
+      ]
+    },
+    {
+      "id": "test_goodhart_regex_compilation_caching_persistence",
+      "description": "Compiled regex patterns should remain cached across multiple policy evaluations",
+      "function": "load_policy",
+      "category": "invariant",
+      "setup_description": "Load policy, then perform multiple evaluations",
+      "mock_dependencies": {},
+      "input_values": {},
+      "input_description": "",
+      "expected_output_description": "",
+      "expected_error": "",
+      "assertions": [
+        "policy1.rules[0].tool_pattern is policy2.rules[0].tool_pattern",
+        "id(policy1.rules[0].tool_pattern) == id(policy2.rules[0].tool_pattern)"
+      ]
+    },
+    {
+      "id": "test_goodhart_evaluation_time_measurement_accuracy",
+      "description": "Evaluation time measurement should accurately reflect actual processing time",
+      "function": "evaluate_request",
+      "category": "invariant",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "request": "ToolUseRequest with complex parameters",
+        "policy": "PolicyConfig with multiple complex regex rules"
+      },
+      "input_description": "",
+      "expected_output_description": "",
+      "expected_error": "",
+      "assertions": [
+        "result.evaluation_time_ms > 0",
+        "result.evaluation_time_ms < 15.0"
+      ]
+    },
+    {
+      "id": "test_goodhart_fail_secure_on_malformed_policy_structure",
+      "description": "System should fail securely with DENY when policy structure is malformed but parseable",
+      "function": "evaluate_request",
+      "category": "error_case",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "request": "ToolUseRequest(tool_name='test', parameters={}, context={})",
+        "policy": "PolicyConfig with malformed but valid YAML structure"
+      },
+      "input_description": "",
+      "expected_output_description": "DENY decision with appropriate error reason",
+      "expected_error": "",
+      "assertions": [
+        "result.decision == Decision.DENY"
+      ]
+    },
+    {
+      "id": "test_goodhart_performance_scales_linearly_with_rules",
+      "description": "Policy evaluation performance should scale linearly with number of rules",
+      "function": "evaluate_request",
+      "category": "invariant",
+      "setup_description": "Create policies with 10, 100, and 1000 rules",
+      "mock_dependencies": {},
+      "input_values": {},
+      "input_description": "",
+      "expected_output_description": "",
+      "expected_error": "",
+      "assertions": [
+        "time_1000_rules < 10 * time_100_rules",
+        "all(t < 15.0 for t in [time_10, time_100, time_1000])"
+      ]
+    }
+  ],
+  "test_language": "python",
+  "generated_code": "\"\"\"\nAdversarial acceptance tests for Signet Evaluation Tool.\n\nThese tests are designed to catch implementations that pass visible tests\nthrough shortcuts rather than truly implementing the contract.\n\"\"\"\nimport json\nimport os\nimport tempfile\nimport time\nfrom unittest.mock import patch, MagicMock\nimport pytest\nfrom src.signet_eval_tool import *\n\n\ndef test_goodhart_main_preserves_exit_codes_across_error_types():\n    \"\"\"Main function exit codes should uniquely identify error types for diagnostic purposes\"\"\"\n    # Test that different error types return different exit codes\n    arg_error_code = main(['-invalid-flag', '--unknown-option'])\n    init_error_code = main(['--init', '/read-only/path/that/cannot/exist'])\n    \n    assert arg_error_code != 0\n    assert init_error_code != 0\n    assert arg_error_code != init_error_code  # Different errors should have different codes\n\n\ndef test_goodhart_parse_args_handles_empty_strings_vs_none():\n    \"\"\"Argument parser should distinguish between empty string values and missing values\"\"\"\n    # Test empty string vs None for policy_path\n    result_empty = parse_args(['--policy-path', ''])\n    result_default = parse_args([])\n    \n    assert result_empty.policy_path == ''\n    assert result_empty.policy_path is not None\n    assert result_empty.policy_path != result_default.policy_path\n\n\ndef test_goodhart_init_policy_file_atomic_creation():\n    \"\"\"Policy file creation should be atomic to prevent partial writes during interruption\"\"\"\n    with tempfile.TemporaryDirectory() as tmpdir:\n        policy_path = os.path.join(tmpdir, 'test_policy.yaml')\n        \n        # Mock to simulate interruption during file creation\n        with patch('builtins.open', side_effect=KeyboardInterrupt):\n            try:\n                init_policy_file(policy_path)\n            except KeyboardInterrupt:\n                pass\n        \n        # File should not exist if creation was interrupted\n        assert not os.path.exists(policy_path)\n\n\ndef test_goodhart_load_policy_handles_unicode_patterns():\n    \"\"\"Policy loading should properly handle Unicode characters in regex patterns without corruption\"\"\"\n    unicode_pattern = 'tööl.*ñamé'\n    \n    with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:\n        f.write(f'''\nversion: 1\ndefault_action: DENY\nrules:\n  - name: Unicode Test Rule\n    tool_pattern: \"{unicode_pattern}\"\n    conditions: []\n    action: ALLOW\n    reason: \"Unicode test\"\n''')\n        f.flush()\n        \n        try:\n            policy = load_policy(f.name)\n            # Verify Unicode pattern is preserved exactly\n            assert policy.rules[0].tool_pattern.pattern == unicode_pattern\n        finally:\n            os.unlink(f.name)\n\n\ndef test_goodhart_parse_hook_input_preserves_numeric_precision():\n    \"\"\"JSON parsing should preserve numeric precision without floating-point drift\"\"\"\n    high_precision_value = \"0.1234567890123456789\"\n    json_input = f'{{\"tool_name\": \"calc\", \"parameters\": {{\"value\": {high_precision_value}}}, \"context\": {{}}}}'\n    \n    request = parse_hook_input(json_input)\n    \n    # Check that precision is maintained\n    assert str(request.parameters['value']).startswith(\"0.123456789\")\n    # Ensure we don't lose precision to floating point representation\n    assert len(str(request.parameters['value'])) >= 10\n\n\ndef test_goodhart_evaluate_request_rule_order_independence_of_content():\n    \"\"\"Rule evaluation order should depend only on position, not rule content or pattern complexity\"\"\"\n    request = ToolUseRequest(tool_name='test_tool', parameters={}, context={})\n    \n    # Create rules where a simple pattern comes before a complex one\n    rules = [\n        PolicyRule(name='simple_first', tool_pattern='test.*', conditions=[], action=Decision.ALLOW, reason='simple'),\n        PolicyRule(name='complex_second', tool_pattern=r'test_tool(?=.*complex)(?!.*exclude).*', conditions=[], action=Decision.DENY, reason='complex'),\n        PolicyRule(name='simple_third', tool_pattern='test.*', conditions=[], action=Decision.ASK, reason='simple_later')\n    ]\n    \n    policy = PolicyConfig(version=1, rules=rules, default_action=Decision.DENY)\n    result = evaluate_request(request, policy)\n    \n    # Should match first rule regardless of pattern complexity\n    assert result.matched_rule == 'simple_first'\n    assert result.decision == Decision.ALLOW\n\n\ndef test_goodhart_match_rule_conditions_empty_conditions_edge():\n    \"\"\"Rules with empty condition lists should match all requests unconditionally\"\"\"\n    request = ToolUseRequest(tool_name='any_tool', parameters={'x': 'y'}, context={'z': 'w'})\n    rule = PolicyRule(\n        name='empty_conditions',\n        tool_pattern='any.*',\n        conditions=[],  # Empty conditions list\n        action=Decision.ALLOW,\n        reason='no conditions'\n    )\n    \n    result = match_rule_conditions(request, rule)\n    assert result == True\n\n\ndef test_goodhart_format_output_preserves_floating_point_precision():\n    \"\"\"JSON output formatting should preserve floating-point precision without rounding errors\"\"\"\n    precise_time = 1.23456789\n    result = EvaluationResult(\n        decision=Decision.ALLOW,\n        matched_rule='test_rule',\n        reason='test',\n        evaluation_time_ms=precise_time\n    )\n    \n    output_json = format_output(result)\n    parsed = json.loads(output_json)\n    \n    # Verify precision is maintained\n    assert parsed['evaluation_time_ms'] == precise_time\n    assert str(precise_time) in output_json\n\n\ndef test_goodhart_get_default_policy_version_consistency():\n    \"\"\"Default policy version should be consistent across multiple calls and system states\"\"\"\n    policy1 = get_default_policy()\n    policy2 = get_default_policy()\n    \n    # Should return consistent version across calls\n    assert policy1.version == policy2.version\n    assert policy1.version >= 1\n    \n    # Default action should be DENY for fail-secure\n    assert policy1.default_action == Decision.DENY\n    assert policy2.default_action == Decision.DENY\n\n\ndef test_goodhart_tool_name_boundary_exactly_100_chars():\n    \"\"\"Tool name validation should accept exactly 100 characters as valid boundary case\"\"\"\n    tool_name_100 = 'a' * 100\n    \n    request = ToolUseRequest(\n        tool_name=tool_name_100,\n        parameters={},\n        context={}\n    )\n    \n    assert len(request.tool_name) == 100\n    assert request.tool_name == tool_name_100\n\n\ndef test_goodhart_policy_rule_name_boundary_exactly_200_chars():\n    \"\"\"Policy rule name validation should accept exactly 200 characters as valid boundary case\"\"\"\n    name_200 = 'x' * 200\n    \n    rule = PolicyRule(\n        name=name_200,\n        tool_pattern='.*',\n        conditions=[],\n        action=Decision.ALLOW,\n        reason='test'\n    )\n    \n    assert len(rule.name) == 200\n    assert rule.name == name_200\n\n\ndef test_goodhart_regex_compilation_caching_persistence():\n    \"\"\"Compiled regex patterns should remain cached across multiple policy evaluations\"\"\"\n    with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:\n        f.write('''\nversion: 1\ndefault_action: DENY\nrules:\n  - name: Test Rule\n    tool_pattern: \"test.*pattern\"\n    conditions: []\n    action: ALLOW\n    reason: \"test\"\n''')\n        f.flush()\n        \n        try:\n            policy1 = load_policy(f.name)\n            policy2 = load_policy(f.name)\n            \n            # Compiled patterns should be the same object (cached)\n            pattern1 = policy1.rules[0].tool_pattern\n            pattern2 = policy2.rules[0].tool_pattern\n            \n            assert pattern1 is pattern2\n            assert id(pattern1) == id(pattern2)\n        finally:\n            os.unlink(f.name)\n\n\ndef test_goodhart_evaluation_time_measurement_accuracy():\n    \"\"\"Evaluation time measurement should accurately reflect actual processing time\"\"\"\n    # Create request that requires non-trivial processing\n    request = ToolUseRequest(\n        tool_name='complex_tool_name_with_parameters',\n        parameters={'param1': 'value1', 'param2': 'value2', 'param3': 'value3'},\n        context={'context1': 'data1', 'context2': 'data2'}\n    )\n    \n    # Create policy with multiple complex regex patterns\n    rules = [\n        PolicyRule(name=f'rule_{i}', tool_pattern=f'complex.*{i}.*pattern', conditions=[], action=Decision.DENY, reason='test')\n        for i in range(10)\n    ]\n    policy = PolicyConfig(version=1, rules=rules, default_action=Decision.ALLOW)\n    \n    start_time = time.perf_counter()\n    result = evaluate_request(request, policy)\n    actual_time = (time.perf_counter() - start_time) * 1000\n    \n    # Measured time should be reasonable and positive\n    assert result.evaluation_time_ms > 0\n    assert result.evaluation_time_ms < 15.0  # Within performance budget\n    # Should be somewhat close to actual measurement (within order of magnitude)\n    assert result.evaluation_time_ms < actual_time * 10\n\n\ndef test_goodhart_fail_secure_on_malformed_policy_structure():\n    \"\"\"System should fail securely with DENY when policy structure is malformed but parseable\"\"\"\n    request = ToolUseRequest(tool_name='test', parameters={}, context={})\n    \n    # Create policy with malformed but valid structure\n    malformed_policy = PolicyConfig(\n        version=1,\n        rules=[],  # Empty rules but valid structure\n        default_action=None  # Invalid default action\n    )\n    \n    try:\n        result = evaluate_request(request, malformed_policy)\n        # Should fail secure with DENY\n        assert result.decision == Decision.DENY\n    except Exception:\n        # If it throws exception, that's also acceptable fail-secure behavior\n        pass\n\n\ndef test_goodhart_performance_scales_linearly_with_rules():\n    \"\"\"Policy evaluation performance should scale linearly with number of rules\"\"\"\n    request = ToolUseRequest(tool_name='test_no_match', parameters={}, context={})\n    \n    def create_policy_with_rules(count):\n        rules = [\n            PolicyRule(name=f'rule_{i}', tool_pattern=f'nomatch{i}.*', conditions=[], action=Decision.ALLOW, reason='test')\n            for i in range(count)\n        ]\n        return PolicyConfig(version=1, rules=rules, default_action=Decision.DENY)\n    \n    # Test with different rule counts\n    policy_10 = create_policy_with_rules(10)\n    policy_100 = create_policy_with_rules(100)\n    policy_1000 = create_policy_with_rules(1000)\n    \n    # Measure times\n    result_10 = evaluate_request(request, policy_10)\n    result_100 = evaluate_request(request, policy_100)\n    result_1000 = evaluate_request(request, policy_1000)\n    \n    time_10 = result_10.evaluation_time_ms\n    time_100 = result_100.evaluation_time_ms\n    time_1000 = result_1000.evaluation_time_ms\n    \n    # All should be within performance budget\n    assert all(t < 15.0 for t in [time_10, time_100, time_1000])\n    \n    # Scaling should be reasonable (not exponential)\n    # 1000 rules shouldn't take more than 10x the time of 100 rules\n    assert time_1000 < time_100 * 10"
+}

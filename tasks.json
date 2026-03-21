@@ -1,0 +1,134 @@
+{
+  "project_id": "signet-eval",
+  "tasks": [
+    {
+      "id": "T001",
+      "phase": "setup",
+      "component_id": "",
+      "description": "Initialize project directory structure",
+      "file_path": "",
+      "status": "pending",
+      "parallel": false,
+      "depends_on": [],
+      "category": "scaffold"
+    },
+    {
+      "id": "T002",
+      "phase": "setup",
+      "component_id": "",
+      "description": "Verify environment and dependencies",
+      "file_path": "",
+      "status": "pending",
+      "parallel": false,
+      "depends_on": [
+        "T001"
+      ],
+      "category": "scaffold"
+    },
+    {
+      "id": "T003",
+      "phase": "component",
+      "component_id": "signet_eval_tool",
+      "description": "Review contract for Signet Evaluation Tool",
+      "file_path": "contracts/signet_eval_tool/interface.json",
+      "status": "completed",
+      "parallel": true,
+      "depends_on": [],
+      "category": "contract_review"
+    },
+    {
+      "id": "T004",
+      "phase": "component",
+      "component_id": "signet_eval_tool",
+      "description": "Set up test harness for Signet Evaluation Tool",
+      "file_path": "",
+      "status": "completed",
+      "parallel": false,
+      "depends_on": [
+        "T003"
+      ],
+      "category": "test_setup"
+    },
+    {
+      "id": "T005",
+      "phase": "component",
+      "component_id": "signet_eval_tool",
+      "description": "Write contract tests for Signet Evaluation Tool",
+      "file_path": "",
+      "status": "completed",
+      "parallel": false,
+      "depends_on": [
+        "T004"
+      ],
+      "category": "test_write"
+    },
+    {
+      "id": "T006",
+      "phase": "component",
+      "component_id": "signet_eval_tool",
+      "description": "Implement Signet Evaluation Tool",
+      "file_path": "implementations/signet_eval_tool/src/",
+      "status": "completed",
+      "parallel": false,
+      "depends_on": [
+        "T005"
+      ],
+      "category": "implement"
+    },
+    {
+      "id": "T007",
+      "phase": "component",
+      "component_id": "signet_eval_tool",
+      "description": "Run tests and verify Signet Evaluation Tool",
+      "file_path": "",
+      "status": "failed",
+      "parallel": false,
+      "depends_on": [
+        "T006"
+      ],
+      "category": "verify"
+    },
+    {
+      "id": "T008",
+      "phase": "polish",
+      "component_id": "",
+      "description": "Run full contract validation gate",
+      "file_path": "",
+      "status": "pending",
+      "parallel": false,
+      "depends_on": [],
+      "category": "validate"
+    },
+    {
+      "id": "T009",
+      "phase": "polish",
+      "component_id": "",
+      "description": "Cross-artifact analysis",
+      "file_path": "",
+      "status": "pending",
+      "parallel": false,
+      "depends_on": [],
+      "category": "validate"
+    },
+    {
+      "id": "T010",
+      "phase": "polish",
+      "component_id": "",
+      "description": "Update design document",
+      "file_path": "",
+      "status": "pending",
+      "parallel": false,
+      "depends_on": [],
+      "category": "document"
+    }
+  ],
+  "checkpoints": [
+    {
+      "after_phase": "component",
+      "description": "All leaf components verified",
+      "validation": "All leaf contract tests pass"
+    }
+  ],
+  "generated_at": "2026-03-21T01:07:55.872966",
+  "version": 1
+}

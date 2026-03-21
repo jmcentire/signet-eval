@@ -1,0 +1,33 @@
+# SOPs — signet-eval
+
+## Language & Runtime
+- Python 3.12+, stdlib only
+- No external packages, no requirements.txt, no pyproject.toml build dependencies
+- Single-file or small package, installable via `pip install -e .` or just symlink
+
+## Code Style
+- Type hints on public functions
+- No classes where functions suffice
+- Early returns, no deep nesting
+- Comments only where logic is non-obvious
+
+## Testing
+- pytest for test execution
+- Test the policy engine against known inputs/outputs
+- Test hook I/O parsing with valid and malformed inputs
+- Test fail-secure paths (bad JSON, missing fields, broken policy)
+- Test first-match-wins ordering
+- Benchmark test: evaluation under 1ms for 50 rules
+
+## Security
+- Never import socket, http, urllib, or any network module
+- Never write to disk except --init policy installation
+- Never read from network
+- Validate all input before processing
+- regex patterns in policy are user-authored; compile with re.compile and handle re.error gracefully
+
+## Delivery
+- Entry point: `signet-eval` console script
+- Default policy embedded in source code as fallback
+- ~/.signet/policy.yaml as user-configurable override
+- SIGNET_POLICY_PATH env var for custom location

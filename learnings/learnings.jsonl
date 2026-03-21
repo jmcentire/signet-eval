@@ -1,0 +1,1 @@
+{"lesson": "implementation_bug in signet_eval_tool: Component 'signet_eval_tool' failed 24 of 40 contract tests. Since this is a leaf component, the implementation does not match the contract.", "category": "failure_mode", "component_id": "signet_eval_tool", "timestamp": "2026-03-21T01:17:08.399582"}

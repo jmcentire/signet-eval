@@ -1,0 +1,783 @@
+{
+  "project_id": "signet-eval",
+  "title": "Design: signet-eval",
+  "summary": "",
+  "decomposition_tree": {
+    "root_id": "signet_eval_tool",
+    "nodes": {
+      "signet_eval_tool": {
+        "component_id": "signet_eval_tool",
+        "name": "Signet Evaluation Tool",
+        "description": "A standalone Python CLI tool that reads Claude Code PreToolUse hook JSON from stdin, evaluates it against user-defined policy rules from ~/.signet/policy.yaml (with built-in safe defaults), and returns allow/deny/ask decisions on stdout. Implements first-match-wins rule evaluation, secure input validation, policy file caching, fail-secure behavior for all error conditions, and provides --init command to install default policy. Single-file implementation using only Python stdlib with type hints and optimized for <15ms execution time.",
+        "depth": 0,
+        "parent_id": "",
+        "children": [],
+        "contract": {
+          "component_id": "signet_eval_tool",
+          "name": "Signet Evaluation Tool",
+          "description": "A standalone Python CLI tool that reads Claude Code PreToolUse hook JSON from stdin, evaluates it against user-defined policy rules from ~/.signet/policy.yaml (with built-in safe defaults), and returns allow/deny/ask decisions on stdout. Implements first-match-wins rule evaluation, secure input validation, policy file caching, fail-secure behavior for all error conditions, and provides --init command to install default policy. Single-file implementation using only Python stdlib with type hints and optimized for <15ms execution time.",
+          "version": 1,
+          "types": [
+            {
+              "name": "Decision",
+              "kind": "enum",
+              "fields": [],
+              "item_type": "",
+              "variants": [
+                "ALLOW",
+                "DENY",
+                "ASK"
+              ],
+              "inner_types": [],
+              "description": "Policy evaluation decision with fail-secure semantics"
+            },
+            {
+              "name": "ToolUseRequest",
+              "kind": "struct",
+              "fields": [
+                {
+                  "name": "tool_name",
+                  "type_ref": "str",
+                  "required": true,
+                  "default": "",
+                  "description": "Name of the tool being invoked",
+                  "validators": [
+                    {
+                      "kind": "length",
+                      "expression": "1 <= len(value) <= 100",
+                      "error_message": "Tool name must be 1-100 characters"
+                    }
+                  ]
+                },
+                {
+                  "name": "parameters",
+                  "type_ref": "dict",
+                  "required": true,
+                  "default": "",
+                  "description": "Tool parameters as JSON object",
+                  "validators": []
+                },
+                {
+                  "name": "context",
+                  "type_ref": "dict",
+                  "required": false,
+                  "default": "{}",
+                  "description": "Additional context from hook",
+                  "validators": []
+                }
+              ],
+              "item_type": "",
+              "variants": [],
+              "inner_types": [],
+              "description": "Parsed Claude Code PreToolUse hook JSON input"
+            },
+            {
+              "name": "PolicyRule",
+              "kind": "struct",
+              "fields": [
+                {
+                  "name": "name",
+                  "type_ref": "str",
+                  "required": true,
+                  "default": "",
+                  "description": "Human-readable rule identifier",
+                  "validators": [
+                    {
+                      "kind": "length",
+                      "expression": "1 <= len(value) <= 200",
+                      "error_message": "Rule name must be 1-200 characters"
+                    }
+                  ]
+                },
+                {
+                  "name": "tool_pattern",
+                  "type_ref": "str",
+                  "required": true,
+                  "default": "",
+                  "description": "Regex pattern to match tool names",
+                  "validators": [
+                    {
+                      "kind": "custom",
+                      "expression": "is_valid_regex(value)",
+                      "error_message": "Must be valid regex pattern"
+                    }
+                  ]
+                },
+                {
+                  "name": "conditions",
+                  "type_ref": "list",
+                  "required": false,
+                  "default": "[]",
+                  "description": "List of parameter conditions to evaluate",
+                  "validators": []
+                },
+                {
+                  "name": "action",
+                  "type_ref": "Decision",
+                  "required": true,
+                  "default": "",
+                  "description": "Decision to return if rule matches",
+                  "validators": []
+                },
+                {
+                  "name": "reason",
+                  "type_ref": "str",
+                  "required": false,
+                  "default": "",
+                  "description": "Explanation for why this rule applies",
+                  "validators": []
+                }
+              ],
+              "item_type": "",
+              "variants": [],
+              "inner_types": [],
+              "description": "A single policy evaluation rule with conditions and action"
+            },
+            {
+              "name": "PolicyConfig",
+              "kind": "struct",
+              "fields": [
+                {
+                  "name": "version",
+                  "type_ref": "int",
+                  "required": true,
+                  "default": "",
+                  "description": "Policy schema version",
+                  "validators": [
+                    {
+                      "kind": "range",
+                      "expression": "value >= 1",
+                      "error_message": "Version must be >= 1"
+                    }
+                  ]
+                },
+                {
+                  "name": "rules",
+                  "type_ref": "list",
+                  "required": true,
+                  "default": "",
+                  "description": "Ordered list of evaluation rules (first-match-wins)",
+                  "validators": []
+                },
+                {
+                  "name": "default_action",
+                  "type_ref": "Decision",
+                  "required": false,
+                  "default": "DENY",
+                  "description": "Fallback decision when no rules match",
+                  "validators": []
+                }
+              ],
+              "item_type": "",
+              "variants": [],
+              "inner_types": [],
+              "description": "Complete policy configuration with metadata"
+            },
+            {
+              "name": "EvaluationResult",
+              "kind": "struct",
+              "fields": [
+                {
+                  "name": "decision",
+                  "type_ref": "Decision",
+                  "required": true,
+                  "default": "",
+                  "description": "Final allow/deny/ask decision",
+                  "validators": []
+                },
+                {
+                  "name": "matched_rule",
+                  "type_ref": "str",
+                  "required": false,
+                  "default": "",
+                  "description": "Name of the rule that matched",
+                  "validators": []
+                },
+                {
+                  "name": "reason",
+                  "type_ref": "str",
+                  "required": false,
+                  "default": "",
+                  "description": "Human-readable explanation for decision",
+                  "validators": []
+                },
+                {
+                  "name": "evaluation_time_ms",
+                  "type_ref": "float",
+                  "required": true,
+                  "default": "",
+                  "description": "Time taken to evaluate in milliseconds",
+                  "validators": []
+                }
+              ],
+              "item_type": "",
+              "variants": [],
+              "inner_types": [],
+              "description": "Policy evaluation outcome with metadata"
+            },
+            {
+              "name": "CliArgs",
+              "kind": "struct",
+              "fields": [
+                {
+                  "name": "init",
+                  "type_ref": "bool",
+                  "required": false,
+                  "default": "false",
+                  "description": "Initialize default policy file",
+                  "validators": []
+                },
+                {
+                  "name": "policy_path",
+                  "type_ref": "str",
+                  "required": false,
+                  "default": "",
+                  "description": "Custom policy file path",
+                  "validators": []
+                },
+                {
+                  "name": "verbose",
+                  "type_ref": "bool",
+                  "required": false,
+                  "default": "false",
+                  "description": "Enable verbose logging",
+                  "validators": []
+                }
+              ],
+              "item_type": "",
+              "variants": [],
+              "inner_types": [],
+              "description": "Parsed command-line arguments"
+            }
+          ],
+          "functions": [
+            {
+              "name": "main",
+              "description": "Main CLI entry point that parses arguments and routes to appropriate handler",
+              "inputs": [
+                {
+                  "name": "args",
+                  "type_ref": "list",
+                  "required": false,
+                  "default": "[]",
+                  "description": "Command-line arguments",
+                  "validators": []
+                }
+              ],
+              "output_type": "int",
+              "error_cases": [
+                {
+                  "name": "ArgumentParsingError",
+                  "condition": "Invalid command-line arguments provided",
+                  "error_type": "SystemExit",
+                  "error_data": {
+                    "exit_code": "2"
+                  }
+                },
+                {
+                  "name": "PolicyInitError",
+                  "condition": "Failed to create policy file during --init",
+                  "error_type": "SystemExit",
+                  "error_data": {
+                    "exit_code": "1"
+                  }
+                }
+              ],
+              "preconditions": [],
+              "postconditions": [
+                "Returns 0 on success, non-zero on error",
+                "Policy file exists after --init command"
+              ],
+              "idempotent": false,
+              "side_effects": [],
+              "structured_side_effects": [
+                {
+                  "kind": "reads_file",
+                  "target": "~/.signet/policy.yaml or SIGNET_POLICY_PATH",
+                  "description": "Loads policy configuration"
+                },
+                {
+                  "kind": "writes_file",
+                  "target": "~/.signet/policy.yaml",
+                  "description": "Creates default policy file when --init used"
+                },
+                {
+                  "kind": "logging",
+                  "target": "stderr",
+                  "description": "Error messages and verbose output"
+                }
+              ],
+              "performance_budget": {
+                "p95_latency_ms": 15,
+                "max_memory_mb": 10,
+                "complexity": null
+              }
+            },
+            {
+              "name": "parse_args",
+              "description": "Parse and validate command-line arguments using argparse",
+              "inputs": [
+                {
+                  "name": "args",
+                  "type_ref": "list",
+                  "required": true,
+                  "default": "",
+                  "description": "Raw command-line arguments",
+                  "validators": []
+                }
+              ],
+              "output_type": "CliArgs",
+              "error_cases": [
+                {
+                  "name": "ArgumentError",
+                  "condition": "Invalid argument combination or format",
+                  "error_type": "SystemExit",
+                  "error_data": {
+                    "exit_code": "2"
+                  }
+                }
+              ],
+              "preconditions": [],
+              "postconditions": [
+                "Returns valid CliArgs with defaults applied"
+              ],
+              "idempotent": false,
+              "side_effects": [],
+              "structured_side_effects": [
+                {
+                  "kind": "none",
+                  "target": "",
+                  "description": ""
+                }
+              ],
+              "performance_budget": null
+            },
+            {
+              "name": "init_policy_file",
+              "description": "Create default policy file at specified or standard location",
+              "inputs": [
+                {
+                  "name": "policy_path",
+                  "type_ref": "str",
+                  "required": false,
+                  "default": "",
+                  "description": "Target path for policy file",
+                  "validators": []
+                }
+              ],
+              "output_type": "None",
+              "error_cases": [
+                {
+                  "name": "FileSystemError",
+                  "condition": "Cannot create directories or write file",
+                  "error_type": "OSError",
+                  "error_data": {}
+                },
+                {
+                  "name": "PermissionError",
+                  "condition": "Insufficient permissions for file creation",
+                  "error_type": "PermissionError",
+                  "error_data": {}
+                }
+              ],
+              "preconditions": [],
+              "postconditions": [
+                "Policy file exists at target location",
+                "Parent directories created if needed"
+              ],
+              "idempotent": false,
+              "side_effects": [],
+              "structured_side_effects": [
+                {
+                  "kind": "writes_file",
+                  "target": "Policy file path",
+                  "description": "Creates directory and writes default policy YAML"
+                }
+              ],
+              "performance_budget": null
+            },
+            {
+              "name": "load_policy",
+              "description": "Load and parse policy configuration from file with caching and fallback to defaults",
+              "inputs": [
+                {
+                  "name": "policy_path",
+                  "type_ref": "str",
+                  "required": false,
+                  "default": "",
+                  "description": "Path to policy file",
+                  "validators": []
+                }
+              ],
+              "output_type": "PolicyConfig",
+              "error_cases": [
+                {
+                  "name": "PolicyParseError",
+                  "condition": "Invalid YAML syntax or structure in policy file",
+                  "error_type": "ValueError",
+                  "error_data": {}
+                },
+                {
+                  "name": "RegexCompileError",
+                  "condition": "Invalid regex pattern in policy rule",
+                  "error_type": "ValueError",
+                  "error_data": {}
+                }
+              ],
+              "preconditions": [],
+              "postconditions": [
+                "Returns valid PolicyConfig with compiled regex patterns cached",
+                "Uses embedded defaults if file missing or invalid"
+              ],
+              "idempotent": false,
+              "side_effects": [],
+              "structured_side_effects": [
+                {
+                  "kind": "reads_file",
+                  "target": "Policy configuration file",
+                  "description": "Reads YAML policy or falls back to embedded defaults"
+                }
+              ],
+              "performance_budget": {
+                "p95_latency_ms": 5,
+                "max_memory_mb": 2,
+                "complexity": null
+              }
+            },
+            {
+              "name": "parse_hook_input",
+              "description": "Parse and validate Claude Code PreToolUse hook JSON from stdin",
+              "inputs": [
+                {
+                  "name": "json_input",
+                  "type_ref": "str",
+                  "required": true,
+                  "default": "",
+                  "description": "Raw JSON string from stdin",
+                  "validators": []
+                }
+              ],
+              "output_type": "ToolUseRequest",
+              "error_cases": [
+                {
+                  "name": "JSONDecodeError",
+                  "condition": "Invalid JSON syntax in input",
+                  "error_type": "ValueError",
+                  "error_data": {}
+                },
+                {
+                  "name": "ValidationError",
+                  "condition": "Missing required fields or invalid field types",
+                  "error_type": "ValueError",
+                  "error_data": {}
+                },
+                {
+                  "name": "InputSizeError",
+                  "condition": "Input exceeds maximum allowed size",
+                  "error_type": "ValueError",
+                  "error_data": {
+                    "max_size_mb": "1"
+                  }
+                }
+              ],
+              "preconditions": [
+                "json_input is valid JSON string"
+              ],
+              "postconditions": [
+                "Returns validated ToolUseRequest with required fields"
+              ],
+              "idempotent": false,
+              "side_effects": [],
+              "structured_side_effects": [
+                {
+                  "kind": "none",
+                  "target": "",
+                  "description": ""
+                }
+              ],
+              "performance_budget": {
+                "p95_latency_ms": 2,
+                "max_memory_mb": 1,
+                "complexity": null
+              }
+            },
+            {
+              "name": "evaluate_request",
+              "description": "Evaluate tool use request against policy rules using first-match-wins logic",
+              "inputs": [
+                {
+                  "name": "request",
+                  "type_ref": "ToolUseRequest",
+                  "required": true,
+                  "default": "",
+                  "description": "Validated tool use request",
+                  "validators": []
+                },
+                {
+                  "name": "policy",
+                  "type_ref": "PolicyConfig",
+                  "required": true,
+                  "default": "",
+                  "description": "Policy configuration with rules",
+                  "validators": []
+                }
+              ],
+              "output_type": "EvaluationResult",
+              "error_cases": [
+                {
+                  "name": "EvaluationTimeoutError",
+                  "condition": "Rule evaluation exceeds time limit",
+                  "error_type": "TimeoutError",
+                  "error_data": {}
+                },
+                {
+                  "name": "RegexMatchError",
+                  "condition": "Regex pattern matching fails",
+                  "error_type": "ValueError",
+                  "error_data": {}
+                }
+              ],
+              "preconditions": [
+                "request is valid ToolUseRequest",
+                "policy contains compiled regex patterns"
+              ],
+              "postconditions": [
+                "Returns decision within performance budget",
+                "First matching rule determines result",
+                "Falls back to default_action if no rules match"
+              ],
+              "idempotent": true,
+              "side_effects": [],
+              "structured_side_effects": [
+                {
+                  "kind": "none",
+                  "target": "",
+                  "description": ""
+                }
+              ],
+              "performance_budget": {
+                "p95_latency_ms": 1,
+                "max_memory_mb": 1,
+                "complexity": "O(n) where n is number of rules"
+              }
+            },
+            {
+              "name": "match_rule_conditions",
+              "description": "Check if tool request matches all conditions in a policy rule",
+              "inputs": [
+                {
+                  "name": "request",
+                  "type_ref": "ToolUseRequest",
+                  "required": true,
+                  "default": "",
+                  "description": "Tool use request to evaluate",
+                  "validators": []
+                },
+                {
+                  "name": "rule",
+                  "type_ref": "PolicyRule",
+                  "required": true,
+                  "default": "",
+                  "description": "Policy rule with conditions to check",
+                  "validators": []
+                }
+              ],
+              "output_type": "bool",
+              "error_cases": [
+                {
+                  "name": "ConditionEvalError",
+                  "condition": "Error evaluating parameter condition",
+                  "error_type": "ValueError",
+                  "error_data": {}
+                }
+              ],
+              "preconditions": [
+                "rule.tool_pattern is compiled regex",
+                "All conditions are valid"
+              ],
+              "postconditions": [
+                "Returns true only if all conditions match"
+              ],
+              "idempotent": true,
+              "side_effects": [],
+              "structured_side_effects": [
+                {
+                  "kind": "none",
+                  "target": "",
+                  "description": ""
+                }
+              ],
+              "performance_budget": {
+                "p95_latency_ms": 1,
+                "max_memory_mb": null,
+                "complexity": "O(c) where c is number of conditions"
+              }
+            },
+            {
+              "name": "format_output",
+              "description": "Format evaluation result as JSON for stdout consumption",
+              "inputs": [
+                {
+                  "name": "result",
+                  "type_ref": "EvaluationResult",
+                  "required": true,
+                  "default": "",
+                  "description": "Policy evaluation result",
+                  "validators": []
+                }
+              ],
+              "output_type": "str",
+              "error_cases": [
+                {
+                  "name": "SerializationError",
+                  "condition": "Cannot serialize result to JSON",
+                  "error_type": "ValueError",
+                  "error_data": {}
+                }
+              ],
+              "preconditions": [],
+              "postconditions": [
+                "Returns valid JSON string",
+                "Contains decision and metadata fields"
+              ],
+              "idempotent": true,
+              "side_effects": [],
+              "structured_side_effects": [
+                {
+                  "kind": "none",
+                  "target": "",
+                  "description": ""
+                }
+              ],
+              "performance_budget": null
+            },
+            {
+              "name": "get_default_policy",
+              "description": "Return embedded default policy configuration as fallback",
+              "inputs": [],
+              "output_type": "PolicyConfig",
+              "error_cases": [],
+              "preconditions": [],
+              "postconditions": [
+                "Returns valid PolicyConfig with safe defaults",
+                "Default action is DENY for fail-secure behavior"
+              ],
+              "idempotent": true,
+              "side_effects": [],
+              "structured_side_effects": [
+                {
+                  "kind": "none",
+                  "target": "",
+                  "description": ""
+                }
+              ],
+              "performance_budget": null
+            }
+          ],
+          "dependencies": [],
+          "dependency_contracts": {},
+          "invariants": [
+            "Policy evaluation always completes within 15ms performance budget",
+            "All regex patterns are compiled and cached at load time",
+            "Fail-secure: unknown/error conditions default to DENY decision",
+            "First-match-wins: rules are evaluated in order, first match determines outcome",
+            "Input validation: all JSON input is validated before processing",
+            "No network access: tool operates entirely offline with local files",
+            "Policy file format is backward compatible within major versions"
+          ],
+          "requires": [],
+          "processing_register": "rigorous-analytical",
+          "data_access": {
+            "reads": [
+              "INTERNAL"
+            ],
+            "writes": [
+              "INTERNAL"
+            ],
+            "rationale": "Reads policy configuration files from ~/.signet/policy.yaml and SIGNET_POLICY_PATH containing user-defined security rules (INTERNAL classification). Reads Claude Code PreToolUse hook JSON from stdin containing tool invocation requests with potential sensitive parameters (INTERNAL classification). Writes default policy template to filesystem during --init command. No access to PUBLIC or PII data.",
+            "side_effects": [
+              {
+                "type": "file_read",
+                "classification": "INTERNAL",
+                "fields": [
+                  "policy_rules",
+                  "tool_patterns",
+                  "conditions",
+                  "actions"
+                ],
+                "rationale": "Reads security policy configuration to determine allowed/denied tool usage patterns"
+              },
+              {
+                "type": "file_write",
+                "classification": "INTERNAL",
+                "fields": [
+                  "default_policy_template"
+                ],
+                "rationale": "Creates initial policy file with safe default rules during setup"
+              },
+              {
+                "type": "stdin_read",
+                "classification": "INTERNAL",
+                "fields": [
+                  "tool_name",
+                  "parameters",
+                  "context"
+                ],
+                "rationale": "Reads tool invocation requests from Claude Code hooks for security evaluation"
+              },
+              {
+                "type": "stdout_write",
+                "classification": "INTERNAL",
+                "fields": [
+                  "decision",
+                  "reason",
+                  "evaluation_metadata"
+                ],
+                "rationale": "Returns security decisions and explanations to calling process"
+              }
+            ]
+          },
+          "authority": {
+            "domains": [],
+            "rationale": null
+          }
+        },
+        "implementation_status": "contracted",
+        "test_results": null
+      }
+    }
+  },
+  "engineering_decisions": [
+    {
+      "ambiguity": "",
+      "decision": "Single module implementation",
+      "rationale": "This is a straightforward CLI tool with clear data flow: stdin JSON → policy evaluation → stdout JSON. All functionality revolves around the same data structures (hook input, policy rules, evaluation state) and shares common error handling patterns. The complexity comes from business logic rather than architectural boundaries."
+    },
+    {
+      "ambiguity": "",
+      "decision": "Built-in default policy as embedded data",
+      "rationale": "The safe defaults requirement suggests embedding the default policy as a Python data structure rather than requiring a separate file, ensuring the tool works out-of-box and can't fail due to missing default policy files."
+    },
+    {
+      "ambiguity": "",
+      "decision": "Policy caching at module level",
+      "rationale": "The 15ms performance requirement with cached policy suggests simple module-level caching rather than a separate caching subsystem, since the tool is invoked per-hook-call rather than running as a daemon."
+    },
+    {
+      "ambiguity": "",
+      "decision": "JSON over YAML for performance",
+      "rationale": "Given the 15ms performance constraint and 'no external dependencies' requirement, using JSON for policy format eliminates YAML parsing overhead while maintaining human readability. The interview mentions 'use json for policy if yaml is too slow'."
+    }
+  ],
+  "failure_history": [
+    {
+      "component_id": "signet_eval_tool",
+      "failure_type": "implementation_bug",
+      "description": "Component 'signet_eval_tool' failed 24 of 40 contract tests. Since this is a leaf component, the implementation does not match the contract.",
+      "resolution": "Re-implement with fresh context, focusing on the failing tests.",
+      "timestamp": "2026-03-21T01:17:08.399015"
+    }
+  ],
+  "lessons_learned": [],
+  "version": 1
+}

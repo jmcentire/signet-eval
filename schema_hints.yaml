@@ -1,0 +1,57 @@
+# Schema Hints — signet-eval
+# Synthesized from design conversation, 2026-03-21
+
+schemas:
+  - name: PolicyRule
+    fields:
+      - name: tool
+        type: str
+        description: Tool name to match (exact or regex). Empty matches all tools.
+      - name: match
+        type: str
+        description: Regex pattern to match against tool_input (command text, file path, etc.)
+      - name: path
+        type: str
+        description: Regex pattern to match against file paths (for Write/Edit/Read tools).
+      - name: decision
+        type: enum(allow, deny, ask)
+        description: What to do when this rule matches.
+      - name: reason
+        type: str
+        description: Human-readable explanation for deny/ask decisions.
+
+  - name: Policy
+    fields:
+      - name: default
+        type: enum(allow, deny, ask)
+        description: Decision when no rule matches. Default is "allow".
+      - name: rules
+        type: list[PolicyRule]
+        description: Ordered list of rules. First match wins.
+
+  - name: HookInput
+    fields:
+      - name: tool_name
+        type: str
+        description: Claude Code tool name (Bash, Read, Write, Edit, Glob, Grep, etc.)
+      - name: tool_input
+        type: dict
+        description: Tool arguments (command for Bash, file_path for Read, etc.)
+      - name: session_id
+        type: str
+        description: Claude Code session identifier.
+
+  - name: HookOutput
+    fields:
+      - name: permissionDecision
+        type: enum(allow, deny, ask)
+        description: The policy decision.
+      - name: permissionDecisionReason
+        type: str
+        description: Reason for deny/ask decisions. Empty for allow.
+
+storage:
+  backend: filesystem
+  notes: >
+    Policy stored as YAML at ~/.signet/policy.yaml. No database.
+    No persistence beyond the policy file itself.

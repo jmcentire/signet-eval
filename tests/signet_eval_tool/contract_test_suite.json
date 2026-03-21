@@ -1,0 +1,578 @@
+{
+  "component_id": "signet_eval_tool",
+  "contract_version": 1,
+  "test_cases": [
+    {
+      "id": "test_main_happy_path",
+      "description": "Main function successfully processes basic CLI arguments and returns 0",
+      "function": "main",
+      "category": "happy_path",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "args": "[\"--policy-path\", \"/tmp/test.yaml\"]"
+      },
+      "input_description": "",
+      "expected_output_description": "Returns 0 indicating success",
+      "expected_error": "",
+      "assertions": []
+    },
+    {
+      "id": "test_main_init_command",
+      "description": "Main function successfully creates policy file with --init command",
+      "function": "main",
+      "category": "happy_path",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "args": "[\"--init\", \"--policy-path\", \"/tmp/test_policy.yaml\"]"
+      },
+      "input_description": "",
+      "expected_output_description": "Returns 0 and policy file exists",
+      "expected_error": "",
+      "assertions": []
+    },
+    {
+      "id": "test_main_argument_parsing_error",
+      "description": "Main function returns non-zero when invalid arguments provided",
+      "function": "main",
+      "category": "error_case",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "args": "[\"--invalid-flag\"]"
+      },
+      "input_description": "",
+      "expected_output_description": "Returns non-zero error code",
+      "expected_error": "ArgumentParsingError",
+      "assertions": []
+    },
+    {
+      "id": "test_main_policy_init_error",
+      "description": "Main function returns non-zero when policy file creation fails",
+      "function": "main",
+      "category": "error_case",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "args": "[\"--init\", \"--policy-path\", \"/root/readonly/policy.yaml\"]"
+      },
+      "input_description": "",
+      "expected_output_description": "Returns non-zero error code",
+      "expected_error": "PolicyInitError",
+      "assertions": []
+    },
+    {
+      "id": "test_parse_args_happy_path",
+      "description": "Parse arguments successfully with valid input",
+      "function": "parse_args",
+      "category": "happy_path",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "args": "[\"--init\", \"--verbose\"]"
+      },
+      "input_description": "",
+      "expected_output_description": "Returns CliArgs with init=True, verbose=True",
+      "expected_error": "",
+      "assertions": []
+    },
+    {
+      "id": "test_parse_args_defaults",
+      "description": "Parse arguments applies defaults when minimal input provided",
+      "function": "parse_args",
+      "category": "edge_case",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "args": "[]"
+      },
+      "input_description": "",
+      "expected_output_description": "Returns CliArgs with defaults applied",
+      "expected_error": "",
+      "assertions": []
+    },
+    {
+      "id": "test_parse_args_invalid_combination",
+      "description": "Parse arguments fails with invalid argument combination",
+      "function": "parse_args",
+      "category": "error_case",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "args": "[\"--init\", \"--unknown-flag\"]"
+      },
+      "input_description": "",
+      "expected_output_description": "",
+      "expected_error": "ArgumentError",
+      "assertions": []
+    },
+    {
+      "id": "test_init_policy_file_happy_path",
+      "description": "Successfully create policy file at specified location",
+      "function": "init_policy_file",
+      "category": "happy_path",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "policy_path": "/tmp/test_policy.yaml"
+      },
+      "input_description": "",
+      "expected_output_description": "Policy file created at target location",
+      "expected_error": "",
+      "assertions": []
+    },
+    {
+      "id": "test_init_policy_file_creates_directories",
+      "description": "Creates parent directories when they don't exist",
+      "function": "init_policy_file",
+      "category": "happy_path",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "policy_path": "/tmp/nonexistent/nested/policy.yaml"
+      },
+      "input_description": "",
+      "expected_output_description": "Parent directories and policy file created",
+      "expected_error": "",
+      "assertions": []
+    },
+    {
+      "id": "test_init_policy_file_filesystem_error",
+      "description": "Fails when cannot create directories or write file",
+      "function": "init_policy_file",
+      "category": "error_case",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "policy_path": "/root/readonly/policy.yaml"
+      },
+      "input_description": "",
+      "expected_output_description": "",
+      "expected_error": "FileSystemError",
+      "assertions": []
+    },
+    {
+      "id": "test_init_policy_file_permission_error",
+      "description": "Fails when insufficient permissions for file creation",
+      "function": "init_policy_file",
+      "category": "error_case",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "policy_path": "/etc/signet/policy.yaml"
+      },
+      "input_description": "",
+      "expected_output_description": "",
+      "expected_error": "PermissionError",
+      "assertions": []
+    },
+    {
+      "id": "test_load_policy_happy_path",
+      "description": "Successfully load valid policy configuration from file",
+      "function": "load_policy",
+      "category": "happy_path",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "policy_path": "/tmp/valid_policy.yaml"
+      },
+      "input_description": "",
+      "expected_output_description": "Returns valid PolicyConfig with compiled regex patterns",
+      "expected_error": "",
+      "assertions": []
+    },
+    {
+      "id": "test_load_policy_fallback_to_defaults",
+      "description": "Uses embedded defaults when file is missing or invalid",
+      "function": "load_policy",
+      "category": "happy_path",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "policy_path": "/tmp/nonexistent.yaml"
+      },
+      "input_description": "",
+      "expected_output_description": "Returns valid PolicyConfig with default values",
+      "expected_error": "",
+      "assertions": []
+    },
+    {
+      "id": "test_load_policy_parse_error",
+      "description": "Fails when policy file has invalid YAML syntax",
+      "function": "load_policy",
+      "category": "error_case",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "policy_path": "/tmp/invalid_yaml.yaml"
+      },
+      "input_description": "",
+      "expected_output_description": "",
+      "expected_error": "PolicyParseError",
+      "assertions": []
+    },
+    {
+      "id": "test_load_policy_regex_compile_error",
+      "description": "Fails when policy contains invalid regex pattern",
+      "function": "load_policy",
+      "category": "error_case",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "policy_path": "/tmp/invalid_regex_policy.yaml"
+      },
+      "input_description": "",
+      "expected_output_description": "",
+      "expected_error": "RegexCompileError",
+      "assertions": []
+    },
+    {
+      "id": "test_parse_hook_input_happy_path",
+      "description": "Successfully parse valid JSON tool use request",
+      "function": "parse_hook_input",
+      "category": "happy_path",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "json_input": "{\"tool_name\": \"bash\", \"parameters\": {\"command\": \"ls\"}, \"context\": {}}"
+      },
+      "input_description": "",
+      "expected_output_description": "Returns validated ToolUseRequest with required fields",
+      "expected_error": "",
+      "assertions": []
+    },
+    {
+      "id": "test_parse_hook_input_json_decode_error",
+      "description": "Fails when input has invalid JSON syntax",
+      "function": "parse_hook_input",
+      "category": "error_case",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "json_input": "{invalid json"
+      },
+      "input_description": "",
+      "expected_output_description": "",
+      "expected_error": "JSONDecodeError",
+      "assertions": []
+    },
+    {
+      "id": "test_parse_hook_input_validation_error",
+      "description": "Fails when missing required fields or invalid types",
+      "function": "parse_hook_input",
+      "category": "error_case",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "json_input": "{\"tool_name\": \"\", \"parameters\": \"not_dict\"}"
+      },
+      "input_description": "",
+      "expected_output_description": "",
+      "expected_error": "ValidationError",
+      "assertions": []
+    },
+    {
+      "id": "test_parse_hook_input_size_error",
+      "description": "Fails when input exceeds maximum allowed size",
+      "function": "parse_hook_input",
+      "category": "error_case",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "json_input": "\"{'tool_name': 'x' * 10000}\""
+      },
+      "input_description": "",
+      "expected_output_description": "",
+      "expected_error": "InputSizeError",
+      "assertions": []
+    },
+    {
+      "id": "test_evaluate_request_happy_path",
+      "description": "Successfully evaluate tool use request against policy",
+      "function": "evaluate_request",
+      "category": "happy_path",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {},
+      "input_description": "Valid request and policy with matching rule",
+      "expected_output_description": "Returns EvaluationResult with decision and metadata",
+      "expected_error": "",
+      "assertions": []
+    },
+    {
+      "id": "test_evaluate_request_first_match_wins",
+      "description": "First matching rule determines result when multiple rules could match",
+      "function": "evaluate_request",
+      "category": "edge_case",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {},
+      "input_description": "Request matches multiple rules in policy",
+      "expected_output_description": "Returns result from first matching rule",
+      "expected_error": "",
+      "assertions": []
+    },
+    {
+      "id": "test_evaluate_request_default_action",
+      "description": "Falls back to default action when no rules match",
+      "function": "evaluate_request",
+      "category": "edge_case",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {},
+      "input_description": "Request doesn't match any policy rules",
+      "expected_output_description": "Returns EvaluationResult with default_action decision",
+      "expected_error": "",
+      "assertions": []
+    },
+    {
+      "id": "test_evaluate_request_timeout_error",
+      "description": "Fails when rule evaluation exceeds time limit",
+      "function": "evaluate_request",
+      "category": "error_case",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {},
+      "input_description": "Policy with ReDoS vulnerable regex pattern",
+      "expected_output_description": "",
+      "expected_error": "EvaluationTimeoutError",
+      "assertions": []
+    },
+    {
+      "id": "test_evaluate_request_regex_match_error",
+      "description": "Fails when regex pattern matching encounters error",
+      "function": "evaluate_request",
+      "category": "error_case",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {},
+      "input_description": "Request causes regex matching failure",
+      "expected_output_description": "",
+      "expected_error": "RegexMatchError",
+      "assertions": []
+    },
+    {
+      "id": "test_match_rule_conditions_happy_path",
+      "description": "Successfully match request against rule conditions",
+      "function": "match_rule_conditions",
+      "category": "happy_path",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {},
+      "input_description": "Request matches all rule conditions",
+      "expected_output_description": "Returns True when all conditions match",
+      "expected_error": "",
+      "assertions": []
+    },
+    {
+      "id": "test_match_rule_conditions_partial_match",
+      "description": "Returns false when only some conditions match",
+      "function": "match_rule_conditions",
+      "category": "edge_case",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {},
+      "input_description": "Request matches some but not all conditions",
+      "expected_output_description": "Returns False when any condition fails",
+      "expected_error": "",
+      "assertions": []
+    },
+    {
+      "id": "test_match_rule_conditions_eval_error",
+      "description": "Fails when error occurs evaluating parameter condition",
+      "function": "match_rule_conditions",
+      "category": "error_case",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {},
+      "input_description": "Rule condition causes evaluation error",
+      "expected_output_description": "",
+      "expected_error": "ConditionEvalError",
+      "assertions": []
+    },
+    {
+      "id": "test_format_output_happy_path",
+      "description": "Successfully format evaluation result as JSON",
+      "function": "format_output",
+      "category": "happy_path",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {},
+      "input_description": "Valid EvaluationResult with decision and metadata",
+      "expected_output_description": "Returns valid JSON string with all required fields",
+      "expected_error": "",
+      "assertions": []
+    },
+    {
+      "id": "test_format_output_serialization_error",
+      "description": "Fails when cannot serialize result to JSON",
+      "function": "format_output",
+      "category": "error_case",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {},
+      "input_description": "EvaluationResult with non-serializable data",
+      "expected_output_description": "",
+      "expected_error": "SerializationError",
+      "assertions": []
+    },
+    {
+      "id": "test_get_default_policy_happy_path",
+      "description": "Returns valid default policy configuration",
+      "function": "get_default_policy",
+      "category": "happy_path",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {},
+      "input_description": "",
+      "expected_output_description": "Returns PolicyConfig with safe defaults and DENY default_action",
+      "expected_error": "",
+      "assertions": []
+    },
+    {
+      "id": "test_decision_enum_construction",
+      "description": "Decision enum accepts valid values",
+      "function": "Decision",
+      "category": "happy_path",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "value": "ALLOW"
+      },
+      "input_description": "",
+      "expected_output_description": "Creates Decision.ALLOW instance",
+      "expected_error": "",
+      "assertions": []
+    },
+    {
+      "id": "test_decision_enum_invalid_value",
+      "description": "Decision enum rejects invalid values",
+      "function": "Decision",
+      "category": "error_case",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "value": "INVALID"
+      },
+      "input_description": "",
+      "expected_output_description": "",
+      "expected_error": "ValueError",
+      "assertions": []
+    },
+    {
+      "id": "test_tool_use_request_validation",
+      "description": "ToolUseRequest validates tool_name length constraint",
+      "function": "ToolUseRequest",
+      "category": "edge_case",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "tool_name": "",
+        "parameters": "{}",
+        "context": "{}"
+      },
+      "input_description": "",
+      "expected_output_description": "",
+      "expected_error": "ValidationError",
+      "assertions": []
+    },
+    {
+      "id": "test_policy_rule_regex_validation",
+      "description": "PolicyRule validates tool_pattern is valid regex",
+      "function": "PolicyRule",
+      "category": "error_case",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "tool_pattern": "[invalid regex"
+      },
+      "input_description": "",
+      "expected_output_description": "",
+      "expected_error": "ValidationError",
+      "assertions": []
+    },
+    {
+      "id": "test_policy_config_version_validation",
+      "description": "PolicyConfig validates version is >= 1",
+      "function": "PolicyConfig",
+      "category": "error_case",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "version": "0"
+      },
+      "input_description": "",
+      "expected_output_description": "",
+      "expected_error": "ValidationError",
+      "assertions": []
+    },
+    {
+      "id": "test_performance_15ms_budget",
+      "description": "Policy evaluation completes within 15ms performance budget",
+      "function": "evaluate_request",
+      "category": "invariant",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {},
+      "input_description": "Large policy with many rules",
+      "expected_output_description": "Evaluation completes within 15ms",
+      "expected_error": "",
+      "assertions": []
+    },
+    {
+      "id": "test_fail_secure_behavior",
+      "description": "Unknown/error conditions default to DENY decision",
+      "function": "evaluate_request",
+      "category": "invariant",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {},
+      "input_description": "Request that causes evaluation error",
+      "expected_output_description": "Returns DENY decision for fail-secure behavior",
+      "expected_error": "",
+      "assertions": []
+    },
+    {
+      "id": "test_first_match_wins_invariant",
+      "description": "Rules evaluated in order, first match determines outcome",
+      "function": "evaluate_request",
+      "category": "invariant",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {},
+      "input_description": "Policy with overlapping rules",
+      "expected_output_description": "Result matches first applicable rule, not later ones",
+      "expected_error": "",
+      "assertions": []
+    },
+    {
+      "id": "test_input_validation_invariant",
+      "description": "All JSON input is validated before processing",
+      "function": "parse_hook_input",
+      "category": "invariant",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {},
+      "input_description": "Malformed JSON input",
+      "expected_output_description": "Input rejected with validation error before processing",
+      "expected_error": "",
+      "assertions": []
+    },
+    {
+      "id": "test_regex_patterns_cached",
+      "description": "All regex patterns are compiled and cached at load time",
+      "function": "load_policy",
+      "category": "invariant",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {},
+      "input_description": "Policy with multiple regex patterns",
+      "expected_output_description": "All patterns compiled and cached in PolicyConfig",
+      "expected_error": "",
+      "assertions": []
+    }
+  ],
+  "test_language": "python",
+  "generated_code": "\"\"\"\nSignet Evaluation Tool Contract Test Suite\nTests the complete behavior of the Signet policy evaluation tool according to its contract.\n\"\"\"\n\nimport pytest\nimport unittest.mock as mock\nimport json\nimport time\nimport tempfile\nimport os\nimport sys\nimport subprocess\nfrom pathlib import Path\n\n# Import the component under test\nfrom signet_eval_tool import *\n\n\nclass TestMainFunction:\n    \"\"\"Test main CLI entry point functionality.\"\"\"\n    \n    def test_main_happy_path(self):\n        \"\"\"Main function successfully processes basic CLI arguments and returns 0.\"\"\"\n        with mock.patch('signet_eval_tool.parse_args') as mock_parse:\n            with mock.patch('signet_eval_tool.load_policy') as mock_load:\n                with mock.patch('signet_eval_tool.parse_hook_input') as mock_parse_input:\n                    with mock.patch('signet_eval_tool.evaluate_request') as mock_evaluate:\n                        with mock.patch('signet_eval_tool.format_output') as mock_format:\n                            mock_parse.return_value = CliArgs(init=False, policy_path=\"/tmp/test.yaml\", verbose=False)\n                            mock_load.return_value = PolicyConfig(version=1, rules=[], default_action=Decision.DENY)\n                            mock_parse_input.return_value = ToolUseRequest(tool_name=\"bash\", parameters={}, context={})\n                            mock_evaluate.return_value = EvaluationResult(decision=Decision.ALLOW, matched_rule=\"test\", reason=\"test\", evaluation_time_ms=1.0)\n                            mock_format.return_value = '{\"decision\": \"ALLOW\"}'\n                            \n                            with mock.patch('sys.stdin.read', return_value='{\"tool_name\": \"bash\"}'):\n                                result = main([\"--policy-path\", \"/tmp/test.yaml\"])\n                            \n                            assert result == 0\n    \n    def test_main_init_command(self):\n        \"\"\"Main function successfully creates policy file with --init command.\"\"\"\n        with mock.patch('signet_eval_tool.parse_args') as mock_parse:\n            with mock.patch('signet_eval_tool.init_policy_file') as mock_init:\n                with mock.patch('os.path.exists', return_value=True):\n                    mock_parse.return_value = CliArgs(init=True, policy_path=\"/tmp/test_policy.yaml\", verbose=False)\n                    \n                    result = main([\"--init\", \"--policy-path\", \"/tmp/test_policy.yaml\"])\n                    \n                    assert result == 0\n                    mock_init.assert_called_once_with(\"/tmp/test_policy.yaml\")\n    \n    def test_main_argument_parsing_error(self):\n        \"\"\"Main function returns non-zero when invalid arguments provided.\"\"\"\n        with mock.patch('signet_eval_tool.parse_args') as mock_parse:\n            mock_parse.side_effect = ArgumentError(\"Invalid arguments\")\n            \n            result = main([\"--invalid-flag\"])\n            \n            assert result != 0\n    \n    def test_main_policy_init_error(self):\n        \"\"\"Main function returns non-zero when policy file creation fails.\"\"\"\n        with mock.patch('signet_eval_tool.parse_args') as mock_parse:\n            with mock.patch('signet_eval_tool.init_policy_file') as mock_init:\n                mock_parse.return_value = CliArgs(init=True, policy_path=\"/root/readonly/policy.yaml\", verbose=False)\n                mock_init.side_effect = PolicyInitError(\"Cannot create file\")\n                \n                result = main([\"--init\", \"--policy-path\", \"/root/readonly/policy.yaml\"])\n                \n                assert result != 0\n\n\nclass TestParseArgs:\n    \"\"\"Test command-line argument parsing.\"\"\"\n    \n    def test_parse_args_happy_path(self):\n        \"\"\"Parse arguments successfully with valid input.\"\"\"\n        result = parse_args([\"--init\", \"--verbose\"])\n        \n        assert isinstance(result, CliArgs)\n        assert result.init is True\n        assert result.verbose is True\n    \n    def test_parse_args_defaults(self):\n        \"\"\"Parse arguments applies defaults when minimal input provided.\"\"\"\n        result = parse_args([])\n        \n        assert isinstance(result, CliArgs)\n        assert result.init is False\n        assert result.verbose is False\n        assert result.policy_path is not None\n    \n    def test_parse_args_invalid_combination(self):\n        \"\"\"Parse arguments fails with invalid argument combination.\"\"\"\n        with pytest.raises(ArgumentError):\n            parse_args([\"--init\", \"--unknown-flag\"])\n\n\nclass TestInitPolicyFile:\n    \"\"\"Test policy file initialization.\"\"\"\n    \n    def test_init_policy_file_happy_path(self):\n        \"\"\"Successfully create policy file at specified location.\"\"\"\n        with tempfile.TemporaryDirectory() as tmpdir:\n            policy_path = os.path.join(tmpdir, \"test_policy.yaml\")\n            \n            init_policy_file(policy_path)\n            \n            assert os.path.exists(policy_path)\n    \n    def test_init_policy_file_creates_directories(self):\n        \"\"\"Creates parent directories when they don't exist.\"\"\"\n        with tempfile.TemporaryDirectory() as tmpdir:\n            policy_path = os.path.join(tmpdir, \"nonexistent\", \"nested\", \"policy.yaml\")\n            \n            init_policy_file(policy_path)\n            \n            assert os.path.exists(policy_path)\n            assert os.path.exists(os.path.dirname(policy_path))\n    \n    def test_init_policy_file_filesystem_error(self):\n        \"\"\"Fails when cannot create directories or write file.\"\"\"\n        with pytest.raises(FileSystemError):\n            init_policy_file(\"/root/readonly/policy.yaml\")\n    \n    def test_init_policy_file_permission_error(self):\n        \"\"\"Fails when insufficient permissions for file creation.\"\"\"\n        with pytest.raises(PermissionError):\n            init_policy_file(\"/etc/signet/policy.yaml\")\n\n\nclass TestLoadPolicy:\n    \"\"\"Test policy configuration loading.\"\"\"\n    \n    def test_load_policy_happy_path(self):\n        \"\"\"Successfully load valid policy configuration from file.\"\"\"\n        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:\n            f.write(\"\"\"\nversion: 1\ndefault_action: DENY\nrules:\n  - name: allow_bash\n    tool_pattern: bash\n    conditions: []\n    action: ALLOW\n    reason: Safe command\n\"\"\")\n            f.flush()\n            \n            try:\n                result = load_policy(f.name)\n                \n                assert isinstance(result, PolicyConfig)\n                assert result.version == 1\n                assert result.default_action == Decision.DENY\n                assert len(result.rules) == 1\n            finally:\n                os.unlink(f.name)\n    \n    def test_load_policy_fallback_to_defaults(self):\n        \"\"\"Uses embedded defaults when file is missing or invalid.\"\"\"\n        result = load_policy(\"/tmp/nonexistent.yaml\")\n        \n        assert isinstance(result, PolicyConfig)\n        assert result.version >= 1\n        assert result.default_action == Decision.DENY\n    \n    def test_load_policy_parse_error(self):\n        \"\"\"Fails when policy file has invalid YAML syntax.\"\"\"\n        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:\n            f.write(\"invalid: yaml: syntax [\")\n            f.flush()\n            \n            try:\n                with pytest.raises(PolicyParseError):\n                    load_policy(f.name)\n            finally:\n                os.unlink(f.name)\n    \n    def test_load_policy_regex_compile_error(self):\n        \"\"\"Fails when policy contains invalid regex pattern.\"\"\"\n        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:\n            f.write(\"\"\"\nversion: 1\ndefault_action: DENY\nrules:\n  - name: bad_regex\n    tool_pattern: \"[invalid regex\"\n    conditions: []\n    action: DENY\n    reason: Test\n\"\"\")\n            f.flush()\n            \n            try:\n                with pytest.raises(RegexCompileError):\n                    load_policy(f.name)\n            finally:\n                os.unlink(f.name)\n\n\nclass TestParseHookInput:\n    \"\"\"Test JSON input parsing and validation.\"\"\"\n    \n    def test_parse_hook_input_happy_path(self):\n        \"\"\"Successfully parse valid JSON tool use request.\"\"\"\n        json_input = '{\"tool_name\": \"bash\", \"parameters\": {\"command\": \"ls\"}, \"context\": {}}'\n        \n        result = parse_hook_input(json_input)\n        \n        assert isinstance(result, ToolUseRequest)\n        assert result.tool_name == \"bash\"\n        assert result.parameters == {\"command\": \"ls\"}\n        assert result.context == {}\n    \n    def test_parse_hook_input_json_decode_error(self):\n        \"\"\"Fails when input has invalid JSON syntax.\"\"\"\n        with pytest.raises(json.JSONDecodeError):\n            parse_hook_input(\"{invalid json\")\n    \n    def test_parse_hook_input_validation_error(self):\n        \"\"\"Fails when missing required fields or invalid types.\"\"\"\n        with pytest.raises(ValidationError):\n            parse_hook_input('{\"tool_name\": \"\", \"parameters\": \"not_dict\"}')\n    \n    def test_parse_hook_input_size_error(self):\n        \"\"\"Fails when input exceeds maximum allowed size.\"\"\"\n        large_input = '{\"tool_name\": \"' + 'x' * 10000 + '\", \"parameters\": {}, \"context\": {}}'\n        \n        with pytest.raises(InputSizeError):\n            parse_hook_input(large_input)\n\n\nclass TestEvaluateRequest:\n    \"\"\"Test policy evaluation logic.\"\"\"\n    \n    def test_evaluate_request_happy_path(self):\n        \"\"\"Successfully evaluate tool use request against policy.\"\"\"\n        request = ToolUseRequest(tool_name=\"bash\", parameters={\"command\": \"ls\"}, context={})\n        rule = PolicyRule(name=\"allow_bash\", tool_pattern=\"bash\", conditions=[], action=Decision.ALLOW, reason=\"Safe\")\n        policy = PolicyConfig(version=1, rules=[rule], default_action=Decision.DENY)\n        \n        result = evaluate_request(request, policy)\n        \n        assert isinstance(result, EvaluationResult)\n        assert result.decision == Decision.ALLOW\n        assert result.matched_rule == \"allow_bash\"\n        assert result.evaluation_time_ms > 0\n    \n    def test_evaluate_request_first_match_wins(self):\n        \"\"\"First matching rule determines result when multiple rules could match.\"\"\"\n        request = ToolUseRequest(tool_name=\"bash\", parameters={}, context={})\n        rule1 = PolicyRule(name=\"first_rule\", tool_pattern=\".*\", conditions=[], action=Decision.ALLOW, reason=\"First\")\n        rule2 = PolicyRule(name=\"second_rule\", tool_pattern=\"bash\", conditions=[], action=Decision.DENY, reason=\"Second\")\n        policy = PolicyConfig(version=1, rules=[rule1, rule2], default_action=Decision.DENY)\n        \n        result = evaluate_request(request, policy)\n        \n        assert result.decision == Decision.ALLOW\n        assert result.matched_rule == \"first_rule\"\n    \n    def test_evaluate_request_default_action(self):\n        \"\"\"Falls back to default action when no rules match.\"\"\"\n        request = ToolUseRequest(tool_name=\"unknown_tool\", parameters={}, context={})\n        rule = PolicyRule(name=\"bash_only\", tool_pattern=\"bash\", conditions=[], action=Decision.ALLOW, reason=\"Safe\")\n        policy = PolicyConfig(version=1, rules=[rule], default_action=Decision.DENY)\n        \n        result = evaluate_request(request, policy)\n        \n        assert result.decision == Decision.DENY\n        assert result.matched_rule == \"\"\n    \n    def test_evaluate_request_timeout_error(self):\n        \"\"\"Fails when rule evaluation exceeds time limit.\"\"\"\n        # Create a ReDoS vulnerable pattern\n        request = ToolUseRequest(tool_name=\"a\" * 1000, parameters={}, context={})\n        rule = PolicyRule(name=\"redos\", tool_pattern=\"(a+)+b\", conditions=[], action=Decision.ALLOW, reason=\"ReDoS\")\n        policy = PolicyConfig(version=1, rules=[rule], default_action=Decision.DENY)\n        \n        with pytest.raises(EvaluationTimeoutError):\n            evaluate_request(request, policy)\n    \n    def test_evaluate_request_regex_match_error(self):\n        \"\"\"Fails when regex pattern matching encounters error.\"\"\"\n        request = ToolUseRequest(tool_name=\"test\", parameters={}, context={})\n        \n        with mock.patch('re.match') as mock_match:\n            mock_match.side_effect = Exception(\"Regex error\")\n            rule = PolicyRule(name=\"test\", tool_pattern=\"test\", conditions=[], action=Decision.ALLOW, reason=\"Test\")\n            policy = PolicyConfig(version=1, rules=[rule], default_action=Decision.DENY)\n            \n            with pytest.raises(RegexMatchError):\n                evaluate_request(request, policy)\n\n\nclass TestMatchRuleConditions:\n    \"\"\"Test individual rule condition matching.\"\"\"\n    \n    def test_match_rule_conditions_happy_path(self):\n        \"\"\"Successfully match request against rule conditions.\"\"\"\n        request = ToolUseRequest(tool_name=\"bash\", parameters={\"command\": \"ls\"}, context={})\n        rule = PolicyRule(name=\"test\", tool_pattern=\"bash\", conditions=[\"parameters.command == 'ls'\"], action=Decision.ALLOW, reason=\"Test\")\n        \n        result = match_rule_conditions(request, rule)\n        \n        assert result is True\n    \n    def test_match_rule_conditions_partial_match(self):\n        \"\"\"Returns false when only some conditions match.\"\"\"\n        request = ToolUseRequest(tool_name=\"bash\", parameters={\"command\": \"rm\"}, context={})\n        rule = PolicyRule(name=\"test\", tool_pattern=\"bash\", conditions=[\"parameters.command == 'ls'\"], action=Decision.ALLOW, reason=\"Test\")\n        \n        result = match_rule_conditions(request, rule)\n        \n        assert result is False\n    \n    def test_match_rule_conditions_eval_error(self):\n        \"\"\"Fails when error occurs evaluating parameter condition.\"\"\"\n        request = ToolUseRequest(tool_name=\"bash\", parameters={}, context={})\n        rule = PolicyRule(name=\"test\", tool_pattern=\"bash\", conditions=[\"invalid.syntax\"], action=Decision.ALLOW, reason=\"Test\")\n        \n        with pytest.raises(ConditionEvalError):\n            match_rule_conditions(request, rule)\n\n\nclass TestFormatOutput:\n    \"\"\"Test result formatting.\"\"\"\n    \n    def test_format_output_happy_path(self):\n        \"\"\"Successfully format evaluation result as JSON.\"\"\"\n        result = EvaluationResult(decision=Decision.ALLOW, matched_rule=\"test\", reason=\"Testing\", evaluation_time_ms=1.5)\n        \n        output = format_output(result)\n        \n        assert isinstance(output, str)\n        parsed = json.loads(output)\n        assert parsed[\"decision\"] == \"ALLOW\"\n        assert parsed[\"matched_rule\"] == \"test\"\n        assert parsed[\"reason\"] == \"Testing\"\n        assert parsed[\"evaluation_time_ms\"] == 1.5\n    \n    def test_format_output_serialization_error(self):\n        \"\"\"Fails when cannot serialize result to JSON.\"\"\"\n        # Create a result with non-serializable data\n        result = EvaluationResult(decision=Decision.ALLOW, matched_rule=\"test\", reason=lambda: \"function\", evaluation_time_ms=1.0)\n        \n        with pytest.raises(SerializationError):\n            format_output(result)\n\n\nclass TestGetDefaultPolicy:\n    \"\"\"Test default policy generation.\"\"\"\n    \n    def test_get_default_policy_happy_path(self):\n        \"\"\"Returns valid default policy configuration.\"\"\"\n        result = get_default_policy()\n        \n        assert isinstance(result, PolicyConfig)\n        assert result.version >= 1\n        assert result.default_action == Decision.DENY\n        assert isinstance(result.rules, list)\n\n\nclass TestTypeValidation:\n    \"\"\"Test type construction and validation.\"\"\"\n    \n    def test_decision_enum_construction(self):\n        \"\"\"Decision enum accepts valid values.\"\"\"\n        decision = Decision.ALLOW\n        assert decision == Decision.ALLOW\n        \n        decision = Decision.DENY\n        assert decision == Decision.DENY\n        \n        decision = Decision.ASK\n        assert decision == Decision.ASK\n    \n    def test_decision_enum_invalid_value(self):\n        \"\"\"Decision enum rejects invalid values.\"\"\"\n        with pytest.raises(ValueError):\n            Decision(\"INVALID\")\n    \n    def test_tool_use_request_validation(self):\n        \"\"\"ToolUseRequest validates tool_name length constraint.\"\"\"\n        with pytest.raises(ValidationError):\n            ToolUseRequest(tool_name=\"\", parameters={}, context={})\n        \n        with pytest.raises(ValidationError):\n            ToolUseRequest(tool_name=\"x\" * 101, parameters={}, context={})\n    \n    def test_policy_rule_regex_validation(self):\n        \"\"\"PolicyRule validates tool_pattern is valid regex.\"\"\"\n        with pytest.raises(ValidationError):\n            PolicyRule(name=\"test\", tool_pattern=\"[invalid regex\", conditions=[], action=Decision.ALLOW, reason=\"test\")\n    \n    def test_policy_config_version_validation(self):\n        \"\"\"PolicyConfig validates version is >= 1.\"\"\"\n        with pytest.raises(ValidationError):\n            PolicyConfig(version=0, rules=[], default_action=Decision.DENY)\n\n\nclass TestInvariants:\n    \"\"\"Test system invariants and properties.\"\"\"\n    \n    def test_performance_15ms_budget(self):\n        \"\"\"Policy evaluation completes within 15ms performance budget.\"\"\"\n        # Create a large policy with many rules\n        rules = []\n        for i in range(100):\n            rules.append(PolicyRule(\n                name=f\"rule_{i}\",\n                tool_pattern=f\"tool_{i}\",\n                conditions=[],\n                action=Decision.ALLOW,\n                reason=\"Test\"\n            ))\n        \n        policy = PolicyConfig(version=1, rules=rules, default_action=Decision.DENY)\n        request = ToolUseRequest(tool_name=\"tool_50\", parameters={}, context={})\n        \n        start_time = time.perf_counter()\n        result = evaluate_request(request, policy)\n        end_time = time.perf_counter()\n        \n        evaluation_time_ms = (end_time - start_time) * 1000\n        assert evaluation_time_ms < 15.0\n        assert result.evaluation_time_ms < 15.0\n    \n    def test_fail_secure_behavior(self):\n        \"\"\"Unknown/error conditions default to DENY decision.\"\"\"\n        request = ToolUseRequest(tool_name=\"unknown\", parameters={}, context={})\n        policy = PolicyConfig(version=1, rules=[], default_action=Decision.DENY)\n        \n        # Simulate an error during evaluation\n        with mock.patch('signet_eval_tool.match_rule_conditions') as mock_match:\n            mock_match.side_effect = Exception(\"Evaluation error\")\n            \n            result = evaluate_request(request, policy)\n            \n            assert result.decision == Decision.DENY\n    \n    def test_first_match_wins_invariant(self):\n        \"\"\"Rules evaluated in order, first match determines outcome.\"\"\"\n        request = ToolUseRequest(tool_name=\"bash\", parameters={}, context={})\n        \n        # Create overlapping rules where first allows, second denies\n        rule1 = PolicyRule(name=\"allow_all\", tool_pattern=\".*\", conditions=[], action=Decision.ALLOW, reason=\"Allow all\")\n        rule2 = PolicyRule(name=\"deny_bash\", tool_pattern=\"bash\", conditions=[], action=Decision.DENY, reason=\"Deny bash\")\n        \n        policy = PolicyConfig(version=1, rules=[rule1, rule2], default_action=Decision.ASK)\n        \n        result = evaluate_request(request, policy)\n        \n        assert result.decision == Decision.ALLOW\n        assert result.matched_rule == \"allow_all\"\n    \n    def test_input_validation_invariant(self):\n        \"\"\"All JSON input is validated before processing.\"\"\"\n        malformed_inputs = [\n            '{\"tool_name\": \"\"}',  # Empty tool name\n            '{\"tool_name\": \"valid\"}',  # Missing required fields\n            '{\"tool_name\": 123, \"parameters\": {}, \"context\": {}}',  # Wrong type\n        ]\n        \n        for invalid_input in malformed_inputs:\n            with pytest.raises((ValidationError, json.JSONDecodeError)):\n                parse_hook_input(invalid_input)\n    \n    def test_regex_patterns_cached(self):\n        \"\"\"All regex patterns are compiled and cached at load time.\"\"\"\n        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:\n            f.write(\"\"\"\nversion: 1\ndefault_action: DENY\nrules:\n  - name: pattern1\n    tool_pattern: bash.*\n    conditions: []\n    action: ALLOW\n    reason: Test\n  - name: pattern2\n    tool_pattern: python.*\n    conditions: []\n    action: DENY\n    reason: Test\n\"\"\")\n            f.flush()\n            \n            try:\n                result = load_policy(f.name)\n                \n                # Verify patterns are compiled (this would be implementation-specific)\n                assert len(result.rules) == 2\n                for rule in result.rules:\n                    # In the actual implementation, compiled patterns would be cached\n                    assert rule.tool_pattern is not None\n            finally:\n                os.unlink(f.name)\n\n\n# Custom exception classes for testing\nclass ArgumentError(Exception):\n    \"\"\"Error in command-line arguments.\"\"\"\n    pass\n\nclass PolicyInitError(Exception):\n    \"\"\"Error initializing policy file.\"\"\"\n    pass\n\nclass PolicyParseError(Exception):\n    \"\"\"Error parsing policy configuration.\"\"\"\n    pass\n\nclass RegexCompileError(Exception):\n    \"\"\"Error compiling regex pattern.\"\"\"\n    pass\n\nclass ValidationError(Exception):\n    \"\"\"Error in data validation.\"\"\"\n    pass\n\nclass InputSizeError(Exception):\n    \"\"\"Error when input exceeds size limit.\"\"\"\n    pass\n\nclass EvaluationTimeoutError(Exception):\n    \"\"\"Error when evaluation exceeds time limit.\"\"\"\n    pass\n\nclass RegexMatchError(Exception):\n    \"\"\"Error during regex pattern matching.\"\"\"\n    pass\n\nclass ConditionEvalError(Exception):\n    \"\"\"Error evaluating rule condition.\"\"\"\n    pass\n\nclass SerializationError(Exception):\n    \"\"\"Error serializing result to JSON.\"\"\"\n    pass\n\nclass FileSystemError(Exception):\n    \"\"\"Error with file system operations.\"\"\"\n    pass\n\nclass ArgumentParsingError(Exception):\n    \"\"\"Error parsing command-line arguments.\"\"\"\n    pass\n\n\n# Mock data structures for testing\nclass Decision:\n    \"\"\"Policy evaluation decision enum.\"\"\"\n    ALLOW = \"ALLOW\"\n    DENY = \"DENY\"\n    ASK = \"ASK\"\n\nclass ToolUseRequest:\n    \"\"\"Tool use request data structure.\"\"\"\n    def __init__(self, tool_name, parameters, context):\n        if not tool_name or len(tool_name) > 100:\n            raise ValidationError(\"Invalid tool_name length\")\n        self.tool_name = tool_name\n        self.parameters = parameters\n        self.context = context\n\nclass PolicyRule:\n    \"\"\"Policy rule data structure.\"\"\"\n    def __init__(self, name, tool_pattern, conditions, action, reason):\n        if not name or len(name) > 200:\n            raise ValidationError(\"Invalid name length\")\n        # Validate regex pattern\n        import re\n        try:\n            re.compile(tool_pattern)\n        except re.error:\n            raise ValidationError(\"Invalid regex pattern\")\n        \n        self.name = name\n        self.tool_pattern = tool_pattern\n        self.conditions = conditions\n        self.action = action\n        self.reason = reason\n\nclass PolicyConfig:\n    \"\"\"Policy configuration data structure.\"\"\"\n    def __init__(self, version, rules, default_action):\n        if version < 1:\n            raise ValidationError(\"Version must be >= 1\")\n        self.version = version\n        self.rules = rules\n        self.default_action = default_action\n\nclass EvaluationResult:\n    \"\"\"Policy evaluation result data structure.\"\"\"\n    def __init__(self, decision, matched_rule, reason, evaluation_time_ms):\n        self.decision = decision\n        self.matched_rule = matched_rule\n        self.reason = reason\n        self.evaluation_time_ms = evaluation_time_ms\n\nclass CliArgs:\n    \"\"\"Command-line arguments data structure.\"\"\"\n    def __init__(self, init=False, policy_path=\"~/.signet/policy.yaml\", verbose=False):\n        self.init = init\n        self.policy_path = policy_path\n        self.verbose = verbose"
+}

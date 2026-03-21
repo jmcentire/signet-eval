@@ -1,0 +1,17 @@
+budget: 10.0
+build_mode: auto
+parallel_components: false
+competitive_implementations: false
+shaping: false
+
+role_models:
+  decomposer: claude-sonnet-4-20250514
+  contract_author: claude-sonnet-4-20250514
+  test_author: claude-sonnet-4-20250514
+  code_author: claude-sonnet-4-20250514
+
+role_backends:
+  decomposer: anthropic
+  contract_author: anthropic
+  test_author: anthropic
+  code_author: anthropic

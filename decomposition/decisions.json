@@ -1,0 +1,22 @@
+[
+  {
+    "ambiguity": "",
+    "decision": "Single module implementation",
+    "rationale": "This is a straightforward CLI tool with clear data flow: stdin JSON \u2192 policy evaluation \u2192 stdout JSON. All functionality revolves around the same data structures (hook input, policy rules, evaluation state) and shares common error handling patterns. The complexity comes from business logic rather than architectural boundaries."
+  },
+  {
+    "ambiguity": "",
+    "decision": "Built-in default policy as embedded data",
+    "rationale": "The safe defaults requirement suggests embedding the default policy as a Python data structure rather than requiring a separate file, ensuring the tool works out-of-box and can't fail due to missing default policy files."
+  },
+  {
+    "ambiguity": "",
+    "decision": "Policy caching at module level",
+    "rationale": "The 15ms performance requirement with cached policy suggests simple module-level caching rather than a separate caching subsystem, since the tool is invoked per-hook-call rather than running as a daemon."
+  },
+  {
+    "ambiguity": "",
+    "decision": "JSON over YAML for performance",
+    "rationale": "Given the 15ms performance constraint and 'no external dependencies' requirement, using JSON for policy format eliminates YAML parsing overhead while maintaining human readability. The interview mentions 'use json for policy if yaml is too slow'."
+  }
+]

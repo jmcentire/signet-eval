@@ -1,0 +1,58 @@
+# Component Map — signet-eval
+# Synthesized from design conversation, 2026-03-21
+
+components:
+  - id: policy_engine
+    name: Policy Engine
+    description: >
+      Loads policy YAML, parses rules into compiled regex matchers,
+      evaluates tool call proposals against ordered rules, returns
+      decisions. Core evaluation loop. No I/O beyond initial file read.
+    dependencies: []
+    edges: []
+
+  - id: hook_io
+    name: Hook I/O Handler
+    description: >
+      Reads Claude Code PreToolUse JSON from stdin, validates structure,
+      extracts tool_name and tool_input fields, passes to policy engine,
+      formats decision as hook response JSON on stdout. Handles malformed
+      input (fail-secure to deny).
+    dependencies:
+      - policy_engine
+    edges:
+      - target: policy_engine
+        type: depends_on
+        description: Passes parsed tool calls to policy engine for evaluation
+
+  - id: default_policy
+    name: Default Policy
+    description: >
+      Ships a reasonable default policy.yaml that blocks destructive
+      operations and permits everything else. Installed to
+      ~/.signet/policy.yaml on first run if no policy exists.
+    dependencies: []
+    edges: []
+
+  - id: cli
+    name: CLI Entry Point
+    description: >
+      Single entry point `signet-eval`. Reads SIGNET_POLICY_PATH env
+      or defaults to ~/.signet/policy.yaml. Loads policy, reads stdin,
+      evaluates, writes stdout. Exit 0 on allow (Claude Code default),
+      exit 0 with deny JSON on deny. Handles --init flag to install
+      default policy.
+    dependencies:
+      - policy_engine
+      - hook_io
+      - default_policy
+    edges:
+      - target: hook_io
+        type: depends_on
+        description: Uses hook_io for stdin/stdout handling
+      - target: policy_engine
+        type: depends_on
+        description: Uses policy engine for evaluation
+      - target: default_policy
+        type: depends_on
+        description: Installs default policy on first run
