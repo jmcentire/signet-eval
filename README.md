@@ -1,6 +1,6 @@
 # signet-eval
 
-Deterministic policy enforcement for AI agent tool calls. Every action an agent proposes passes through user-defined rules before execution. No LLM in the authorization path. No prompt injection surface. 5ms.
+Deterministic policy enforcement for AI agent tool calls. Every action an agent proposes passes through user-defined rules before execution. No LLM in the authorization path. No prompt injection surface. 25ms end-to-end.
 
 ## Install
 
@@ -23,7 +23,7 @@ cargo install signet-eval
 }
 ```
 
-**2. Done.** Every tool call now passes through policy evaluation. The default policy blocks destructive operations and allows everything else.
+**2. Done.** Every tool call now passes through policy evaluation. The default policy blocks destructive operations, protects its own configuration, and allows everything else.
 
 **3. (Optional) Customize** — talk to Claude with the MCP server:
 
@@ -35,15 +35,19 @@ Then say: *"Add a $50 limit for amazon orders"* or *"Block all rm commands"*.
 
 ## Default Policy
 
-| Action | Decision |
-|--------|----------|
-| `rm`, `rmdir` | **deny** |
-| `git push --force` | **ask** (escalate to user) |
-| `mkfs`, `format`, `dd if=` | **deny** |
-| `curl \| sh`, `wget \| sh` | **deny** |
-| Write to `.env`, `.pem`, `.key` | **deny** |
-| `chmod 777` | **ask** |
-| Everything else | **allow** |
+Self-protection rules are **locked** — they cannot be removed, edited, or reordered by the AI agent, even through the MCP management server. This prevents the agent from disabling its own guardrails.
+
+| Action | Decision | Locked |
+|--------|----------|--------|
+| Write/Edit/Bash touching `.signet/` | **deny** | yes |
+| Write/Edit/Bash touching `signet-eval` binary | **deny** | yes |
+| Write/Edit `settings.json` / `settings.local.json` | **ask** | yes |
+| Bash `kill`/`pkill`/`killall` + `signet` | **deny** | yes |
+| `rm`, `rmdir` | **deny** | |
+| `git push --force` | **ask** | |
+| `mkfs`, `format`, `dd if=` | **deny** | |
+| `curl \| sh`, `wget \| sh` | **deny** | |
+| Everything else | **allow** | |
 
 ## Custom Policy
 
@@ -72,9 +76,16 @@ rules:
       - "spend_plus_amount_gt('books', amount, 200)"
     action: DENY
     reason: "Books spending limit ($200) exceeded"
+
+  - name: protect_my_config
+    tool_pattern: ".*"
+    conditions: ["contains(parameters, '/etc/')"]
+    action: ASK
+    locked: true
+    reason: "System config changes require confirmation"
 ```
 
-Rules are evaluated in order — first match wins. Multiple conditions on a rule are AND'd.
+Rules are evaluated in order — first match wins. Multiple conditions on a rule are AND'd. Rules with `locked: true` cannot be modified through the MCP management server.
 
 ## Condition Functions
 
@@ -97,7 +108,7 @@ Rules are evaluated in order — first match wins. Multiple conditions on a rule
 
 ## Encrypted Vault
 
-Three-tier encrypted storage with passphrase-derived key hierarchy (Argon2 + AES-256-GCM):
+Three-tier encrypted storage with passphrase-derived key hierarchy (Argon2id + AES-256-GCM):
 
 | Tier | Encryption | Contents |
 |------|-----------|----------|
@@ -113,7 +124,24 @@ signet-eval log                        # recent action log
 signet-eval unlock                     # refresh session after timeout
 ```
 
+Credentials support scoped access via `request_capability`: domain restrictions, purpose constraints, per-use amount caps, and one-time tokens that auto-invalidate after a single use.
+
 Spending limits use the vault ledger — each tool call that spends money is logged, and `spend_plus_amount_gt()` checks cumulative totals before allowing the next purchase.
+
+## Self-Protection
+
+signet-eval ships with four locked rules that prevent an AI agent from disabling its own policy enforcement:
+
+1. **protect_signet_dir** — Denies any Write, Edit, or Bash command touching `.signet/` (policy files, vault, HMAC)
+2. **protect_signet_binary** — Denies tampering with the `signet-eval` binary itself
+3. **protect_hook_config** — Requires user confirmation before modifying `settings.json` (where the hook is configured)
+4. **protect_signet_process** — Denies kill/pkill/killall commands targeting signet processes
+
+These rules are:
+- **Locked** — MCP tools refuse to remove, edit, or reorder them
+- **Position-protected** — Unlocked rules cannot be reordered above locked rules (first-match-wins)
+- **Hardcoded in defaults** — If the policy file is corrupted or missing, the binary falls back to hardcoded defaults that include self-protection
+- **HMAC-backed** — Direct file edits break the policy signature, triggering fallback to safe defaults
 
 ## MCP Management Server
 
@@ -125,22 +153,29 @@ claude mcp add --scope user --transport stdio signet -- signet-eval serve
 
 | Tool | Purpose |
 |------|---------|
-| `signet_set_limit` | "Add a $50 limit for amazon orders" |
-| `signet_add_rule` | "Block all rm commands" |
-| `signet_remove_rule` | "Remove the books limit" |
-| `signet_list_rules` | "What's currently blocked?" |
-| `signet_status` | "How much have I spent?" |
-| `signet_test` | "Would this tool call be allowed?" |
-| `signet_validate` | "Is my policy file valid?" |
-| `signet_condition_help` | "What condition functions are available?" |
-| `signet_store_credential` | "Store my Visa card" |
-| `signet_list_credentials` | "What credentials do I have?" |
-| `signet_delete_credential` | "Delete my old API key" |
-| `signet_recent_actions` | "Show recent actions" |
+| `signet_list_rules` | Show all rules with locked status |
+| `signet_add_rule` | Add a new rule (appended after locked rules) |
+| `signet_remove_rule` | Remove a rule (refuses on locked rules) |
+| `signet_edit_rule` | Modify rule properties (refuses on locked rules) |
+| `signet_reorder_rule` | Move a rule (refuses on locked, prevents placing above locked) |
+| `signet_set_limit` | Set a spending limit for a category |
+| `signet_test` | Test a tool call against the current policy |
+| `signet_validate` | Check policy for errors |
+| `signet_condition_help` | Show available condition functions |
+| `signet_status` | Vault status, spending totals, credential count |
+| `signet_recent_actions` | Show recent action log |
+| `signet_store_credential` | Store a Tier 3 credential |
+| `signet_use_credential` | Request a credential through capability constraints |
+| `signet_list_credentials` | List credential names |
+| `signet_delete_credential` | Delete a credential |
+| `signet_sign_policy` | HMAC-sign the policy file |
+| `signet_reset_session` | Clear spending counters |
+
+All mutating operations auto-sign the policy when the vault is available.
 
 ## MCP Proxy
 
-Wrap upstream MCP servers with policy enforcement. The agent connects to the proxy, never directly to servers:
+Wrap upstream MCP servers with policy enforcement. The agent connects to the proxy, never directly to servers. Policy is hot-reloaded on every call.
 
 ```bash
 # Configure upstream servers
@@ -161,28 +196,30 @@ claude mcp add --scope user --transport stdio signet-proxy -- signet-eval proxy
 
 | Command | Purpose |
 |---------|---------|
-| `signet-eval` | Hook evaluation (default, 5ms) |
-| `signet-eval init` | Write default policy file |
-| `signet-eval rules` | Show current policy rules |
+| `signet-eval` | Hook evaluation (default, 25ms) |
+| `signet-eval init` | Write default policy with locked self-protection rules |
+| `signet-eval rules` | Show current policy rules (locked rules tagged) |
 | `signet-eval validate` | Check policy for errors |
 | `signet-eval test '<json>'` | Test a tool call against policy |
 | `signet-eval setup` | Create encrypted vault |
 | `signet-eval unlock` | Refresh vault session |
 | `signet-eval status` | Vault status and spending |
 | `signet-eval store <name> <value>` | Store Tier 3 credential |
+| `signet-eval delete <name>` | Delete a credential |
 | `signet-eval log` | Recent action log |
-| `signet-eval serve` | MCP management server |
-| `signet-eval proxy` | MCP proxy |
+| `signet-eval reset-session` | Clear spending counters |
+| `signet-eval sign` | HMAC-sign policy file |
+| `signet-eval serve` | MCP management server (17 tools) |
+| `signet-eval proxy` | MCP proxy for upstream servers |
 
 ## Performance
 
 | Metric | Value |
 |--------|-------|
-| Cold start | **5ms** |
-| Policy evaluation | **<1us** |
-| Binary size | **6MB** |
-| 1000-rule evaluation | **<10ms** |
-| Tests | **44** (including adversarial) |
+| Hook eval (end-to-end) | **25ms** — process spawn, stdin, JSON parse, policy load, eval, response |
+| In-process policy eval | **14–63μs** — 14μs deny, 21μs ask, 63μs spending check |
+| CLI validate / rules | **8ms** |
+| Binary size | **6.2MB** (stripped, LTO) |
 
 ## Architecture
 
@@ -190,7 +227,7 @@ signet-eval is the enforcement layer of the [Signet](https://signet.tools) perso
 
 ```
 Agent proposes action  ->  signet-eval evaluates policy  ->  allow / deny / ask
-                           (deterministic, 5ms, no NLP)
+                           (deterministic, 25ms, no NLP)
 ```
 
 ## License

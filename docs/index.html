@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>signet-eval — Deterministic Policy Enforcement for AI Agents</title>
-<meta name="description" content="Enforce spending limits, block destructive commands, and control what AI agents can do. 5ms cold start. No LLM in the authorization path.">
+<meta name="description" content="Enforce spending limits, block destructive commands, and control what AI agents can do. 25ms hook eval. No LLM in the authorization path. Self-protecting locked rules.">
 <style>
   :root { --bg: #0d1117; --fg: #c9d1d9; --accent: #58a6ff; --border: #30363d; --code-bg: #161b22; --green: #3fb950; --red: #f85149; --yellow: #d29922; --muted: #8b949e; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -23,6 +23,7 @@
   .deny { background: rgba(248,81,73,0.15); color: var(--red); }
   .allow { background: rgba(63,185,80,0.15); color: var(--green); }
   .ask { background: rgba(210,153,34,0.15); color: var(--yellow); }
+  .locked { background: rgba(88,166,255,0.15); color: var(--accent); font-size: 0.7rem; vertical-align: middle; }
   .hero { text-align: center; padding: 4rem 0 2rem; }
   .hero p { font-size: 1.15rem; color: var(--muted); max-width: 600px; margin: 0 auto 2rem; }
   .stats { display: flex; gap: 2.5rem; justify-content: center; margin: 2rem 0; flex-wrap: wrap; }
@@ -48,11 +49,10 @@
   <h1>signet-eval</h1>
   <p>Deterministic policy enforcement for AI agents. Control what your agent can do — spending limits, destructive command blocking, credential gating — without putting an LLM in the decision path.</p>
   <div class="stats">
-    <div class="stat"><div class="num">5ms</div><div class="label">cold start</div></div>
-    <div class="stat"><div class="num">&lt;1&mu;s</div><div class="label">policy eval</div></div>
-    <div class="stat"><div class="num">70</div><div class="label">tests</div></div>
+    <div class="stat"><div class="num">25ms</div><div class="label">hook eval (e2e)</div></div>
+    <div class="stat"><div class="num">14&ndash;63&mu;s</div><div class="label">in-process eval</div></div>
     <div class="stat"><div class="num">14</div><div class="label">condition functions</div></div>
-    <div class="stat"><div class="num">16</div><div class="label">MCP tools</div></div>
+    <div class="stat"><div class="num">17</div><div class="label">MCP tools</div></div>
   </div>
   <pre><code>cargo install signet-eval</code></pre>
 </div>
@@ -72,14 +72,17 @@
 <p><strong>3.</strong> Done. Every tool call now passes through policy evaluation.</p>
 
 <h2>Default Policy</h2>
+<p>Self-protection rules are <span class="badge locked">LOCKED</span> &mdash; the agent cannot remove, edit, or reorder them, even through the MCP management server.</p>
 <table>
   <tr><th>Action</th><th>Decision</th></tr>
+  <tr><td>Write/Edit/Bash to <code>.signet/</code> <span class="badge locked">LOCKED</span></td><td><span class="badge deny">DENY</span></td></tr>
+  <tr><td>Tamper with <code>signet-eval</code> binary <span class="badge locked">LOCKED</span></td><td><span class="badge deny">DENY</span></td></tr>
+  <tr><td>Modify <code>settings.json</code> <span class="badge locked">LOCKED</span></td><td><span class="badge ask">ASK</span></td></tr>
+  <tr><td>Kill signet processes <span class="badge locked">LOCKED</span></td><td><span class="badge deny">DENY</span></td></tr>
   <tr><td><code>rm</code>, <code>rmdir</code></td><td><span class="badge deny">DENY</span></td></tr>
   <tr><td><code>git push --force</code></td><td><span class="badge ask">ASK</span></td></tr>
   <tr><td><code>mkfs</code>, <code>format</code>, <code>dd if=</code></td><td><span class="badge deny">DENY</span></td></tr>
   <tr><td><code>curl | sh</code>, <code>wget | sh</code></td><td><span class="badge deny">DENY</span></td></tr>
-  <tr><td>Write to <code>.env</code>, <code>.pem</code>, <code>.key</code></td><td><span class="badge deny">DENY</span></td></tr>
-  <tr><td><code>chmod 777</code></td><td><span class="badge ask">ASK</span></td></tr>
   <tr><td>Everything else</td><td><span class="badge allow">ALLOW</span></td></tr>
 </table>
 
@@ -96,11 +99,12 @@ rules:
     action: DENY
     reason: "Books spending limit ($200) exceeded"
 
-  - name: block_sudo
+  - name: protect_prod
     tool_pattern: ".*"
-    conditions: ["param_contains(command, 'sudo')"]
+    conditions: ["contains(parameters, 'production')"]
     action: ASK
-    reason: "sudo requires confirmation"</code></pre>
+    locked: true
+    reason: "Production access requires confirmation"</code></pre>
 
 <h2>Condition Functions</h2>
 <table>
@@ -125,8 +129,12 @@ rules:
 
 <div class="grid">
   <div class="card">
+    <h3>Self-Protection</h3>
+    <p>Four locked rules prevent the agent from disabling its own guardrails. Locked rules can't be removed or edited via MCP. Direct file edits break the HMAC signature, triggering fallback to hardcoded safe defaults.</p>
+  </div>
+  <div class="card">
     <h3>Encrypted Vault</h3>
-    <p>Argon2 + AES-256-GCM. Three tiers: public ledger, session-encrypted state, compartment-encrypted credentials. Session key encrypted with device-specific key. Brute-force lockout after 5 failed attempts.</p>
+    <p>Argon2id + AES-256-GCM. Three tiers: public ledger, session-encrypted state, compartment-encrypted credentials. Session key encrypted with device-specific key. Brute-force lockout after 5 failed attempts.</p>
   </div>
   <div class="card">
     <h3>Spending Limits</h3>
@@ -134,11 +142,11 @@ rules:
   </div>
   <div class="card">
     <h3>Scoped Credentials</h3>
-    <p>Store credentials with domain, purpose, amount caps, and one-time constraints. <code>request_capability</code> enforces all constraints before releasing a credential. One-time tokens auto-invalidate.</p>
+    <p>Store credentials with domain, purpose, amount caps, and one-time constraints. <code>signet_use_credential</code> enforces all constraints before releasing. One-time tokens auto-invalidate.</p>
   </div>
   <div class="card">
     <h3>MCP Management</h3>
-    <p>Manage policies by talking to Claude. "Add a $50 limit for amazon orders." 16 MCP tools: rules, credentials, testing, validation, reordering, signing.</p>
+    <p>Manage policies by talking to Claude. "Add a $50 limit for amazon orders." 17 MCP tools: rules, credentials, testing, validation, reordering, signing, credential use.</p>
   </div>
   <div class="card">
     <h3>MCP Proxy</h3>
@@ -146,41 +154,37 @@ rules:
   </div>
   <div class="card">
     <h3>Policy Integrity</h3>
-    <p>HMAC-sign your policy file. Hook verifies integrity on every evaluation. Tampered files fall back to safe defaults automatically.</p>
+    <p>HMAC-sign your policy file. Hook verifies integrity on every evaluation. Tampered files fall back to safe defaults automatically. MCP mutations auto-sign.</p>
   </div>
   <div class="card">
-    <h3>Policy Testing</h3>
-    <p><code>signet-eval test '...'</code> and <code>signet-eval validate</code> — test rules and check for errors without running as a hook.</p>
-  </div>
-  <div class="card">
-    <h3>70 Tests</h3>
-    <p>Unit, integration, and Goodhart/adversarial: unicode homoglyphs, null bytes, 1MB inputs, SQL injection, path traversal, 1000-rule performance bounds. Full subprocess e2e.</p>
+    <h3>Locked Rules</h3>
+    <p>Mark rules as <code>locked: true</code> in YAML. MCP tools refuse to modify them. Unlocked rules can't be reordered above locked ones. Self-protection rules ship locked by default.</p>
   </div>
 </div>
 
 <h2>Architecture</h2>
 <p>Part of the <a href="https://signet.tools">Signet</a> personal sovereign agent stack. The core principle: <strong>the authorization layer must not be an LLM.</strong> It processes structured data only. No natural language, no context window, no persuasion surface. A rule either matches or it doesn't.</p>
 <pre><code>Agent proposes action  ->  signet-eval evaluates policy  ->  allow / deny / ask
-                           (deterministic, 5ms, no NLP)</code></pre>
+                           (deterministic, 25ms, no NLP)</code></pre>
 
 <h2>All Commands</h2>
 <table>
   <tr><th>Command</th><th>Purpose</th></tr>
-  <tr><td><code>signet-eval</code></td><td>Hook evaluation (default, 5ms)</td></tr>
-  <tr><td><code>signet-eval init</code></td><td>Write default policy file</td></tr>
-  <tr><td><code>signet-eval rules</code></td><td>Show current rules</td></tr>
+  <tr><td><code>signet-eval</code></td><td>Hook evaluation (default, 25ms)</td></tr>
+  <tr><td><code>signet-eval init</code></td><td>Write default policy with locked self-protection</td></tr>
+  <tr><td><code>signet-eval rules</code></td><td>Show current rules (locked rules tagged)</td></tr>
   <tr><td><code>signet-eval validate</code></td><td>Check policy for errors</td></tr>
   <tr><td><code>signet-eval test '&lt;json&gt;'</code></td><td>Test a tool call</td></tr>
   <tr><td><code>signet-eval setup</code></td><td>Create encrypted vault</td></tr>
   <tr><td><code>signet-eval unlock</code></td><td>Refresh vault session</td></tr>
   <tr><td><code>signet-eval status</code></td><td>Vault status and spending</td></tr>
   <tr><td><code>signet-eval store &lt;n&gt; &lt;v&gt;</code></td><td>Store Tier 3 credential</td></tr>
-  <tr><td><code>signet-eval log</code></td><td>Recent action log</td></tr>
   <tr><td><code>signet-eval delete &lt;n&gt;</code></td><td>Delete credential</td></tr>
+  <tr><td><code>signet-eval log</code></td><td>Recent action log</td></tr>
   <tr><td><code>signet-eval reset-session</code></td><td>Clear spending counters</td></tr>
   <tr><td><code>signet-eval sign</code></td><td>HMAC-sign policy file</td></tr>
-  <tr><td><code>signet-eval serve</code></td><td>MCP management server</td></tr>
-  <tr><td><code>signet-eval proxy</code></td><td>MCP proxy</td></tr>
+  <tr><td><code>signet-eval serve</code></td><td>MCP management server (17 tools)</td></tr>
+  <tr><td><code>signet-eval proxy</code></td><td>MCP proxy for upstream servers</td></tr>
 </table>
 
 </div>

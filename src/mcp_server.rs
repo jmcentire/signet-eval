@@ -29,7 +29,15 @@ fn save_policy(config: &PolicyConfig) {
         std::fs::create_dir_all(parent).ok();
     }
     if let Ok(yaml) = serde_yaml::to_string(config) {
-        std::fs::write(path, yaml).ok();
+        std::fs::write(&path, &yaml).ok();
+    }
+}
+
+/// Auto-sign the policy after MCP modifications (if vault is available).
+fn auto_sign_policy() {
+    if let Some(v) = vault::try_load_vault() {
+        let path = policy_path();
+        let _ = vault::sign_policy(v.session_key(), &path);
     }
 }
 
@@ -147,6 +155,16 @@ impl ServerHandler for SignetMcpServer {
                 })),
                 make_tool("signet_sign_policy", "Sign the policy file with HMAC for tamper detection.", serde_json::json!({"type": "object", "properties": {}})),
                 make_tool("signet_reset_session", "Reset session spending counters.", serde_json::json!({"type": "object", "properties": {}})),
+                make_tool("signet_use_credential", "Request a credential through the policy-gated capability system. Enforces domain, purpose, amount, and one-time constraints.", serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string", "description": "Credential name (e.g. 'cc_visa')"},
+                        "domain": {"type": "string", "description": "Domain for this use (e.g. 'amazon.com')", "default": ""},
+                        "amount": {"type": "number", "description": "Transaction amount (checked against max_amount constraint)", "default": 0},
+                        "purpose": {"type": "string", "description": "Purpose of use (e.g. 'purchase')", "default": ""}
+                    },
+                    "required": ["name"]
+                })),
             ];
             Ok(ListToolsResult { tools, next_cursor: None, meta: None })
         }
@@ -178,6 +196,7 @@ impl ServerHandler for SignetMcpServer {
                 "signet_edit_rule" => handle_edit_rule(args),
                 "signet_sign_policy" => handle_sign_policy(),
                 "signet_reset_session" => handle_reset_session(),
+                "signet_use_credential" => handle_use_credential(args),
                 _ => format!("Unknown tool: {}", request.name),
             };
             Ok(CallToolResult::success(vec![Content::text(result)]))
@@ -197,7 +216,8 @@ fn handle_list_rules() -> String {
         format!("Rules ({}):\n", config.rules.len()),
     ];
     for (i, r) in config.rules.iter().enumerate() {
-        lines.push(format!("  {}. [{:?}] {}", i + 1, r.action, r.name));
+        let lock_tag = if r.locked { " [LOCKED]" } else { "" };
+        lines.push(format!("  {}. [{:?}] {}{}", i + 1, r.action, r.name, lock_tag));
         if let Some(ref reason) = r.reason {
             lines.push(format!("     Reason: {reason}"));
         }
@@ -237,20 +257,28 @@ fn handle_add_rule(args: &serde_json::Map<String, Value>) -> String {
     config.rules.push(PolicyRule {
         name: name.into(), tool_pattern: tool_pattern.into(),
         conditions, action, reason: Some(reason.into()),
+        locked: false,
     });
     save_policy(&config);
+    auto_sign_policy();
     format!("Added rule '{name}' ({action:?}): {reason}")
 }
 
 fn handle_remove_rule(args: &serde_json::Map<String, Value>) -> String {
     let name = args.get("name").and_then(|v| v.as_str()).unwrap_or("");
     let mut config = load_policy_raw();
+    if let Some(rule) = config.rules.iter().find(|r| r.name == name) {
+        if rule.locked {
+            return format!("Cannot remove rule '{name}': rule is locked (self-protection).");
+        }
+    }
     let before = config.rules.len();
     config.rules.retain(|r| r.name != name);
     if config.rules.len() == before {
         return format!("Rule '{name}' not found.");
     }
     save_policy(&config);
+    auto_sign_policy();
     format!("Removed rule '{name}'.")
 }
 
@@ -274,8 +302,10 @@ fn handle_set_limit(args: &serde_json::Map<String, Value>) -> String {
         ],
         action: Decision::Deny,
         reason: Some(format!("Spending limit: ${max_amount:.0}/{per} on {category}")),
+        locked: false,
     });
     save_policy(&config);
+    auto_sign_policy();
     format!("Set ${max_amount:.0}/{per} limit on {category}.")
 }
 
@@ -432,11 +462,19 @@ fn handle_reorder_rule(args: &serde_json::Map<String, Value>) -> String {
     match idx {
         None => format!("Rule '{name}' not found."),
         Some(old_idx) => {
+            if config.rules[old_idx].locked {
+                return format!("Cannot reorder rule '{name}': rule is locked (self-protection).");
+            }
             let rule = config.rules.remove(old_idx);
             let new_idx = (position - 1).min(config.rules.len());
-            config.rules.insert(new_idx, rule);
+            // Prevent placing unlocked rules before any locked rules
+            let first_unlocked = config.rules.iter().position(|r| !r.locked).unwrap_or(config.rules.len());
+            let safe_idx = new_idx.max(first_unlocked);
+            config.rules.insert(safe_idx, rule);
             save_policy(&config);
-            format!("Moved rule '{name}' to position {position}.")
+            auto_sign_policy();
+            let actual_pos = safe_idx + 1;
+            format!("Moved rule '{name}' to position {actual_pos}.")
         }
     }
 }
@@ -448,6 +486,9 @@ fn handle_edit_rule(args: &serde_json::Map<String, Value>) -> String {
     match rule {
         None => format!("Rule '{name}' not found."),
         Some(rule) => {
+            if rule.locked {
+                return format!("Cannot edit rule '{name}': rule is locked (self-protection).");
+            }
             let mut changes = Vec::new();
             if let Some(action_str) = args.get("action").and_then(|v| v.as_str()) {
                 match action_str.to_uppercase().as_str() {
@@ -470,6 +511,7 @@ fn handle_edit_rule(args: &serde_json::Map<String, Value>) -> String {
                 changes.push("conditions");
             }
             save_policy(&config);
+            auto_sign_policy();
             format!("Updated rule '{name}': changed {}", changes.join(", "))
         }
     }
@@ -493,6 +535,31 @@ fn handle_reset_session() -> String {
         Some(mut v) => {
             v.reset_session();
             "Session reset. Spending counters cleared.".into()
+        }
+        None => "Vault not set up or locked.".into(),
+    }
+}
+
+fn handle_use_credential(args: &serde_json::Map<String, Value>) -> String {
+    let name = args.get("name").and_then(|v| v.as_str()).unwrap_or("");
+    let domain = args.get("domain").and_then(|v| v.as_str()).unwrap_or("");
+    let amount = args.get("amount").and_then(|v| v.as_f64()).unwrap_or(0.0);
+    let purpose = args.get("purpose").and_then(|v| v.as_str()).unwrap_or("");
+
+    match vault::try_load_vault() {
+        Some(v) => {
+            match v.request_capability(name, domain, amount, purpose) {
+                Ok(value) => {
+                    // Mask the credential in the response — show last 4 chars only
+                    let masked = if value.len() > 4 {
+                        format!("{}...{}", "*".repeat(value.len() - 4), &value[value.len()-4..])
+                    } else {
+                        "*".repeat(value.len())
+                    };
+                    format!("Credential '{name}' released (masked: {masked}). Domain: {domain}, Amount: ${amount:.2}, Purpose: {purpose}")
+                }
+                Err(e) => format!("Credential request denied: {e}"),
+            }
         }
         None => "Vault not set up or locked.".into(),
     }

@@ -118,6 +118,45 @@ fn test_hook_output_is_valid_json() {
     }
 }
 
+// --- Self-protection integration tests ---
+
+#[test]
+fn test_hook_blocks_signet_dir_tampering() {
+    let (out, code) = run_hook(
+        r#"{"tool_name":"Bash","tool_input":{"command":"cat /dev/null > ~/.signet/policy.yaml"}}"#
+    );
+    assert_eq!(code, 0);
+    assert_eq!(parse_decision(&out), "deny");
+    assert!(out.contains("Self-protection"));
+}
+
+#[test]
+fn test_hook_blocks_signet_binary_tampering() {
+    let (out, code) = run_hook(
+        r#"{"tool_name":"Bash","tool_input":{"command":"cp /dev/null /opt/homebrew/bin/signet-eval"}}"#
+    );
+    assert_eq!(code, 0);
+    assert_eq!(parse_decision(&out), "deny");
+}
+
+#[test]
+fn test_hook_blocks_kill_signet() {
+    let (out, code) = run_hook(
+        r#"{"tool_name":"Bash","tool_input":{"command":"pkill signet"}}"#
+    );
+    assert_eq!(code, 0);
+    assert_eq!(parse_decision(&out), "deny");
+}
+
+#[test]
+fn test_hook_asks_settings_json_write() {
+    let (out, code) = run_hook(
+        r#"{"tool_name":"Write","tool_input":{"file_path":"/home/.claude/settings.json","content":"{}"}}"#
+    );
+    assert_eq!(code, 0);
+    assert_eq!(parse_decision(&out), "ask");
+}
+
 #[test]
 fn test_hook_performance() {
     let start = std::time::Instant::now();
