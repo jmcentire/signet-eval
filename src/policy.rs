@@ -391,7 +391,7 @@ pub fn self_protection_rules() -> Vec<PolicyRule> {
     vec![
         PolicyRule {
             name: "protect_signet_dir".into(),
-            tool_pattern: "^(Write|Edit|Bash)$".into(),
+            tool_pattern: ".*".into(),
             conditions: vec!["any_of(parameters, '.signet/', '.signet\\\\', '.Signet/', '.Signet\\\\', '.SIGNET/', '.SIGNET\\\\')".into()],
             action: Decision::Deny,
             locked: true,
@@ -399,7 +399,7 @@ pub fn self_protection_rules() -> Vec<PolicyRule> {
         },
         PolicyRule {
             name: "protect_signet_binary".into(),
-            tool_pattern: "^(Write|Edit|Bash)$".into(),
+            tool_pattern: ".*".into(),
             conditions: vec!["any_of(parameters, 'signet-eval', 'signet_eval', 'Signet-Eval', 'SIGNET-EVAL', 'SIGNET_EVAL')".into()],
             action: Decision::Deny,
             locked: true,
@@ -407,7 +407,7 @@ pub fn self_protection_rules() -> Vec<PolicyRule> {
         },
         PolicyRule {
             name: "protect_hook_config".into(),
-            tool_pattern: "^(Write|Edit)$".into(),
+            tool_pattern: ".*".into(),
             conditions: vec!["any_of(parameters, 'settings.json', 'settings.local.json')".into()],
             action: Decision::Ask,
             locked: true,
@@ -415,7 +415,7 @@ pub fn self_protection_rules() -> Vec<PolicyRule> {
         },
         PolicyRule {
             name: "protect_signet_process".into(),
-            tool_pattern: "^Bash$".into(),
+            tool_pattern: ".*".into(),
             conditions: vec![
                 "any_of(parameters, 'kill', 'pkill', 'killall')".into(),
                 "contains(parameters, 'signet')".into(),

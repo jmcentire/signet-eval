@@ -90,8 +90,17 @@ impl ServerHandler for ProxyServer {
                 None => return Err(McpError::invalid_params("Tool name must be server__tool format", None)),
             };
 
-            // Reload policy on each call (hot-reload)
-            let current_policy = policy::load_policy(&self.policy_path);
+            // Reload policy on each call (hot-reload) with integrity verification
+            let current_policy = if let Some(ref v) = self.vault {
+                if !vault::verify_policy_integrity(v.session_key(), &self.policy_path) {
+                    // Tampered policy — use safe defaults
+                    policy::default_policy()
+                } else {
+                    policy::load_policy(&self.policy_path)
+                }
+            } else {
+                policy::load_policy(&self.policy_path)
+            };
             let args_value = request.arguments.as_ref()
                 .map(|a| serde_json::Value::Object(a.clone()))
                 .unwrap_or_default();

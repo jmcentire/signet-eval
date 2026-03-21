@@ -531,13 +531,11 @@ fn handle_sign_policy() -> String {
 }
 
 fn handle_reset_session() -> String {
-    match vault::try_load_vault() {
-        Some(mut v) => {
-            v.reset_session();
-            "Session reset. Spending counters cleared.".into()
-        }
-        None => "Vault not set up or locked.".into(),
-    }
+    // Session reset is sensitive — it clears spending counters, which could
+    // allow an agent to bypass spending limits by resetting before each purchase.
+    // This should only be done via CLI (signet-eval reset-session) where the
+    // user is directly present.
+    "Session reset is only available via CLI (signet-eval reset-session) to prevent spending limit bypass. An AI agent could otherwise reset counters before each purchase.".into()
 }
 
 fn handle_use_credential(args: &serde_json::Map<String, Value>) -> String {

@@ -105,7 +105,10 @@ pub fn policy_hmac(session_key: &[u8; KEY_LEN], policy_content: &str) -> String 
     B64.encode(mac.finalize().into_bytes())
 }
 
-/// Verify policy HMAC. Returns true if valid or if no HMAC file exists (first use).
+/// Verify policy HMAC. Returns true if valid, false if tampered.
+/// - No policy file: true (uses defaults)
+/// - No HMAC file but vault exists: false (fail closed — policy was modified without signing)
+/// - HMAC mismatch: false
 pub fn verify_policy_integrity(session_key: &[u8; KEY_LEN], policy_path: &std::path::Path) -> bool {
     let hmac_path = policy_path.with_extension("hmac");
     let policy_content = match std::fs::read_to_string(policy_path) {
@@ -114,7 +117,7 @@ pub fn verify_policy_integrity(session_key: &[u8; KEY_LEN], policy_path: &std::p
     };
     let expected = match std::fs::read_to_string(&hmac_path) {
         Ok(h) => h.trim().to_string(),
-        Err(_) => return true, // No HMAC file = first use, ok
+        Err(_) => return false, // Vault exists but no HMAC = fail closed
     };
     let actual = policy_hmac(session_key, &policy_content);
     actual == expected
