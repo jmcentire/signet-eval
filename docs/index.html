@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>signet-eval — Policy Enforcement for AI Agents</title>
+<style>
+  :root { --bg: #0d1117; --fg: #c9d1d9; --accent: #58a6ff; --border: #30363d; --code-bg: #161b22; --green: #3fb950; --red: #f85149; --yellow: #d29922; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; background: var(--bg); color: var(--fg); line-height: 1.6; padding: 2rem; max-width: 800px; margin: 0 auto; }
+  h1 { color: #f0f6fc; font-size: 2rem; margin-bottom: 0.5rem; }
+  h2 { color: #f0f6fc; font-size: 1.3rem; margin-top: 2rem; margin-bottom: 0.5rem; border-bottom: 1px solid var(--border); padding-bottom: 0.3rem; }
+  p { margin-bottom: 1rem; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code { background: var(--code-bg); padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.9em; }
+  pre { background: var(--code-bg); padding: 1rem; border-radius: 8px; overflow-x: auto; margin-bottom: 1rem; border: 1px solid var(--border); }
+  pre code { padding: 0; background: none; }
+  .badge { display: inline-block; padding: 0.2rem 0.6rem; border-radius: 12px; font-size: 0.8rem; font-weight: 600; margin-right: 0.5rem; }
+  .deny { background: rgba(248,81,73,0.15); color: var(--red); }
+  .allow { background: rgba(63,185,80,0.15); color: var(--green); }
+  .ask { background: rgba(210,153,34,0.15); color: var(--yellow); }
+  .hero { text-align: center; padding: 3rem 0 2rem; }
+  .hero p { font-size: 1.1rem; color: #8b949e; }
+  .stats { display: flex; gap: 2rem; justify-content: center; margin: 2rem 0; }
+  .stat { text-align: center; }
+  .stat .num { font-size: 1.8rem; font-weight: 700; color: var(--accent); }
+  .stat .label { font-size: 0.85rem; color: #8b949e; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 1rem; }
+  th, td { text-align: left; padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--border); }
+  th { color: #8b949e; font-weight: 600; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; }
+  .footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--border); color: #8b949e; font-size: 0.85rem; text-align: center; }
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <h1>signet-eval</h1>
+  <p>Deterministic policy enforcement for AI agent tool calls.<br>No LLM in the authorization path. No prompt injection surface.</p>
+  <div class="stats">
+    <div class="stat"><div class="num">5ms</div><div class="label">cold start</div></div>
+    <div class="stat"><div class="num">&lt;1&mu;s</div><div class="label">policy eval</div></div>
+    <div class="stat"><div class="num">3.7MB</div><div class="label">binary</div></div>
+  </div>
+</div>
+
+<h2>Install</h2>
+<pre><code>cargo install signet-eval</code></pre>
+
+<h2>Hook into Claude Code</h2>
+<p>Add to <code>~/.claude/settings.json</code>:</p>
+<pre><code>{
+  "hooks": {
+    "PreToolUse": [{
+      "matcher": "",
+      "hooks": [{"type": "command", "command": "signet-eval", "timeout": 2000}]
+    }]
+  }
+}</code></pre>
+<p>Every tool call now passes through policy evaluation before execution.</p>
+
+<h2>Default Policy</h2>
+<table>
+  <tr><th>Action</th><th>Decision</th></tr>
+  <tr><td><code>rm</code>, <code>rmdir</code></td><td><span class="badge deny">DENY</span></td></tr>
+  <tr><td><code>git push --force</code></td><td><span class="badge ask">ASK</span></td></tr>
+  <tr><td><code>mkfs</code>, <code>format</code>, <code>dd if=</code></td><td><span class="badge deny">DENY</span></td></tr>
+  <tr><td><code>curl | sh</code>, <code>wget | sh</code></td><td><span class="badge deny">DENY</span></td></tr>
+  <tr><td>Everything else</td><td><span class="badge allow">ALLOW</span></td></tr>
+</table>
+
+<h2>Custom Rules</h2>
+<pre><code># ~/.signet/policy.yaml
+version: 1
+default_action: ALLOW
+rules:
+  - name: books_limit
+    tool_pattern: ".*purchase.*"
+    conditions:
+      - "param_eq(category, 'books')"
+      - "spend_plus_amount_gt('books', amount, 200)"
+    action: DENY
+    reason: "Books spending limit ($200) exceeded"</code></pre>
+
+<h2>Encrypted Vault</h2>
+<p>Passphrase-derived key hierarchy (Argon2 + AES-256-GCM). Three-tier data model:</p>
+<table>
+  <tr><th>Tier</th><th>Encryption</th><th>Contents</th></tr>
+  <tr><td>1</td><td>None</td><td>Action log, spending ledger</td></tr>
+  <tr><td>2</td><td>Session key</td><td>Session state</td></tr>
+  <tr><td>3</td><td>Compartment key</td><td>CC numbers, API tokens</td></tr>
+</table>
+
+<h2>Architecture</h2>
+<p>Tier 1 of the <a href="https://github.com/jmcentire/signet">Signet</a> personal sovereign agent stack. The core principle: <strong>the authorization layer must not be an LLM.</strong> It processes structured data only. A rule either matches or it doesn't.</p>
+
+<pre><code>Agent proposes action → signet-eval evaluates policy → allow/deny/ask
+                         (5ms, deterministic, no NLP)</code></pre>
+
+<div class="footer">
+  <a href="https://github.com/jmcentire/signet-eval">GitHub</a> &middot;
+  <a href="https://crates.io/crates/signet-eval">crates.io</a> &middot;
+  MIT License &middot;
+  Jeremy McEntire
+</div>
+
+</body>
+</html>
