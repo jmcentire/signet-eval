@@ -2,6 +2,11 @@ mod hook;
 mod policy;
 mod vault;
 
+#[cfg(feature = "mcp")]
+mod mcp_server;
+#[cfg(feature = "mcp")]
+mod mcp_proxy;
+
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
@@ -33,6 +38,12 @@ enum Command {
         /// Credential value
         value: String,
     },
+    /// Run MCP management server (conversational policy editing)
+    #[cfg(feature = "mcp")]
+    Serve,
+    /// Run MCP proxy (wraps upstream servers with policy enforcement)
+    #[cfg(feature = "mcp")]
+    Proxy,
 }
 
 fn expand_home(path: &str) -> PathBuf {
@@ -131,6 +142,22 @@ fn main() {
                     0
                 }
                 None => { eprintln!("Vault not set up or locked."); 1 }
+            }
+        }
+        #[cfg(feature = "mcp")]
+        Some(Command::Serve) => {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            match rt.block_on(mcp_server::run_server()) {
+                Ok(_) => 0,
+                Err(e) => { eprintln!("MCP server error: {e}"); 1 }
+            }
+        }
+        #[cfg(feature = "mcp")]
+        Some(Command::Proxy) => {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            match rt.block_on(mcp_proxy::run_proxy()) {
+                Ok(_) => 0,
+                Err(e) => { eprintln!("MCP proxy error: {e}"); 1 }
             }
         }
     };

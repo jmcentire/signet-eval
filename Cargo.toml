@@ -1,10 +1,10 @@
 [package]
 name = "signet-eval"
-version = "1.0.0"
+version = "1.1.0"
 edition = "2021"
 description = "Claude Code policy enforcement — deterministic authorization for AI agent tool calls"
 license = "MIT"
-repository = "https://github.com/jmcentire/signet-eval-rs"
+repository = "https://github.com/jmcentire/signet-eval"
 
 [[bin]]
 name = "signet-eval"
@@ -41,10 +41,12 @@ chrono = "0.4"
 # MCP (optional — only needed for proxy/management server modes)
 rmcp = { version = "1", features = ["server", "client", "transport-io", "transport-child-process"], optional = true }
 tokio = { version = "1", features = ["full"], optional = true }
+schemars = { version = "0.8", optional = true }
+async-trait = { version = "0.1", optional = true }
 
 [features]
 default = ["mcp"]
-mcp = ["dep:rmcp", "dep:tokio"]
+mcp = ["dep:rmcp", "dep:tokio", "dep:schemars", "dep:async-trait"]
 
 [dev-dependencies]
 tempfile = "3"

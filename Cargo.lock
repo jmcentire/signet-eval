@@ -1015,7 +1015,7 @@ dependencies = [
  "pin-project-lite",
  "process-wrap",
  "rmcp-macros",
- "schemars",
+ "schemars 1.2.1",
  "serde",
  "serde_json",
  "thiserror",
@@ -1100,6 +1100,18 @@ checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
 
 [[package]]
 name = "schemars"
+version = "0.8.22"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3fbf2ae1b8bc8e02df939598064d22402220cd5bbcca1c76f7d6a310974d5615"
+dependencies = [
+ "dyn-clone",
+ "schemars_derive 0.8.22",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "schemars"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2b42f36aa1cd011945615b92222f6bf73c599a102a300334cd7f8dbeec726cc"
@@ -1107,9 +1119,21 @@ dependencies = [
  "chrono",
  "dyn-clone",
  "ref-cast",
- "schemars_derive",
+ "schemars_derive 1.2.1",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "schemars_derive"
+version = "0.8.22"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "32e265784ad618884abaea0600a9adf15393368d840e0222d101a072f3f7534d"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "serde_derive_internals",
+ "syn",
 ]
 
 [[package]]
@@ -1232,10 +1256,11 @@ dependencies = [
 
 [[package]]
 name = "signet-eval"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "aes-gcm",
  "argon2",
+ "async-trait",
  "base64",
  "chrono",
  "clap",
@@ -1246,6 +1271,7 @@ dependencies = [
  "rmcp",
  "rpassword",
  "rusqlite",
+ "schemars 0.8.22",
  "serde",
  "serde_json",
  "serde_yaml",
