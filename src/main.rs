@@ -105,10 +105,10 @@ fn run() -> i32 {
         Some(Command::Init) => {
             let mut rules = policy::self_protection_rules();
             rules.extend(vec![
-                policy::PolicyRule { name: "block_rm".into(), tool_pattern: ".*".into(), conditions: vec!["contains(parameters, 'rm ')".into()], action: policy::Decision::Deny, locked: false, reason: Some("File deletion blocked".into()) },
-                policy::PolicyRule { name: "block_force_push".into(), tool_pattern: ".*".into(), conditions: vec!["any_of(parameters, 'push --force', 'push -f')".into()], action: policy::Decision::Ask, locked: false, reason: Some("Force push requires confirmation".into()) },
-                policy::PolicyRule { name: "block_destructive".into(), tool_pattern: ".*".into(), conditions: vec!["any_of(parameters, 'mkfs', 'format ', 'dd if=')".into()], action: policy::Decision::Deny, locked: false, reason: Some("Destructive disk ops blocked".into()) },
-                policy::PolicyRule { name: "block_piped_exec".into(), tool_pattern: ".*".into(), conditions: vec!["any_of(parameters, 'curl', 'wget')".into(), "contains(parameters, '| sh')".into()], action: policy::Decision::Deny, locked: false, reason: Some("Piped remote execution blocked".into()) },
+                policy::PolicyRule { name: "block_rm".into(), tool_pattern: "^Bash$".into(), conditions: vec!["contains(parameters, 'rm ')".into()], action: policy::Decision::Deny, locked: false, reason: Some("File deletion blocked".into()) },
+                policy::PolicyRule { name: "block_force_push".into(), tool_pattern: "^Bash$".into(), conditions: vec!["any_of(parameters, 'push --force', 'push -f')".into()], action: policy::Decision::Ask, locked: false, reason: Some("Force push requires confirmation".into()) },
+                policy::PolicyRule { name: "block_destructive".into(), tool_pattern: "^Bash$".into(), conditions: vec!["any_of(parameters, 'mkfs', 'format ', 'dd if=')".into()], action: policy::Decision::Deny, locked: false, reason: Some("Destructive disk ops blocked".into()) },
+                policy::PolicyRule { name: "block_piped_exec".into(), tool_pattern: "^Bash$".into(), conditions: vec!["any_of(parameters, 'curl', 'wget')".into(), "contains(parameters, '| sh')".into()], action: policy::Decision::Deny, locked: false, reason: Some("Piped remote execution blocked".into()) },
             ]);
             let config = policy::PolicyConfig {
                 version: 1,
