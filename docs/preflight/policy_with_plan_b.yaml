@@ -1,0 +1,111 @@
+# signet-eval policy with Plan B alternatives
+# This is the target state for ~/.signet/policy.yaml
+# Each deny/ask rule includes an 'alternative' field: what to do instead.
+#
+# The 'alternative' field requires a schema change to PolicyRule (add Optional<String>).
+# Until that ships, the plan B text is appended to the 'reason' field after " Instead: ".
+
+version: 1
+rules:
+
+  # --- Self-protection (locked) ---
+
+  - name: protect_signet_dir
+    tool_pattern: ".*"
+    conditions:
+      - "any_of(parameters, '.signet/', '.signet\\', '.Signet/', '.Signet\\', '.SIGNET/', '.SIGNET\\')"
+    action: DENY
+    reason: "Self-protection: the policy directory is protected."
+    alternative: "Refer to it as 'the policy directory'. To check policy status, use the MCP tool signet_status or run the CLI: the-permissions-tool status"
+    locked: true
+
+  - name: protect_signet_binary
+    tool_pattern: ".*"
+    conditions:
+      - "any_of(parameters, 'signet-eval', 'signet_eval', 'Signet-Eval', 'SIGNET-EVAL', 'SIGNET_EVAL')"
+    action: DENY
+    reason: "Self-protection: the permissions tool binary is protected."
+    alternative: "Refer to it as 'the permissions tool'. To inspect policy rules, use signet_list_rules via MCP."
+    locked: true
+
+  - name: protect_hook_config
+    tool_pattern: ".*"
+    conditions:
+      - "any_of(parameters, 'settings.json', 'settings.local.json')"
+    action: ASK
+    reason: "Self-protection: hook config changes require user confirmation."
+    alternative: "Describe the settings change you need and ask the user to apply it manually, or use the /update-config skill."
+    locked: true
+
+  - name: protect_signet_symlink
+    tool_pattern: ".*"
+    conditions:
+      - "any_of(parameters, 'ln ', 'ln\t', 'symlink', 'mklink')"
+      - "any_of(parameters, '.signet', '.Signet', '.SIGNET', 'signet-eval', 'signet_eval', 'settings.json', 'settings.local.json')"
+    action: DENY
+    reason: "Self-protection: symlink creation targeting the permissions tool is blocked."
+    alternative: "If you need to reference these paths, use absolute paths in your code or configuration rather than symlinks."
+    locked: true
+
+  - name: protect_signet_process
+    tool_pattern: ".*"
+    conditions:
+      - "or(contains_word(parameters, 'kill') || contains_word(parameters, 'pkill') || contains_word(parameters, 'killall'))"
+      - "contains_word(parameters, 'signet')"
+    action: DENY
+    reason: "Self-protection: cannot terminate processes for the permissions tool."
+    alternative: "If the permissions tool appears hung, ask the user to restart it. To check its status, use signet_status via MCP."
+    locked: true
+
+  # --- Operational rules (with plan B) ---
+
+  - name: block_rm
+    tool_pattern: "^Bash$"
+    conditions:
+      - "contains_word(parameters, 'rm')"
+    action: DENY
+    reason: "File deletion blocked by policy."
+    alternative: "Use 'trash <file>' to move to macOS trash (recoverable). Or 'mv <file> /tmp/' to stage for manual cleanup. To list files without deleting: 'ls -la <path>'."
+
+  - name: block_force_push
+    tool_pattern: "^Bash$"
+    conditions:
+      - "any_of(parameters, 'push --force', 'push -f')"
+    action: ASK
+    reason: "Force push can overwrite others' work."
+    alternative: "Use 'git push --force-with-lease' which only succeeds if no one else has pushed since your last fetch. Or push to a new branch: 'git push origin HEAD:fix/<name>'."
+
+  - name: block_destructive
+    tool_pattern: "^Bash$"
+    conditions:
+      - "or(contains_word(parameters, 'mkfs') || contains_word(parameters, 'format') || contains(parameters, 'dd if='))"
+    action: DENY
+    reason: "Destructive disk operations blocked."
+    alternative: "For disk images, write to a temp file first: 'dd if=<src> of=/tmp/staging.img'. For formatting, describe the partition layout and ask the user to execute the command themselves."
+
+  - name: block_piped_exec
+    tool_pattern: "^Bash$"
+    conditions:
+      - "or(contains_word(parameters, 'curl') || contains_word(parameters, 'wget'))"
+      - "any_of(parameters, '| sh', '| bash', '| zsh')"
+    action: DENY
+    reason: "Piped remote execution blocked — cannot verify script contents."
+    alternative: "Download first, then inspect: 'curl -o /tmp/script.sh <url>' followed by 'cat /tmp/script.sh'. Show the contents to the user and let them decide whether to execute."
+
+  - name: block_credential_writes
+    tool_pattern: "^(Write|Edit)$"
+    conditions:
+      - "matches(file_path, '\\.(env|pem|key|secret|credentials)$')"
+    action: DENY
+    reason: "Writing to credential/secret files blocked."
+    alternative: "Write to a '.example' or '.template' file (e.g., '.env.example') with placeholder values, then instruct the user to copy and fill in real credentials."
+
+  - name: block_chmod_777
+    tool_pattern: "^Bash$"
+    conditions:
+      - "contains(parameters, 'chmod 777')"
+    action: ASK
+    reason: "chmod 777 grants world-readable/writable/executable access."
+    alternative: "Use minimum required permissions: 'chmod 755' for executables, 'chmod 644' for regular files, 'chmod 600' for secrets/keys."
+
+default_action: ALLOW

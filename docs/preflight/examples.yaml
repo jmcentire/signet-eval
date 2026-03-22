@@ -1,0 +1,173 @@
+# Example Preflights
+# These show what the agent would submit via signet_preflight_submit
+
+---
+# Example 1: Refactor authentication module
+example: refactor_auth
+preflight:
+  task: "Refactor authentication middleware — extract session management into separate module, update all imports"
+  risks:
+    - "Breaking imports across 30+ files that depend on auth module"
+    - "Accidentally deleting auth logic instead of moving it"
+    - "Session tokens could be logged or exposed during refactor"
+    - "Tests may pass with stale imports if not all files are updated"
+  constraints:
+    - name: no_auth_delete
+      tool_pattern: "^(Bash|Write)$"
+      conditions:
+        - "contains(parameters, 'auth')"
+        - "or(contains_word(parameters, 'rm') || contains_word(parameters, 'delete') || contains_word(parameters, 'unlink'))"
+      action: DENY
+      reason: "Cannot delete auth files during refactor"
+      alternative: "Move auth files with 'mv' or 'git mv' to preserve history. Create the new module structure first, then migrate."
+
+    - name: no_bulk_write
+      tool_pattern: "^(Write|Edit)$"
+      conditions:
+        - "contains(parameters, 'auth')"
+      action: ASK
+      reason: "Auth file modification requires review during refactor"
+      alternative: "Make changes to one file at a time. Run tests after each file change before proceeding to the next."
+
+    - name: no_credential_exposure
+      tool_pattern: ".*"
+      conditions:
+        - "or(contains(parameters, 'session_token') || contains(parameters, 'SESSION_SECRET') || contains(parameters, 'jwt_secret'))"
+      action: DENY
+      reason: "Secret values must not appear in tool parameters during refactor"
+      alternative: "Reference secrets by environment variable name (e.g., $SESSION_SECRET), never by value. Use placeholder strings in test fixtures."
+
+    - name: verify_after_move
+      tool_pattern: "^Bash$"
+      conditions:
+        - "contains(parameters, 'git mv')"
+      action: ASK
+      reason: "File move should be followed by import verification"
+      alternative: "After each git mv, run 'grep -r' for the old import path to find all files that need updating."
+
+  lockout_minutes: 60
+
+---
+# Example 2: Deploy to production
+example: deploy_production
+preflight:
+  task: "Deploy v2.3.1 to production via CI/CD pipeline"
+  risks:
+    - "Deploying untested code directly to production"
+    - "Force-pushing could overwrite hotfix commits from other team members"
+    - "Wrong branch deployed (staging artifacts mixed with prod)"
+    - "Database migration could be destructive if rollback isn't tested"
+  constraints:
+    - name: no_direct_push_main
+      tool_pattern: "^Bash$"
+      conditions:
+        - "contains(parameters, 'git push')"
+        - "or(contains(parameters, 'main') || contains(parameters, 'master') || contains(parameters, 'production'))"
+      action: ASK
+      reason: "Direct push to protected branch during deploy"
+      alternative: "Push to a release branch (e.g., 'release/v2.3.1') and open a PR. Let CI validate before merging."
+
+    - name: no_force_anything
+      tool_pattern: "^Bash$"
+      conditions:
+        - "any_of(parameters, '--force', '-f ')"
+      action: DENY
+      reason: "Force operations blocked during deploy"
+      alternative: "If push is rejected, pull first: 'git pull --rebase origin main'. If merge conflicts exist, resolve them explicitly."
+
+    - name: no_migration_without_backup
+      tool_pattern: "^Bash$"
+      conditions:
+        - "or(contains(parameters, 'migrate') || contains(parameters, 'migration'))"
+      action: ASK
+      reason: "Database migration requires confirmation during deploy"
+      alternative: "Run migration on staging first. Verify with 'SELECT count(*) FROM ...' before and after. Test rollback: 'migrate down' then 'migrate up'."
+
+    - name: no_env_modification
+      tool_pattern: "^(Write|Edit|Bash)$"
+      conditions:
+        - "or(contains(parameters, '.env') || contains(parameters, 'ENV=') || contains(parameters, 'export '))"
+      action: DENY
+      reason: "Environment variables must not be modified during deploy"
+      alternative: "Document the required env changes and instruct the user to apply them manually, or use the project's config management tool."
+
+    - name: verify_ci_green
+      tool_pattern: "^Bash$"
+      conditions:
+        - "contains(parameters, 'gh pr merge')"
+      action: ASK
+      reason: "PR merge should confirm CI status first"
+      alternative: "Run 'gh pr checks <PR>' first. If any check is pending or failed, wait or investigate. Do not merge with failing checks."
+
+  lockout_minutes: 120
+
+---
+# Example 3: Bulk file rename
+example: bulk_rename
+preflight:
+  task: "Rename all .jsx files to .tsx in src/components/ (JavaScript to TypeScript migration)"
+  risks:
+    - "Renaming files without updating imports breaks the entire build"
+    - "Git history lost if using mv instead of git mv"
+    - "Some .jsx files might have JSX-specific patterns that need TS conversion, not just rename"
+    - "Test files referencing old paths will silently fail"
+  constraints:
+    - name: no_raw_mv
+      tool_pattern: "^Bash$"
+      conditions:
+        - "contains_word(parameters, 'mv')"
+        - "not(contains(parameters, 'git mv'))"
+      action: DENY
+      reason: "Plain mv loses git history during rename"
+      alternative: "Use 'git mv old.jsx new.tsx' to preserve history. Verify with 'git log --follow new.tsx' after rename."
+
+    - name: limit_batch_size
+      tool_pattern: "^Bash$"
+      conditions:
+        - "or(contains(parameters, 'find') || contains(parameters, 'xargs') || contains(parameters, 'for f in'))"
+        - "or(contains(parameters, '.jsx') || contains(parameters, '.tsx'))"
+      action: ASK
+      reason: "Batch rename operations need review"
+      alternative: "Rename files in groups of 5, running 'npx tsc --noEmit' after each batch to catch import errors early."
+
+    - name: no_delete_original
+      tool_pattern: "^Bash$"
+      conditions:
+        - "contains_word(parameters, 'rm')"
+        - "any_of(parameters, '.jsx', '.tsx')"
+      action: DENY
+      reason: "Do not delete source files during migration"
+      alternative: "If git mv was used, originals are already handled. If copies exist, use 'trash' or move to a .backup/ directory until migration is verified."
+
+    - name: test_after_rename
+      tool_pattern: "^Bash$"
+      conditions:
+        - "contains(parameters, 'git commit')"
+      action: ASK
+      reason: "Commit should follow successful build verification"
+      alternative: "Before committing, run: 'npx tsc --noEmit && npm test'. Only commit if both pass."
+
+  lockout_minutes: 30
+
+---
+# Example: Violation and escalation scenario
+#
+# Agent filed the bulk_rename preflight above.
+# During execution, the agent tries: Bash { command: "mv src/components/Button.jsx src/components/Button.tsx" }
+#
+# Pass 1: Hard rules — no match (mv is not rm, not force push, etc.)
+# Pass 2: Soft constraints — no_raw_mv matches:
+#   - contains_word(parameters, 'mv') → true
+#   - not(contains(parameters, 'git mv')) → true (it's plain mv)
+#
+# Result:
+#   Decision: DENY
+#   Reason: "Plain mv loses git history during rename. Instead: Use 'git mv old.jsx new.tsx'
+#            to preserve history. Verify with 'git log --follow new.tsx' after rename."
+#   Logged: PreflightViolation { constraint: "no_raw_mv", tool: "Bash", ... }
+#   violation_count: 1
+#
+# The agent receives the deny with the plan B and uses git mv instead.
+# If the agent keeps hitting constraints (5 violations), escalation triggers:
+#   ALL subsequent tool calls → ASK
+#   Reason: "Preflight escalated: 5 constraint violations. Task may need replanning."

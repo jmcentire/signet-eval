@@ -1,0 +1,127 @@
+version: "1"
+project: signet-eval-preflight
+constraints:
+
+  # --- Integrity ---
+
+  - id: PF-C001
+    name: soft_cannot_override_hard
+    description: >
+      Soft constraints from a preflight MUST NOT override, weaken, reorder above,
+      or shadow any hard (locked or unlocked) policy rule. Validation rejects any
+      soft constraint whose tool_pattern + conditions would match a superset of
+      what a hard rule matches with a more permissive action.
+    severity: must
+    rationale: >
+      Hard rules are the skeleton. Soft rules are flesh. If soft rules can
+      dissolve hard rules, the entire enforcement model collapses.
+
+  - id: PF-C002
+    name: preflight_hmac_signed
+    description: >
+      Every stored preflight MUST be HMAC-signed using the vault session key.
+      Verification happens on every read. Tampered preflights are discarded
+      and the system falls back to hard-rules-only mode.
+    severity: must
+    rationale: >
+      Without cryptographic integrity, the agent could modify its own stored
+      preflight via filesystem access, defeating the lockout mechanism.
+
+  - id: PF-C003
+    name: lockout_immutable
+    description: >
+      Once a preflight is submitted with a lockout_until timestamp, that timestamp
+      cannot be moved earlier. It can only be extended (moved later) by user action
+      (not agent action). The lockout period is enforced in vault.rs, not in policy
+      evaluation, so it cannot be bypassed by condition manipulation.
+    severity: must
+    rationale: >
+      The lockout IS the pre-commitment mechanism. If it can be shortened mid-flight,
+      it provides no value — it's just a suggestion the agent will override under
+      goal pressure.
+
+  - id: PF-C004
+    name: append_only_session
+    description: >
+      During a locked session, preflights are append-only. A new preflight can be
+      submitted (starting a new lockout), but the previous preflight's record and
+      violation log cannot be deleted or modified.
+    severity: must
+    rationale: >
+      Audit trail integrity. If the agent could delete evidence of past violations,
+      the kindex feedback loop (learning from failures) would have gaps.
+
+  - id: PF-C005
+    name: agent_cannot_delete_active
+    description: >
+      The agent MUST NOT be able to delete, modify, or deactivate its own active
+      preflight. Only user confirmation (ASK decision) or lockout expiry can
+      end a preflight's enforcement.
+    severity: must
+    rationale: >
+      Direct corollary of the pilot analogy: you can't un-file your flight plan
+      mid-flight because you don't like the weather minimums you set.
+
+  # --- Behavioral ---
+
+  - id: PF-C006
+    name: plan_b_required
+    description: >
+      Every soft constraint in a preflight MUST include a non-empty `alternative`
+      field describing what the agent should do instead when the constraint fires.
+      Validation rejects constraints with empty or whitespace-only alternatives.
+    severity: must
+    rationale: >
+      Red lines without plan Bs create brittle systems that fail loudly.
+      Red lines with plan Bs create resilient systems that degrade gracefully.
+      The alternative is surfaced in the deny reason so the agent can act on it.
+
+  - id: PF-C007
+    name: max_soft_constraints
+    description: >
+      A preflight may contain at most 20 soft constraints. Submission with more
+      than 20 is rejected.
+    severity: must
+    rationale: >
+      Prevents token-wasting abuse where the agent floods itself with trivial
+      constraints to appear diligent. Quality over quantity.
+
+  - id: PF-C008
+    name: violation_escalation
+    description: >
+      When a tool call violates a soft constraint, the system MUST: (1) log the
+      violation with full context (tool, params, constraint name, plan B),
+      (2) return a deny/ask decision with the plan B text as the reason,
+      (3) increment a per-preflight violation counter. If violations exceed
+      a configurable threshold (default: 5), escalate to ASK for ALL subsequent
+      tool calls until the preflight is reviewed.
+    severity: should
+    rationale: >
+      Repeated violations signal the agent is fighting its own constraints —
+      the same pattern as a pilot pushing through deteriorating conditions.
+      Escalation forces a pause.
+
+  # --- Integration ---
+
+  - id: PF-C009
+    name: no_network_in_engine
+    description: >
+      The preflight subsystem MUST NOT make network calls, spawn processes,
+      or perform I/O beyond vault SQLite reads/writes. Kindex integration
+      happens at the agent level (the agent queries kindex, then includes
+      relevant findings in the preflight submission).
+    severity: must
+    rationale: >
+      signet-eval's core guarantee is deterministic, side-effect-free evaluation.
+      Adding network dependencies would make enforcement flaky.
+
+  - id: PF-C010
+    name: graceful_degradation
+    description: >
+      If the vault is unavailable or preflight HMAC verification fails, the
+      system MUST fall back to hard-rules-only enforcement. It MUST NOT crash,
+      hang, or allow unrestricted access.
+    severity: must
+    rationale: >
+      Defense in depth. The preflight is additive safety, not a replacement
+      for hard rules.

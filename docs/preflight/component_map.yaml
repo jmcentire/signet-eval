@@ -1,0 +1,108 @@
+version: "1"
+project: signet-eval-preflight
+
+components:
+  # Existing components (modified)
+
+  - id: policy_engine
+    role: library
+    authority: rule_evaluation
+    description: "Two-pass evaluation: hard rules (pass 1) then soft constraints (pass 2)"
+    modifications:
+      - "Add alternative field to PolicyRule and CompiledRule"
+      - "Add evaluate_preflight() function for pass 2"
+      - "Compose deny reason as '{reason} Instead: {alternative}' when alternative present"
+    data_access:
+      PUBLIC: read
+    dependencies: []
+
+  - id: vault
+    role: library
+    authority: encrypted_storage
+    description: "Preflight CRUD, HMAC signing, lockout enforcement, violation logging"
+    modifications:
+      - "Add preflights and preflight_violations tables to init_db()"
+      - "Add store_preflight(), active_preflight(), log_preflight_violation()"
+      - "Add preflight_violations(), preflight_history(), verify_preflight_hmac()"
+      - "Add is_preflight_locked() — system clock check"
+    data_access:
+      PUBLIC: read_write
+    dependencies: []
+
+  - id: hook
+    role: ingress
+    protocol: stdin_stdout
+    authority: tool_call_interception
+    description: "Two-pass hook: hard rules then active preflight soft constraints"
+    modifications:
+      - "After hard rule evaluation, check active preflight if vault available"
+      - "If escalated, return ASK for all tool calls"
+      - "Log violations via vault"
+    data_access:
+      PUBLIC: read
+    dependencies: [policy_engine, vault]
+
+  - id: mcp_server
+    role: service
+    protocol: mcp
+    authority: policy_management
+    description: "5 new preflight tools added to existing 17"
+    modifications:
+      - "Add signet_preflight_submit (validate + store)"
+      - "Add signet_preflight_active (read-only)"
+      - "Add signet_preflight_history (read-only)"
+      - "Add signet_preflight_violations (read-only)"
+      - "Add signet_preflight_test (dry-run validation)"
+    data_access:
+      PUBLIC: read_write
+    dependencies: [policy_engine, vault]
+
+  - id: cli
+    role: ingress
+    protocol: cli
+    authority: user_interface
+    description: "2 new subcommands for preflight management"
+    modifications:
+      - "Add PreflightStatus subcommand (read-only, agent-usable)"
+      - "Add PreflightOverride subcommand (requires passphrase, human-only)"
+    data_access:
+      PUBLIC: read_write
+    dependencies: [vault]
+
+  # New component
+
+  - id: self_protection
+    role: library
+    authority: enforcement_integrity
+    description: "New locked rule protecting preflight storage from agent tampering"
+    modifications:
+      - "Add protect_preflight_storage to self_protection_rules()"
+    data_access:
+      PUBLIC: read
+    dependencies: [policy_engine]
+
+edges:
+  - from: hook
+    to: policy_engine
+    tier: internal
+    description: "Pass 1: hard rule evaluation"
+
+  - from: hook
+    to: vault
+    tier: internal
+    description: "Pass 2: fetch active preflight, log violations"
+
+  - from: mcp_server
+    to: vault
+    tier: internal
+    description: "Preflight CRUD operations"
+
+  - from: mcp_server
+    to: policy_engine
+    tier: internal
+    description: "Validate soft constraints use valid condition DSL"
+
+  - from: cli
+    to: vault
+    tier: internal
+    description: "Preflight status and override"
