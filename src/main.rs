@@ -70,6 +70,10 @@ enum Command {
     /// Run MCP proxy (wraps upstream servers with policy enforcement)
     #[cfg(feature = "mcp")]
     Proxy,
+    /// Show active preflight status
+    PreflightStatus,
+    /// Override (end) an active preflight early (requires vault passphrase)
+    PreflightOverride,
 }
 
 fn expand_home(path: &str) -> PathBuf {
@@ -358,6 +362,56 @@ fn run() -> i32 {
             match rt.block_on(mcp_proxy::run_proxy()) {
                 Ok(_) => 0,
                 Err(e) => { eprintln!("MCP proxy error: {e}"); 1 }
+            }
+        }
+        Some(Command::PreflightStatus) => {
+            match vault::try_load_vault() {
+                Some(v) => {
+                    match v.active_preflight() {
+                        Some(pf) => {
+                            eprintln!("Active preflight: {}", pf.id);
+                            eprintln!("Task: {}", pf.task);
+                            eprintln!("Constraints: {}", pf.constraints.len());
+                            eprintln!("Violations: {}", pf.violation_count);
+                            eprintln!("Escalated: {}", pf.escalated);
+                            eprintln!("Lockout until: {}", pf.lockout_until);
+                            let locked = v.is_preflight_locked();
+                            eprintln!("Locked: {locked}");
+                            for (i, c) in pf.constraints.iter().enumerate() {
+                                eprintln!("  {}. [{}] {} — {}", i + 1, c.action, c.name, c.reason);
+                                eprintln!("     Plan B: {}", c.alternative);
+                            }
+                            0
+                        }
+                        None => { eprintln!("No active preflight."); 0 }
+                    }
+                }
+                None => { eprintln!("Vault not set up or locked."); 1 }
+            }
+        }
+        Some(Command::PreflightOverride) => {
+            match vault::try_load_vault() {
+                Some(v) => {
+                    match v.active_preflight() {
+                        Some(pf) => {
+                            eprintln!("Active preflight: {} (task: {})", pf.id, pf.task);
+                            eprintln!("Violations: {}, Escalated: {}", pf.violation_count, pf.escalated);
+                            // Require passphrase confirmation for override
+                            let pass = rpassword::prompt_password("Vault passphrase to confirm override: ").unwrap_or_default();
+                            match vault::unlock_vault(&pass) {
+                                Ok(_) => {
+                                    match v.override_preflight() {
+                                        Ok(_) => { eprintln!("Preflight overridden. Soft constraints deactivated."); 0 }
+                                        Err(e) => { eprintln!("Error: {e}"); 1 }
+                                    }
+                                }
+                                Err(e) => { eprintln!("Authentication failed: {e}"); 1 }
+                            }
+                        }
+                        None => { eprintln!("No active preflight to override."); 0 }
+                    }
+                }
+                None => { eprintln!("Vault not set up or locked."); 1 }
             }
         }
     }

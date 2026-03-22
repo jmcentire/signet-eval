@@ -165,6 +165,55 @@ impl ServerHandler for SignetMcpServer {
                     },
                     "required": ["name"]
                 })),
+                // --- Preflight tools ---
+                make_tool("signet_preflight_submit", "File a preflight: declare task intent, risks, and self-imposed constraints before starting work. Constraints are HMAC-signed and locked for the specified duration.", serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "task": {"type": "string", "description": "What you intend to do"},
+                        "risks": {"type": "array", "items": {"type": "string"}, "description": "What could go wrong"},
+                        "constraints": {"type": "array", "items": {
+                            "type": "object",
+                            "properties": {
+                                "name": {"type": "string"},
+                                "tool_pattern": {"type": "string", "description": "Regex matching tool names"},
+                                "conditions": {"type": "array", "items": {"type": "string"}},
+                                "action": {"type": "string", "description": "DENY or ASK"},
+                                "reason": {"type": "string"},
+                                "alternative": {"type": "string", "description": "Plan B: what to do instead (required)"}
+                            },
+                            "required": ["name", "tool_pattern", "conditions", "action", "reason", "alternative"]
+                        }, "description": "Self-imposed soft constraints (max 20)"},
+                        "lockout_minutes": {"type": "integer", "description": "How long this preflight is locked (5-480 min)", "minimum": 5, "maximum": 480}
+                    },
+                    "required": ["task", "risks", "constraints", "lockout_minutes"]
+                })),
+                make_tool("signet_preflight_active", "View your active preflight: task, constraints, lockout status, violation count.", serde_json::json!({"type": "object", "properties": {}})),
+                make_tool("signet_preflight_history", "View past preflights and their outcomes.", serde_json::json!({
+                    "type": "object",
+                    "properties": {"limit": {"type": "integer", "description": "Number of entries", "default": 10}},
+                })),
+                make_tool("signet_preflight_violations", "View constraint violations for the active or a specified preflight.", serde_json::json!({
+                    "type": "object",
+                    "properties": {"preflight_id": {"type": "string", "description": "Optional. Defaults to active preflight."}},
+                })),
+                make_tool("signet_preflight_test", "Dry-run: validate preflight constraints without submitting.", serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "constraints": {"type": "array", "items": {
+                            "type": "object",
+                            "properties": {
+                                "name": {"type": "string"},
+                                "tool_pattern": {"type": "string"},
+                                "conditions": {"type": "array", "items": {"type": "string"}},
+                                "action": {"type": "string"},
+                                "reason": {"type": "string"},
+                                "alternative": {"type": "string"}
+                            },
+                            "required": ["name", "tool_pattern", "conditions", "action", "reason", "alternative"]
+                        }}
+                    },
+                    "required": ["constraints"]
+                })),
             ];
             Ok(ListToolsResult { tools, next_cursor: None, meta: None })
         }
@@ -197,6 +246,11 @@ impl ServerHandler for SignetMcpServer {
                 "signet_sign_policy" => handle_sign_policy(),
                 "signet_reset_session" => handle_reset_session(),
                 "signet_use_credential" => handle_use_credential(args),
+                "signet_preflight_submit" => handle_preflight_submit(args),
+                "signet_preflight_active" => handle_preflight_active(),
+                "signet_preflight_history" => handle_preflight_history(args),
+                "signet_preflight_violations" => handle_preflight_violations(args),
+                "signet_preflight_test" => handle_preflight_test(args),
                 _ => format!("Unknown tool: {}", request.name),
             };
             Ok(CallToolResult::success(vec![Content::text(result)]))
@@ -590,6 +644,165 @@ Examples:
   Only allow JSON:       not(param_eq(format, 'json'))
   Block large purchases: param_gt(amount, 500)
   Block IP access:       matches(host, '^\d+\.\d+\.\d+\.\d+$')"#.into()
+}
+
+// === Preflight Handlers ===
+
+fn parse_soft_constraints(args: &serde_json::Map<String, Value>) -> Result<Vec<vault::SoftConstraint>, String> {
+    let arr = args.get("constraints")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| "Missing 'constraints' array".to_string())?;
+    let mut constraints = Vec::new();
+    for item in arr {
+        let obj = item.as_object().ok_or("Each constraint must be an object")?;
+        let name = obj.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let tool_pattern = obj.get("tool_pattern").and_then(|v| v.as_str()).unwrap_or(".*").to_string();
+        let conditions: Vec<String> = obj.get("conditions")
+            .and_then(|v| v.as_array())
+            .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .unwrap_or_default();
+        let action = obj.get("action").and_then(|v| v.as_str()).unwrap_or("DENY").to_string();
+        let reason = obj.get("reason").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let alternative = obj.get("alternative").and_then(|v| v.as_str()).unwrap_or("").to_string();
+
+        // Validate
+        if name.is_empty() { return Err("Constraint name is required".into()); }
+        if action != "DENY" && action != "ASK" { return Err(format!("Constraint '{name}' action must be DENY or ASK, got '{action}'")); }
+        if alternative.trim().is_empty() { return Err(format!("Constraint '{name}' requires a non-empty alternative (plan B)")); }
+        if regex::Regex::new(&tool_pattern).is_err() { return Err(format!("Constraint '{name}' has invalid regex: {tool_pattern}")); }
+
+        constraints.push(vault::SoftConstraint { name, tool_pattern, conditions, action, reason, alternative });
+    }
+    Ok(constraints)
+}
+
+fn handle_preflight_submit(args: &serde_json::Map<String, Value>) -> String {
+    let task = args.get("task").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let risks: Vec<String> = args.get("risks")
+        .and_then(|v| v.as_array())
+        .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .unwrap_or_default();
+    let lockout_minutes = args.get("lockout_minutes").and_then(|v| v.as_u64()).unwrap_or(30);
+
+    if task.is_empty() { return "Task description is required.".into(); }
+    if lockout_minutes < 5 { return "Lockout must be at least 5 minutes.".into(); }
+    if lockout_minutes > 480 { return "Lockout cannot exceed 480 minutes (8 hours).".into(); }
+
+    let constraints = match parse_soft_constraints(args) {
+        Ok(c) => c,
+        Err(e) => return format!("Validation error: {e}"),
+    };
+
+    match vault::try_load_vault() {
+        Some(v) => {
+            if v.is_preflight_locked() {
+                if let Some(active) = v.active_preflight() {
+                    return format!("Active preflight is locked until timestamp {}. Cannot submit a new one until lockout expires or user runs 'signet-eval preflight-override'.", active.lockout_until);
+                }
+            }
+            let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+            let preflight = vault::Preflight {
+                id: vault::random_hex_id(),
+                task,
+                risks,
+                constraints,
+                submitted_at: now,
+                lockout_until: now + lockout_minutes * 60,
+                violation_count: 0,
+                escalated: false,
+            };
+            match v.store_preflight(&preflight) {
+                Ok(_) => format!("Preflight filed. ID: {}. Locked for {} minutes ({} constraints active).", preflight.id, lockout_minutes, preflight.constraints.len()),
+                Err(e) => format!("Failed to store preflight: {e}"),
+            }
+        }
+        None => "Vault not set up or locked. Preflight requires vault for HMAC signing.".into(),
+    }
+}
+
+fn handle_preflight_active() -> String {
+    match vault::try_load_vault() {
+        Some(v) => {
+            match v.active_preflight() {
+                Some(pf) => {
+                    let mut lines = vec![
+                        format!("Active preflight: {}", pf.id),
+                        format!("Task: {}", pf.task),
+                        format!("Risks: {}", pf.risks.join("; ")),
+                        format!("Constraints: {}", pf.constraints.len()),
+                        format!("Violations: {}", pf.violation_count),
+                        format!("Escalated: {}", pf.escalated),
+                        format!("Lockout until: {}", pf.lockout_until),
+                    ];
+                    for (i, c) in pf.constraints.iter().enumerate() {
+                        lines.push(format!("  {}. [{}] {} — {}", i + 1, c.action, c.name, c.reason));
+                        lines.push(format!("     Plan B: {}", c.alternative));
+                    }
+                    lines.join("\n")
+                }
+                None => "No active preflight.".into(),
+            }
+        }
+        None => "Vault not set up or locked.".into(),
+    }
+}
+
+fn handle_preflight_history(args: &serde_json::Map<String, Value>) -> String {
+    let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(10) as u32;
+    match vault::try_load_vault() {
+        Some(v) => {
+            let history = v.preflight_history(limit);
+            if history.is_empty() { return "No preflight history.".into(); }
+            let mut lines = vec![format!("Preflight history ({}):", history.len())];
+            for h in &history {
+                let id = h["id"].as_str().unwrap_or("?");
+                let task = h["task"].as_str().unwrap_or("?");
+                let violations = h["violation_count"].as_u64().unwrap_or(0);
+                let escalated = h["escalated"].as_bool().unwrap_or(false);
+                let active = h["active"].as_bool().unwrap_or(false);
+                let status = if active { "ACTIVE" } else if escalated { "ESCALATED" } else { "completed" };
+                lines.push(format!("  {} [{}] {} (violations: {})", &id[..8.min(id.len())], status, task, violations));
+            }
+            lines.join("\n")
+        }
+        None => "Vault not set up or locked.".into(),
+    }
+}
+
+fn handle_preflight_violations(args: &serde_json::Map<String, Value>) -> String {
+    match vault::try_load_vault() {
+        Some(v) => {
+            let preflight_id = args.get("preflight_id").and_then(|v| v.as_str());
+            let id = match preflight_id {
+                Some(id) => id.to_string(),
+                None => match v.active_preflight() {
+                    Some(pf) => pf.id,
+                    None => return "No active preflight and no preflight_id specified.".into(),
+                }
+            };
+            let violations = v.preflight_violations(&id);
+            if violations.is_empty() { return format!("No violations for preflight {}.", &id[..8.min(id.len())]); }
+            let mut lines = vec![format!("Violations for {} ({}):", &id[..8.min(id.len())], violations.len())];
+            for viol in &violations {
+                lines.push(format!("  [{}] {} via {} — Plan B: {}", viol.constraint_name, viol.tool_name, viol.parameters_summary, viol.alternative));
+            }
+            lines.join("\n")
+        }
+        None => "Vault not set up or locked.".into(),
+    }
+}
+
+fn handle_preflight_test(args: &serde_json::Map<String, Value>) -> String {
+    match parse_soft_constraints(args) {
+        Ok(constraints) => {
+            let mut lines = vec![format!("Validation passed: {} constraints OK.", constraints.len())];
+            for (i, c) in constraints.iter().enumerate() {
+                lines.push(format!("  {}. [{}] {} — plan B: {}", i + 1, c.action, c.name, c.alternative));
+            }
+            lines.join("\n")
+        }
+        Err(e) => format!("Validation failed: {e}"),
+    }
 }
 
 /// Run the MCP management server on stdio.

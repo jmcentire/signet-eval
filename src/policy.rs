@@ -112,7 +112,7 @@ impl CompiledPolicy {
 ///   - "param_gt(amount, 200)" — numeric parameter comparison
 ///   - "spend_gt(category, 200)" — session spend exceeds limit
 ///   - "spend_plus_amount_gt(category, param_name, limit)" — cumulative check
-fn evaluate_condition(
+pub(crate) fn evaluate_condition(
     condition: &str,
     call: &ToolCall,
     vault: Option<&Vault>,
@@ -474,6 +474,18 @@ pub fn self_protection_rules() -> Vec<PolicyRule> {
             locked: true,
             reason: Some("Self-protection: cannot terminate processes for the permissions tool.".into()),
             alternative: Some("If the permissions tool appears hung, ask the user to restart it.".into()),
+        },
+        PolicyRule {
+            name: "protect_preflight_storage".into(),
+            tool_pattern: ".*".into(),
+            conditions: vec![
+                "or(contains(parameters, 'preflights') || contains(parameters, 'preflight_violations'))".into(),
+                "or(contains_word(parameters, 'DELETE') || contains_word(parameters, 'UPDATE') || contains_word(parameters, 'DROP') || contains_word(parameters, 'sqlite3'))".into(),
+            ],
+            action: Decision::Deny,
+            locked: true,
+            reason: Some("Self-protection: preflight records are tamper-protected.".into()),
+            alternative: Some("Use signet_preflight_active or signet_preflight_violations to read your preflight data.".into()),
         },
     ]
 }
@@ -1048,7 +1060,7 @@ mod self_protection_tests {
     #[test]
     fn test_default_policy_has_locked_rules() {
         let rules = self_protection_rules();
-        assert_eq!(rules.len(), 5);
+        assert_eq!(rules.len(), 6);
         assert!(rules.iter().all(|r| r.locked));
     }
 

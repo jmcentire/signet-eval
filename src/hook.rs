@@ -3,9 +3,10 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::io::{self, Read};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::policy::{self, CompiledPolicy, Decision, ToolCall};
-use crate::vault::Vault;
+use crate::vault::{Preflight, PreflightViolation, SoftConstraint, Vault};
 
 #[derive(Deserialize)]
 struct HookInput {
@@ -31,6 +32,38 @@ struct HookOutput {
     reason: Option<String>,
 }
 
+/// Evaluate a tool call against preflight soft constraints.
+/// Returns the first matching constraint (if any).
+fn evaluate_preflight_constraint(
+    call: &ToolCall,
+    preflight: &Preflight,
+    vault: &Vault,
+) -> Option<(SoftConstraint, String)> {
+    for constraint in &preflight.constraints {
+        // Check tool pattern
+        let re = match regex::Regex::new(&constraint.tool_pattern) {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+        if !re.is_match(&call.tool_name) {
+            continue;
+        }
+        // Check all conditions (AND)
+        let mut all_match = true;
+        for cond in &constraint.conditions {
+            match policy::evaluate_condition(cond, call, Some(vault)) {
+                Ok(true) => {},
+                _ => { all_match = false; break; },
+            }
+        }
+        if all_match {
+            let reason = format!("{} Instead: {}", constraint.reason, constraint.alternative);
+            return Some((constraint.clone(), reason));
+        }
+    }
+    None
+}
+
 pub fn run_hook(policy: &CompiledPolicy, vault: Option<&Vault>) -> i32 {
     let mut input = String::new();
     if io::stdin().read_to_string(&mut input).is_err() {
@@ -51,7 +84,66 @@ pub fn run_hook(policy: &CompiledPolicy, vault: Option<&Vault>) -> i32 {
         parameters: hook_input.parameters.unwrap_or(Value::Object(Default::default())),
     };
 
+    // Pass 1: Evaluate against compiled hard rules
     let result = policy::evaluate(&call, policy, vault);
+
+    // Hard deny always wins — short-circuit
+    let (final_decision, final_reason) = if result.decision == Decision::Deny {
+        (result.decision, result.reason)
+    } else {
+        // Pass 2: Check active preflight soft constraints
+        match vault.and_then(|v| {
+            let preflight = v.active_preflight()?;
+            Some((v, preflight))
+        }) {
+            Some((v, preflight)) => {
+                if preflight.escalated {
+                    // Escalated preflight — require human review for everything
+                    let reason = format!(
+                        "Preflight escalated: {} violations. Review required.",
+                        preflight.violation_count
+                    );
+                    (Decision::Ask, Some(reason))
+                } else {
+                    // Evaluate soft constraints
+                    match evaluate_preflight_constraint(&call, &preflight, v) {
+                        Some((constraint, reason)) => {
+                            // Log the violation
+                            let detail = serde_json::to_string(&call.parameters).unwrap_or_default();
+                            let violation = PreflightViolation {
+                                preflight_id: preflight.id.clone(),
+                                constraint_name: constraint.name.clone(),
+                                tool_name: call.tool_name.clone(),
+                                parameters_summary: detail[..detail.len().min(200)].to_string(),
+                                alternative: constraint.alternative.clone(),
+                                timestamp: SystemTime::now()
+                                    .duration_since(UNIX_EPOCH)
+                                    .unwrap()
+                                    .as_secs(),
+                            };
+                            let _ = v.log_preflight_violation(&violation);
+
+                            // Parse constraint action
+                            let decision = match constraint.action.to_uppercase().as_str() {
+                                "DENY" => Decision::Deny,
+                                "ASK" => Decision::Ask,
+                                _ => Decision::Ask,
+                            };
+                            (decision, Some(reason))
+                        }
+                        None => {
+                            // No soft constraint matched — use Pass 1 result
+                            (result.decision, result.reason)
+                        }
+                    }
+                }
+            }
+            None => {
+                // No active preflight — use Pass 1 result
+                (result.decision, result.reason)
+            }
+        }
+    };
 
     // Log to vault if available
     if let Some(v) = vault {
@@ -63,13 +155,13 @@ pub fn run_hook(policy: &CompiledPolicy, vault: Option<&Vault>) -> i32 {
             .and_then(|v| v.as_str())
             .unwrap_or("");
         let detail = serde_json::to_string(params).unwrap_or_default();
-        let amt = if result.decision == Decision::Allow { amount } else { 0.0 };
-        v.log_action(&call.tool_name, result.decision.as_lowercase(), category, amt, &detail[..detail.len().min(500)]);
+        let amt = if final_decision == Decision::Allow { amount } else { 0.0 };
+        v.log_action(&call.tool_name, final_decision.as_lowercase(), category, amt, &detail[..detail.len().min(500)]);
     }
 
     emit_decision(
-        result.decision.as_lowercase(),
-        if result.decision != Decision::Allow { result.reason } else { None },
+        final_decision.as_lowercase(),
+        if final_decision != Decision::Allow { final_reason } else { None },
     );
     0
 }

@@ -29,11 +29,19 @@ const NONCE_LEN: usize = 12;
 const SESSION_TTL_SECS: f64 = 1800.0; // 30 minutes
 const MAX_FAILED_ATTEMPTS: u32 = 5;
 const LOCKOUT_SECS: f64 = 300.0; // 5 minute lockout after max failures
+const MAX_PREFLIGHT_CONSTRAINTS: usize = 20;
+const DEFAULT_VIOLATION_THRESHOLD: u32 = 5;
 
 type HmacSha256 = Hmac<Sha256>;
 
 fn now_epoch() -> f64 {
     SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs_f64()
+}
+
+pub(crate) fn random_hex_id() -> String {
+    let mut bytes = [0u8; 16];
+    rand::thread_rng().fill_bytes(&mut bytes);
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
 // === Key Derivation ===
@@ -149,6 +157,40 @@ pub struct CredentialMeta {
     pub label: Option<String>,       // human-readable label
 }
 
+// === Preflight Structs ===
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Preflight {
+    pub id: String,
+    pub task: String,
+    pub risks: Vec<String>,
+    pub constraints: Vec<SoftConstraint>,
+    pub submitted_at: u64,
+    pub lockout_until: u64,
+    pub violation_count: u32,
+    pub escalated: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SoftConstraint {
+    pub name: String,
+    pub tool_pattern: String,
+    pub conditions: Vec<String>,
+    pub action: String,  // "DENY" or "ASK"
+    pub reason: String,
+    pub alternative: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PreflightViolation {
+    pub preflight_id: String,
+    pub constraint_name: String,
+    pub tool_name: String,
+    pub parameters_summary: String,
+    pub alternative: String,
+    pub timestamp: u64,
+}
+
 // === Vault ===
 
 pub struct Vault {
@@ -209,6 +251,28 @@ impl Vault {
             );
             CREATE INDEX IF NOT EXISTS idx_ledger_category ON ledger(category);
             CREATE INDEX IF NOT EXISTS idx_ledger_timestamp ON ledger(timestamp);
+            CREATE TABLE IF NOT EXISTS preflights (
+                id TEXT PRIMARY KEY,
+                task TEXT NOT NULL,
+                payload TEXT NOT NULL,
+                hmac TEXT NOT NULL,
+                submitted_at INTEGER NOT NULL,
+                lockout_until INTEGER NOT NULL,
+                violation_count INTEGER DEFAULT 0,
+                escalated INTEGER DEFAULT 0,
+                active INTEGER DEFAULT 1
+            );
+            CREATE TABLE IF NOT EXISTS preflight_violations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                preflight_id TEXT NOT NULL,
+                constraint_name TEXT NOT NULL,
+                tool_name TEXT NOT NULL,
+                params_summary TEXT NOT NULL DEFAULT '',
+                alternative TEXT NOT NULL,
+                timestamp INTEGER NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_preflight_active ON preflights(active);
+            CREATE INDEX IF NOT EXISTS idx_pv_preflight ON preflight_violations(preflight_id);
         ").expect("init db");
     }
 
@@ -440,6 +504,185 @@ impl Vault {
                 "metadata": row.get::<_, String>(4)?,
             }))
         }).unwrap().filter_map(|r| r.ok()).collect()
+    }
+
+    // --- Preflight ---
+
+    /// Store a new preflight. HMAC-signs it. Deactivates any previous active preflight.
+    pub fn store_preflight(&self, preflight: &Preflight) -> Result<(), String> {
+        if preflight.constraints.len() > MAX_PREFLIGHT_CONSTRAINTS {
+            return Err(format!("Too many constraints: {} (max {})", preflight.constraints.len(), MAX_PREFLIGHT_CONSTRAINTS));
+        }
+        // Validate all constraints have non-empty alternatives
+        for c in &preflight.constraints {
+            if c.alternative.trim().is_empty() {
+                return Err(format!("Constraint '{}' has empty alternative (plan B required)", c.name));
+            }
+            if c.action != "DENY" && c.action != "ASK" {
+                return Err(format!("Constraint '{}' action must be DENY or ASK, got '{}'", c.name, c.action));
+            }
+        }
+
+        let payload = serde_json::to_string(preflight)
+            .map_err(|e| format!("serialize: {e}"))?;
+        let hmac = self.preflight_hmac(&payload);
+
+        let conn = Connection::open(&self.db_path)
+            .map_err(|e| format!("open db: {e}"))?;
+        // Deactivate previous active preflight
+        conn.execute("UPDATE preflights SET active = 0 WHERE active = 1", [])
+            .map_err(|e| format!("deactivate: {e}"))?;
+        conn.execute(
+            "INSERT INTO preflights (id, task, payload, hmac, submitted_at, lockout_until, violation_count, escalated, active) VALUES (?1,?2,?3,?4,?5,?6,0,0,1)",
+            params![preflight.id, preflight.task, payload, hmac, preflight.submitted_at as i64, preflight.lockout_until as i64],
+        ).map_err(|e| format!("insert: {e}"))?;
+        Ok(())
+    }
+
+    /// Get the currently active preflight (if any, not expired, HMAC valid).
+    pub fn active_preflight(&self) -> Option<Preflight> {
+        let conn = Connection::open(&self.db_path).ok()?;
+        let (payload, stored_hmac, violation_count, escalated): (String, String, u32, bool) = conn.query_row(
+            "SELECT payload, hmac, violation_count, escalated FROM preflights WHERE active = 1",
+            [], |row| Ok((
+                row.get(0)?,
+                row.get(1)?,
+                row.get::<_, u32>(2)?,
+                row.get::<_, i32>(3)? != 0,
+            ))
+        ).ok()?;
+
+        // Verify HMAC
+        let expected = self.preflight_hmac(&payload);
+        if stored_hmac != expected {
+            eprintln!("WARNING: Preflight HMAC mismatch — possible tampering. Ignoring preflight.");
+            return None;
+        }
+
+        let mut preflight: Preflight = serde_json::from_str(&payload).ok()?;
+        // Update with live violation count from DB
+        preflight.violation_count = violation_count;
+        preflight.escalated = escalated;
+
+        // Check if lockout has expired
+        let now = now_epoch() as u64;
+        if now > preflight.lockout_until {
+            // Lockout expired — deactivate
+            let _ = conn.execute("UPDATE preflights SET active = 0 WHERE id = ?1", params![preflight.id]);
+            return None;
+        }
+
+        Some(preflight)
+    }
+
+    /// Check if a preflight is currently locked (cannot be replaced).
+    pub fn is_preflight_locked(&self) -> bool {
+        let conn = match Connection::open(&self.db_path) {
+            Ok(c) => c,
+            Err(_) => return false,
+        };
+        let lockout_until: Option<i64> = conn.query_row(
+            "SELECT lockout_until FROM preflights WHERE active = 1",
+            [], |row| row.get(0),
+        ).ok();
+        match lockout_until {
+            Some(until) => (now_epoch() as i64) < until,
+            None => false,
+        }
+    }
+
+    /// Record a preflight violation. Increments violation_count. Sets escalated if threshold exceeded.
+    pub fn log_preflight_violation(&self, violation: &PreflightViolation) -> Result<(), String> {
+        let conn = Connection::open(&self.db_path)
+            .map_err(|e| format!("open db: {e}"))?;
+        conn.execute(
+            "INSERT INTO preflight_violations (preflight_id, constraint_name, tool_name, params_summary, alternative, timestamp) VALUES (?1,?2,?3,?4,?5,?6)",
+            params![violation.preflight_id, violation.constraint_name, violation.tool_name, violation.parameters_summary, violation.alternative, violation.timestamp as i64],
+        ).map_err(|e| format!("insert violation: {e}"))?;
+
+        // Increment violation count
+        conn.execute(
+            "UPDATE preflights SET violation_count = violation_count + 1 WHERE id = ?1",
+            params![violation.preflight_id],
+        ).map_err(|e| format!("update count: {e}"))?;
+
+        // Check escalation threshold
+        let count: u32 = conn.query_row(
+            "SELECT violation_count FROM preflights WHERE id = ?1",
+            params![violation.preflight_id], |row| row.get(0),
+        ).unwrap_or(0);
+
+        if count >= DEFAULT_VIOLATION_THRESHOLD {
+            conn.execute(
+                "UPDATE preflights SET escalated = 1 WHERE id = ?1",
+                params![violation.preflight_id],
+            ).map_err(|e| format!("escalate: {e}"))?;
+        }
+
+        Ok(())
+    }
+
+    /// Get violations for a preflight.
+    pub fn preflight_violations(&self, preflight_id: &str) -> Vec<PreflightViolation> {
+        let conn = match Connection::open(&self.db_path) {
+            Ok(c) => c,
+            Err(_) => return vec![],
+        };
+        let mut stmt = conn.prepare(
+            "SELECT preflight_id, constraint_name, tool_name, params_summary, alternative, timestamp FROM preflight_violations WHERE preflight_id = ?1 ORDER BY timestamp DESC"
+        ).unwrap();
+        stmt.query_map(params![preflight_id], |row| {
+            Ok(PreflightViolation {
+                preflight_id: row.get(0)?,
+                constraint_name: row.get(1)?,
+                tool_name: row.get(2)?,
+                parameters_summary: row.get(3)?,
+                alternative: row.get(4)?,
+                timestamp: row.get::<_, i64>(5)? as u64,
+            })
+        }).unwrap().filter_map(|r| r.ok()).collect()
+    }
+
+    /// Get preflight history.
+    pub fn preflight_history(&self, limit: u32) -> Vec<serde_json::Value> {
+        let conn = match Connection::open(&self.db_path) {
+            Ok(c) => c,
+            Err(_) => return vec![],
+        };
+        let mut stmt = conn.prepare(
+            "SELECT id, task, submitted_at, lockout_until, violation_count, escalated, active FROM preflights ORDER BY submitted_at DESC LIMIT ?1"
+        ).unwrap();
+        stmt.query_map(params![limit], |row| {
+            Ok(serde_json::json!({
+                "id": row.get::<_, String>(0)?,
+                "task": row.get::<_, String>(1)?,
+                "submitted_at": row.get::<_, i64>(2)?,
+                "lockout_until": row.get::<_, i64>(3)?,
+                "violation_count": row.get::<_, u32>(4)?,
+                "escalated": row.get::<_, i32>(5)? != 0,
+                "active": row.get::<_, i32>(6)? != 0,
+            }))
+        }).unwrap().filter_map(|r| r.ok()).collect()
+    }
+
+    /// Deactivate the active preflight (human override).
+    pub fn override_preflight(&self) -> Result<(), String> {
+        let conn = Connection::open(&self.db_path)
+            .map_err(|e| format!("open db: {e}"))?;
+        let rows = conn.execute("UPDATE preflights SET active = 0 WHERE active = 1", [])
+            .map_err(|e| format!("deactivate: {e}"))?;
+        if rows == 0 {
+            return Err("No active preflight to override.".into());
+        }
+        Ok(())
+    }
+
+    /// HMAC for preflight payload.
+    fn preflight_hmac(&self, payload: &str) -> String {
+        let mut mac = <HmacSha256 as Mac>::new_from_slice(&self.session_key).unwrap();
+        mac.update(b"signet-preflight:");
+        mac.update(payload.as_bytes());
+        B64.encode(mac.finalize().into_bytes())
     }
 }
 
