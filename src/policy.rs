@@ -63,6 +63,7 @@ pub struct CompiledRule {
     pub action: Decision,
     pub reason: Option<String>,
     pub alternative: Option<String>,
+    pub locked: bool,
 }
 
 #[derive(Debug)]
@@ -74,6 +75,7 @@ pub struct CompiledPolicy {
 pub struct EvaluationResult {
     pub decision: Decision,
     pub matched_rule: Option<String>,
+    pub matched_locked: bool,
     pub reason: Option<String>,
     pub evaluation_time_us: u64,
 }
@@ -95,6 +97,7 @@ impl CompiledPolicy {
                 action: r.action,
                 reason: r.reason.clone(),
                 alternative: r.alternative.clone(),
+                locked: r.locked,
             })
         }).collect();
 
@@ -333,6 +336,7 @@ pub fn evaluate(
             return EvaluationResult {
                 decision: rule.action,
                 matched_rule: Some(rule.name.clone()),
+                matched_locked: rule.locked,
                 reason,
                 evaluation_time_us: elapsed,
             };
@@ -343,6 +347,7 @@ pub fn evaluate(
     EvaluationResult {
         decision: policy.default_action,
         matched_rule: None,
+        matched_locked: false,
         reason: Some("No matching rules, using default action".into()),
         evaluation_time_us: elapsed,
     }

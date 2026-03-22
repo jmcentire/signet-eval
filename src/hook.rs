@@ -84,6 +84,21 @@ pub fn run_hook(policy: &CompiledPolicy, vault: Option<&Vault>) -> i32 {
         parameters: hook_input.parameters.unwrap_or(Value::Object(Default::default())),
     };
 
+    // Check if paused — if so, only enforce locked (self-protection) rules
+    if let Some(v) = vault {
+        if v.is_paused() {
+            let result = policy::evaluate(&call, policy, vault);
+            if result.decision == Decision::Deny && result.matched_locked {
+                // Self-protection still enforced during pause
+                emit_decision("deny", result.reason);
+                return 0;
+            }
+            // Not a locked rule — allow during pause
+            emit_decision("allow", None);
+            return 0;
+        }
+    }
+
     // Pass 1: Evaluate against compiled hard rules
     let result = policy::evaluate(&call, policy, vault);
 

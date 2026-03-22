@@ -74,6 +74,14 @@ enum Command {
     PreflightStatus,
     /// Override (end) an active preflight early (requires vault passphrase)
     PreflightOverride,
+    /// Pause policy enforcement for N minutes (self-protection still active)
+    Pause {
+        /// Duration in minutes (1-60)
+        #[arg(default_value = "10")]
+        minutes: u32,
+    },
+    /// Resume policy enforcement (end pause early)
+    Resume,
 }
 
 fn expand_home(path: &str) -> PathBuf {
@@ -385,6 +393,49 @@ fn run() -> i32 {
                         }
                         None => { eprintln!("No active preflight."); 0 }
                     }
+                }
+                None => { eprintln!("Vault not set up or locked."); 1 }
+            }
+        }
+        Some(Command::Pause { minutes }) => {
+            if minutes < 1 || minutes > 60 {
+                eprintln!("Pause duration must be 1-60 minutes.");
+                return 1;
+            }
+            match vault::try_load_vault() {
+                Some(v) => {
+                    if v.is_paused() {
+                        eprintln!("Already paused until timestamp {}.", v.pause_until());
+                        return 1;
+                    }
+                    let pass = rpassword::prompt_password("Vault passphrase to confirm pause: ").unwrap_or_default();
+                    match vault::unlock_vault(&pass) {
+                        Ok(_) => {
+                            let until = std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH).unwrap().as_secs()
+                                + (minutes as u64 * 60);
+                            v.set_pause(until);
+                            eprintln!("Policy enforcement paused for {minutes} minutes.");
+                            eprintln!("Self-protection rules remain active.");
+                            eprintln!("Run 'signet-eval resume' to end early.");
+                            0
+                        }
+                        Err(e) => { eprintln!("Authentication failed: {e}"); 1 }
+                    }
+                }
+                None => { eprintln!("Vault not set up or locked."); 1 }
+            }
+        }
+        Some(Command::Resume) => {
+            match vault::try_load_vault() {
+                Some(v) => {
+                    if !v.is_paused() {
+                        eprintln!("Not currently paused.");
+                        return 0;
+                    }
+                    v.clear_pause();
+                    eprintln!("Policy enforcement resumed.");
+                    0
                 }
                 None => { eprintln!("Vault not set up or locked."); 1 }
             }

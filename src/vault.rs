@@ -677,6 +677,59 @@ impl Vault {
         Ok(())
     }
 
+    // --- Pause ---
+
+    /// Set a timed pause. Non-self-protection rules are bypassed until pause_until.
+    pub fn set_pause(&self, pause_until: u64) {
+        if let Ok(conn) = Connection::open(&self.db_path) {
+            let _ = conn.execute(
+                "INSERT OR REPLACE INTO session_state (key, value, updated_at) VALUES ('_pause_until', ?1, ?2)",
+                params![pause_until.to_string(), now_epoch()],
+            );
+        }
+    }
+
+    /// Check if evaluation is currently paused.
+    pub fn is_paused(&self) -> bool {
+        let conn = match Connection::open(&self.db_path) {
+            Ok(c) => c,
+            Err(_) => return false,
+        };
+        let until: Option<String> = conn.query_row(
+            "SELECT value FROM session_state WHERE key = '_pause_until'",
+            [], |row| row.get(0),
+        ).ok();
+        match until {
+            Some(s) => {
+                let ts: u64 = s.parse().unwrap_or(0);
+                if (now_epoch() as u64) < ts { true } else {
+                    let _ = conn.execute("DELETE FROM session_state WHERE key = '_pause_until'", []);
+                    false
+                }
+            }
+            None => false,
+        }
+    }
+
+    /// Clear the pause (resume immediately).
+    pub fn clear_pause(&self) {
+        if let Ok(conn) = Connection::open(&self.db_path) {
+            let _ = conn.execute("DELETE FROM session_state WHERE key = '_pause_until'", []);
+        }
+    }
+
+    /// Get pause expiry timestamp (0 if not paused).
+    pub fn pause_until(&self) -> u64 {
+        let conn = match Connection::open(&self.db_path) {
+            Ok(c) => c,
+            Err(_) => return 0,
+        };
+        conn.query_row(
+            "SELECT value FROM session_state WHERE key = '_pause_until'",
+            [], |row| row.get::<_, String>(0),
+        ).ok().and_then(|s| s.parse().ok()).unwrap_or(0)
+    }
+
     /// HMAC for preflight payload.
     fn preflight_hmac(&self, payload: &str) -> String {
         let mut mac = <HmacSha256 as Mac>::new_from_slice(&self.session_key).unwrap();
