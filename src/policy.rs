@@ -272,13 +272,17 @@ fn evaluate_condition(
 
     // contains_word(parameters, 'word') — word-boundary match in serialized params
     // Prevents "skilled" from matching "kill" etc.
+    // Normalizes JSON-escaped control chars (\u0000–\u001f) to spaces so null-byte
+    // smuggling can't create fake word boundaries that hide matches.
     if let Some(args) = strip_fn(cond, "contains_word") {
         let parts: Vec<&str> = args.splitn(2, ',').collect();
         let search_part = if parts.len() == 2 { parts[1] } else { parts[0] };
         if let Some(word) = extract_quoted(search_part) {
+            let normalize_re = Regex::new(r"\\u00[0-1][0-9a-fA-F]").unwrap();
+            let normalized = normalize_re.replace_all(&params_str, " ");
             let pattern = format!(r"(?i)\b{}\b", regex::escape(&word));
             let re = Regex::new(&pattern).map_err(|e| format!("regex: {e}"))?;
-            return Ok(re.is_match(&params_str));
+            return Ok(re.is_match(&normalized));
         }
     }
 
@@ -466,7 +470,7 @@ pub fn default_policy() -> CompiledPolicy {
         PolicyRule {
             name: "block_rm".into(),
             tool_pattern: ".*".into(),
-            conditions: vec!["contains(parameters, 'rm ')".into()],
+            conditions: vec!["contains_word(parameters, 'rm')".into()],
             action: Decision::Deny,
             locked: false,
             reason: Some("File deletion blocked by policy".into()),
@@ -977,6 +981,37 @@ mod tests {
         assert_eq!(
             evaluate_condition("contains_word(parameters, 'pkill')", &call, None),
             Ok(true)
+        );
+    }
+
+    #[test]
+    fn test_contains_word_rm_not_platform() {
+        // "rm foo" should match "rm"
+        let call = make_call("Bash", serde_json::json!({"command": "rm foo"}));
+        assert_eq!(
+            evaluate_condition("contains_word(parameters, 'rm')", &call, None),
+            Ok(true)
+        );
+
+        // "platform specific" should NOT match "rm" — regression test
+        let call = make_call("Bash", serde_json::json!({"command": "platform specific"}));
+        assert_eq!(
+            evaluate_condition("contains_word(parameters, 'rm')", &call, None),
+            Ok(false)
+        );
+
+        // "rm -rf /" should match
+        let call = make_call("Bash", serde_json::json!({"command": "rm -rf /"}));
+        assert_eq!(
+            evaluate_condition("contains_word(parameters, 'rm')", &call, None),
+            Ok(true)
+        );
+
+        // "inform the team" should NOT match
+        let call = make_call("Bash", serde_json::json!({"command": "inform the team"}));
+        assert_eq!(
+            evaluate_condition("contains_word(parameters, 'rm')", &call, None),
+            Ok(false)
         );
     }
 }
