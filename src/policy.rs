@@ -36,6 +36,8 @@ pub struct PolicyRule {
     pub action: Decision,
     #[serde(default)]
     pub reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub alternative: Option<String>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub locked: bool,
 }
@@ -60,6 +62,7 @@ pub struct CompiledRule {
     pub conditions: Vec<String>,
     pub action: Decision,
     pub reason: Option<String>,
+    pub alternative: Option<String>,
 }
 
 #[derive(Debug)]
@@ -91,6 +94,7 @@ impl CompiledPolicy {
                 conditions: r.conditions.clone(),
                 action: r.action,
                 reason: r.reason.clone(),
+                alternative: r.alternative.clone(),
             })
         }).collect();
 
@@ -321,10 +325,15 @@ pub fn evaluate(
 
         if all_match {
             let elapsed = start.elapsed().as_micros() as u64;
+            // Compose reason with plan B alternative when both are present
+            let reason = match (&rule.reason, &rule.alternative) {
+                (Some(r), Some(alt)) => Some(format!("{r} Instead: {alt}")),
+                (reason, _) => reason.clone(),
+            };
             return EvaluationResult {
                 decision: rule.action,
                 matched_rule: Some(rule.name.clone()),
-                reason: rule.reason.clone(),
+                reason,
                 evaluation_time_us: elapsed,
             };
         }
@@ -421,7 +430,8 @@ pub fn self_protection_rules() -> Vec<PolicyRule> {
             conditions: vec!["any_of(parameters, '.signet/', '.signet\\\\', '.Signet/', '.Signet\\\\', '.SIGNET/', '.SIGNET\\\\')".into()],
             action: Decision::Deny,
             locked: true,
-            reason: Some("Self-protection: .signet/ directory is protected. Refer to it as 'the policy directory' to avoid triggering this rule.".into()),
+            reason: Some("Self-protection: the policy directory is protected.".into()),
+            alternative: Some("Refer to it as 'the policy directory'. To check policy status, use signet_status via MCP.".into()),
         },
         PolicyRule {
             name: "protect_signet_binary".into(),
@@ -429,7 +439,8 @@ pub fn self_protection_rules() -> Vec<PolicyRule> {
             conditions: vec!["any_of(parameters, 'signet-eval', 'signet_eval', 'Signet-Eval', 'SIGNET-EVAL', 'SIGNET_EVAL')".into()],
             action: Decision::Deny,
             locked: true,
-            reason: Some("Self-protection: the permissions tool binary is protected. Refer to it as 'the permissions tool' to avoid triggering this rule.".into()),
+            reason: Some("Self-protection: the permissions tool binary is protected.".into()),
+            alternative: Some("Refer to it as 'the permissions tool'. To inspect rules, use signet_list_rules via MCP.".into()),
         },
         PolicyRule {
             name: "protect_hook_config".into(),
@@ -437,7 +448,8 @@ pub fn self_protection_rules() -> Vec<PolicyRule> {
             conditions: vec!["any_of(parameters, 'settings.json', 'settings.local.json')".into()],
             action: Decision::Ask,
             locked: true,
-            reason: Some("Self-protection: hook config changes require confirmation. Refer to it as 'the permissions tool' to avoid triggering this rule.".into()),
+            reason: Some("Self-protection: hook config changes require user confirmation.".into()),
+            alternative: Some("Describe the settings change you need and ask the user to apply it, or use the /update-config skill.".into()),
         },
         PolicyRule {
             name: "protect_signet_symlink".into(),
@@ -449,6 +461,7 @@ pub fn self_protection_rules() -> Vec<PolicyRule> {
             action: Decision::Deny,
             locked: true,
             reason: Some("Self-protection: symlink creation targeting the permissions tool is blocked.".into()),
+            alternative: Some("Use absolute paths in code or configuration rather than symlinks.".into()),
         },
         PolicyRule {
             name: "protect_signet_process".into(),
@@ -459,7 +472,8 @@ pub fn self_protection_rules() -> Vec<PolicyRule> {
             ],
             action: Decision::Deny,
             locked: true,
-            reason: Some("Self-protection: cannot kill processes for the permissions tool.".into()),
+            reason: Some("Self-protection: cannot terminate processes for the permissions tool.".into()),
+            alternative: Some("If the permissions tool appears hung, ask the user to restart it.".into()),
         },
     ]
 }
@@ -473,7 +487,8 @@ pub fn default_policy() -> CompiledPolicy {
             conditions: vec!["contains_word(parameters, 'rm')".into()],
             action: Decision::Deny,
             locked: false,
-            reason: Some("File deletion blocked by policy".into()),
+            reason: Some("File deletion blocked by policy.".into()),
+            alternative: Some("Use 'trash <file>' (recoverable) or 'mv <file> /tmp/' to stage for manual cleanup.".into()),
         },
         PolicyRule {
             name: "block_force_push".into(),
@@ -481,7 +496,8 @@ pub fn default_policy() -> CompiledPolicy {
             conditions: vec!["any_of(parameters, 'push --force', 'push -f')".into()],
             action: Decision::Ask,
             locked: false,
-            reason: Some("Force push requires confirmation".into()),
+            reason: Some("Force push can overwrite others' work.".into()),
+            alternative: Some("Use 'git push --force-with-lease' or push to a new branch: 'git push origin HEAD:fix/<name>'.".into()),
         },
         PolicyRule {
             name: "block_destructive_disk".into(),
@@ -489,7 +505,8 @@ pub fn default_policy() -> CompiledPolicy {
             conditions: vec!["or(contains_word(parameters, 'mkfs') || contains_word(parameters, 'format') || contains(parameters, 'dd if='))".into()],
             action: Decision::Deny,
             locked: false,
-            reason: Some("Destructive disk operations blocked".into()),
+            reason: Some("Destructive disk operations blocked.".into()),
+            alternative: Some("Write to a temp file first: 'dd if=<src> of=/tmp/staging.img'. Ask the user to execute disk operations directly.".into()),
         },
         PolicyRule {
             name: "block_piped_exec".into(),
@@ -497,7 +514,8 @@ pub fn default_policy() -> CompiledPolicy {
             conditions: vec!["or(contains_word(parameters, 'curl') || contains_word(parameters, 'wget'))".into(), "any_of(parameters, '| sh', '| bash', '| zsh')".into()],
             action: Decision::Deny,
             locked: false,
-            reason: Some("Piped remote execution blocked".into()),
+            reason: Some("Piped remote execution blocked.".into()),
+            alternative: Some("Download first, then inspect: 'curl -o /tmp/script.sh <url>' followed by 'cat /tmp/script.sh'. Let the user review before executing.".into()),
         },
         PolicyRule {
             name: "block_credential_writes".into(),
@@ -505,7 +523,8 @@ pub fn default_policy() -> CompiledPolicy {
             conditions: vec!["matches(file_path, '\\.(env|pem|key|secret|credentials)$')".into()],
             action: Decision::Deny,
             locked: false,
-            reason: Some("Writing to credential/secret files blocked by policy".into()),
+            reason: Some("Writing to credential/secret files blocked.".into()),
+            alternative: Some("Write to a '.example' or '.template' file with placeholder values, then instruct the user to copy and fill in real credentials.".into()),
         },
         PolicyRule {
             name: "block_chmod_777".into(),
@@ -513,7 +532,8 @@ pub fn default_policy() -> CompiledPolicy {
             conditions: vec!["contains(parameters, 'chmod 777')".into()],
             action: Decision::Ask,
             locked: false,
-            reason: Some("chmod 777 requires confirmation".into()),
+            reason: Some("chmod 777 grants world-readable/writable/executable access.".into()),
+            alternative: Some("Use minimum permissions: 'chmod 755' for executables, 'chmod 644' for files, 'chmod 600' for secrets.".into()),
         },
     ]);
     let config = PolicyConfig {
@@ -642,7 +662,7 @@ mod tests {
                     conditions: vec![],
                     action: Decision::Allow,
                     reason: Some("First rule".into()),
-                locked: false,
+                alternative: None, locked: false,
                 },
                 PolicyRule {
                     name: "deny_bash".into(),
@@ -650,7 +670,7 @@ mod tests {
                     conditions: vec![],
                     action: Decision::Deny,
                     reason: Some("Second rule".into()),
-                locked: false,
+                alternative: None, locked: false,
                 },
             ],
         };
@@ -673,7 +693,7 @@ mod tests {
                     conditions: vec!["param_eq(category, 'books')".into()],
                     action: Decision::Deny,
                     reason: Some("Books blocked".into()),
-                    locked: false,
+                    alternative: None, locked: false,
                 },
             ],
         };
@@ -698,7 +718,7 @@ mod tests {
                     conditions: vec!["param_gt(amount, 100)".into()],
                     action: Decision::Ask,
                     reason: Some("Large purchase".into()),
-                    locked: false,
+                    alternative: None, locked: false,
                 },
             ],
         };
@@ -727,7 +747,7 @@ mod tests {
         let config = PolicyConfig { version: 1, default_action: Decision::Allow, rules: vec![
             PolicyRule { name: "cheap_only".into(), tool_pattern: ".*".into(),
                 conditions: vec!["not(param_lt(amount, 50))".into()], action: Decision::Deny,
-                reason: Some("Over budget".into()), locked: false },
+                reason: Some("Over budget".into()), alternative: None, locked: false },
         ]};
         let policy = CompiledPolicy::from_config(&config);
         assert_eq!(evaluate(&make_call("shop", serde_json::json!({"amount": "30"})), &policy, None).decision, Decision::Allow);
@@ -739,7 +759,7 @@ mod tests {
         let config = PolicyConfig { version: 1, default_action: Decision::Allow, rules: vec![
             PolicyRule { name: "not_admin".into(), tool_pattern: ".*".into(),
                 conditions: vec!["param_ne(role, 'admin')".into()], action: Decision::Deny,
-                reason: Some("Non-admin denied".into()), locked: false },
+                reason: Some("Non-admin denied".into()), alternative: None, locked: false },
         ]};
         let policy = CompiledPolicy::from_config(&config);
         assert_eq!(evaluate(&make_call("api", serde_json::json!({"role": "admin"})), &policy, None).decision, Decision::Allow);
@@ -751,7 +771,7 @@ mod tests {
         let config = PolicyConfig { version: 1, default_action: Decision::Allow, rules: vec![
             PolicyRule { name: "block_sudo".into(), tool_pattern: ".*".into(),
                 conditions: vec!["param_contains(command, 'sudo')".into()], action: Decision::Deny,
-                reason: Some("sudo blocked".into()), locked: false },
+                reason: Some("sudo blocked".into()), alternative: None, locked: false },
         ]};
         let policy = CompiledPolicy::from_config(&config);
         assert_eq!(evaluate(&make_call("Bash", serde_json::json!({"command": "sudo apt install"})), &policy, None).decision, Decision::Deny);
@@ -763,7 +783,7 @@ mod tests {
         let config = PolicyConfig { version: 1, default_action: Decision::Allow, rules: vec![
             PolicyRule { name: "block_ip".into(), tool_pattern: ".*".into(),
                 conditions: vec!["matches(host, '^\\d+\\.\\d+\\.\\d+\\.\\d+$')".into()], action: Decision::Deny,
-                reason: Some("Direct IP access blocked".into()), locked: false },
+                reason: Some("Direct IP access blocked".into()), alternative: None, locked: false },
         ]};
         let policy = CompiledPolicy::from_config(&config);
         assert_eq!(evaluate(&make_call("fetch", serde_json::json!({"host": "192.168.1.1"})), &policy, None).decision, Decision::Deny);
@@ -775,7 +795,7 @@ mod tests {
         let config = PolicyConfig { version: 1, default_action: Decision::Allow, rules: vec![
             PolicyRule { name: "deny_non_json".into(), tool_pattern: ".*".into(),
                 conditions: vec!["not(param_eq(format, 'json'))".into()], action: Decision::Deny,
-                reason: Some("Only JSON allowed".into()), locked: false },
+                reason: Some("Only JSON allowed".into()), alternative: None, locked: false },
         ]};
         let policy = CompiledPolicy::from_config(&config);
         assert_eq!(evaluate(&make_call("api", serde_json::json!({"format": "json"})), &policy, None).decision, Decision::Allow);
@@ -821,7 +841,7 @@ mod tests {
     fn test_empty_conditions_matches_any() {
         let config = PolicyConfig { version: 1, default_action: Decision::Allow, rules: vec![
             PolicyRule { name: "deny_all_bash".into(), tool_pattern: "^Bash$".into(),
-                conditions: vec![], action: Decision::Deny, reason: None, locked: false },
+                conditions: vec![], action: Decision::Deny, reason: None, alternative: None, locked: false },
         ]};
         let policy = CompiledPolicy::from_config(&config);
         assert_eq!(evaluate(&make_call("Bash", serde_json::json!({})), &policy, None).decision, Decision::Deny);
@@ -832,9 +852,9 @@ mod tests {
     fn test_invalid_regex_skipped() {
         let config = PolicyConfig { version: 1, default_action: Decision::Allow, rules: vec![
             PolicyRule { name: "bad_regex".into(), tool_pattern: "[invalid".into(),
-                conditions: vec![], action: Decision::Deny, reason: None, locked: false },
+                conditions: vec![], action: Decision::Deny, reason: None, alternative: None, locked: false },
             PolicyRule { name: "good_rule".into(), tool_pattern: ".*".into(),
-                conditions: vec!["contains(parameters, 'test')".into()], action: Decision::Deny, reason: None, locked: false },
+                conditions: vec!["contains(parameters, 'test')".into()], action: Decision::Deny, reason: None, alternative: None, locked: false },
         ]};
         let policy = CompiledPolicy::from_config(&config);
         // Bad regex rule is silently skipped; good rule still works
@@ -870,7 +890,7 @@ mod tests {
     fn test_validate_policy_valid() {
         let config = PolicyConfig { version: 1, default_action: Decision::Allow, rules: vec![
             PolicyRule { name: "test".into(), tool_pattern: ".*".into(),
-                conditions: vec!["contains(parameters, 'x')".into()], action: Decision::Deny, reason: None, locked: false },
+                conditions: vec!["contains(parameters, 'x')".into()], action: Decision::Deny, reason: None, alternative: None, locked: false },
         ]};
         assert!(validate_policy(&config).is_empty());
     }
@@ -879,7 +899,7 @@ mod tests {
     fn test_validate_policy_bad_regex() {
         let config = PolicyConfig { version: 1, default_action: Decision::Allow, rules: vec![
             PolicyRule { name: "bad".into(), tool_pattern: "[invalid".into(),
-                conditions: vec![], action: Decision::Deny, reason: None, locked: false },
+                conditions: vec![], action: Decision::Deny, reason: None, alternative: None, locked: false },
         ]};
         let errors = validate_policy(&config);
         assert_eq!(errors.len(), 1);
@@ -890,7 +910,7 @@ mod tests {
     fn test_validate_policy_unknown_fn() {
         let config = PolicyConfig { version: 1, default_action: Decision::Allow, rules: vec![
             PolicyRule { name: "bad".into(), tool_pattern: ".*".into(),
-                conditions: vec!["bogus_fn(x)".into()], action: Decision::Deny, reason: None, locked: false },
+                conditions: vec!["bogus_fn(x)".into()], action: Decision::Deny, reason: None, alternative: None, locked: false },
         ]};
         let errors = validate_policy(&config);
         assert_eq!(errors.len(), 1);
@@ -1199,7 +1219,7 @@ mod self_protection_tests {
             conditions: vec![],
             action: Decision::Deny,
             reason: None,
-            locked: true,
+            alternative: None, locked: true,
         };
         let yaml = serde_yaml::to_string(&rule).unwrap();
         assert!(yaml.contains("locked: true"));
@@ -1222,7 +1242,7 @@ mod self_protection_tests {
             conditions: vec![],
             action: Decision::Deny,
             reason: None,
-            locked: false,
+            alternative: None, locked: false,
         };
         let yaml = serde_yaml::to_string(&rule).unwrap();
         assert!(!yaml.contains("locked"), "locked: false should be skipped in serialization");
@@ -1260,10 +1280,10 @@ mod goodhart_tests {
         let config = PolicyConfig { version: 1, default_action: Decision::Allow, rules: vec![
             PolicyRule { name: "block_rm".into(), tool_pattern: ".*".into(),
                 conditions: vec!["contains(parameters, 'rm ')".into()], action: Decision::Deny,
-                reason: Some("blocked".into()), locked: false },
+                reason: Some("blocked".into()), alternative: None, locked: false },
             PolicyRule { name: "allow_rm".into(), tool_pattern: ".*".into(),
                 conditions: vec!["contains(parameters, 'rm ')".into()], action: Decision::Allow,
-                reason: Some("allowed".into()), locked: false },
+                reason: Some("allowed".into()), alternative: None, locked: false },
         ]};
         let policy = CompiledPolicy::from_config(&config);
         let call = make_call("Bash", serde_json::json!({"command": "rm foo"}));
@@ -1313,7 +1333,7 @@ mod goodhart_tests {
     fn test_many_rules_performance() {
         let rules: Vec<PolicyRule> = (0..1000).map(|i| PolicyRule {
             name: format!("rule_{i}"), tool_pattern: format!("tool_{i}"),
-            conditions: vec![], action: Decision::Deny, reason: None, locked: false,
+            conditions: vec![], action: Decision::Deny, reason: None, alternative: None, locked: false,
         }).collect();
         let config = PolicyConfig { version: 1, default_action: Decision::Allow, rules };
         let policy = CompiledPolicy::from_config(&config);
@@ -1347,7 +1367,7 @@ mod goodhart_tests {
         // falling through to default — NOT crash
         let config = PolicyConfig { version: 1, default_action: Decision::Allow, rules: vec![
             PolicyRule { name: "bad_cond".into(), tool_pattern: ".*".into(),
-                conditions: vec!["matches(x, '[invalid')".into()], action: Decision::Deny, reason: None, locked: false },
+                conditions: vec!["matches(x, '[invalid')".into()], action: Decision::Deny, reason: None, alternative: None, locked: false },
         ]};
         let policy = CompiledPolicy::from_config(&config);
         let call = make_call("Bash", serde_json::json!({"x": "test"}));

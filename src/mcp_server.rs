@@ -257,7 +257,7 @@ fn handle_add_rule(args: &serde_json::Map<String, Value>) -> String {
     config.rules.push(PolicyRule {
         name: name.into(), tool_pattern: tool_pattern.into(),
         conditions, action, reason: Some(reason.into()),
-        locked: false,
+        alternative: None, locked: false,
     });
     save_policy(&config);
     auto_sign_policy();
@@ -302,7 +302,7 @@ fn handle_set_limit(args: &serde_json::Map<String, Value>) -> String {
         ],
         action: Decision::Deny,
         reason: Some(format!("Spending limit: ${max_amount:.0}/{per} on {category}")),
-        locked: false,
+        alternative: None, locked: false,
     });
     save_policy(&config);
     auto_sign_policy();
