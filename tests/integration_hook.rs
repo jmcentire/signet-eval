@@ -5,8 +5,10 @@ use std::io::Write;
 
 fn run_hook(input: &str) -> (String, i32) {
     // Use a nonexistent policy path to force built-in defaults
+    // Isolate from user's pause/disable state via SIGNET_DIR
     let mut child = Command::new(env!("CARGO_BIN_EXE_signet-eval"))
         .args(["--policy-path", "/tmp/__signet_test_nonexistent__.yaml"])
+        .env("SIGNET_DIR", "/tmp/__signet_test_dir__")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())

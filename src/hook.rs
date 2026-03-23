@@ -65,6 +65,12 @@ fn evaluate_preflight_constraint(
 }
 
 pub fn run_hook(policy: &CompiledPolicy, vault: Option<&Vault>) -> i32 {
+    // Full disable — bypass everything silently
+    if crate::vault::is_disabled_file() {
+        emit_allow();
+        return 0;
+    }
+
     let mut input = String::new();
     if io::stdin().read_to_string(&mut input).is_err() {
         emit_deny("Failed to read stdin");
@@ -189,6 +195,10 @@ fn emit_decision(decision: &str, reason: Option<String>) {
         },
     };
     println!("{}", serde_json::to_string(&response).unwrap());
+}
+
+fn emit_allow() {
+    emit_decision("allow", None);
 }
 
 fn emit_deny(reason: &str) {

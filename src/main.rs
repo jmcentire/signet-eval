@@ -82,6 +82,10 @@ enum Command {
     },
     /// Resume policy enforcement (end pause early)
     Resume,
+    /// Fully disable policy enforcement (bypasses everything including self-protection)
+    Disable,
+    /// Re-enable policy enforcement after disable
+    Enable,
 }
 
 fn expand_home(path: &str) -> PathBuf {
@@ -121,6 +125,8 @@ fn run() -> i32 {
                 policy::PolicyRule { name: "block_force_push".into(), tool_pattern: "^Bash$".into(), conditions: vec!["any_of(parameters, 'push --force', 'push -f')".into()], action: policy::Decision::Ask, locked: false, reason: Some("Force push can overwrite others' work.".into()), alternative: Some("Use 'git push --force-with-lease' or push to a new branch.".into()) },
                 policy::PolicyRule { name: "block_destructive".into(), tool_pattern: "^Bash$".into(), conditions: vec!["any_of(parameters, 'mkfs', 'format ', 'dd if=')".into()], action: policy::Decision::Deny, locked: false, reason: Some("Destructive disk ops blocked.".into()), alternative: Some("Write to a temp file first. Ask the user to execute disk operations directly.".into()) },
                 policy::PolicyRule { name: "block_piped_exec".into(), tool_pattern: "^Bash$".into(), conditions: vec!["any_of(parameters, 'curl', 'wget')".into(), "contains(parameters, '| sh')".into()], action: policy::Decision::Deny, locked: false, reason: Some("Piped remote execution blocked.".into()), alternative: Some("Download first: 'curl -o /tmp/script.sh <url>', then inspect with 'cat'. Let the user review.".into()) },
+                policy::PolicyRule { name: "block_credential_writes".into(), tool_pattern: "^(Write|Edit)$".into(), conditions: vec!["matches(file_path, '\\.(env|pem|key|secret|credentials)$')".into()], action: policy::Decision::Deny, locked: false, reason: Some("Writing to credential/secret files blocked.".into()), alternative: Some("Write to a '.example' file with placeholder values, then instruct the user to copy and fill in real credentials.".into()) },
+                policy::PolicyRule { name: "block_chmod_777".into(), tool_pattern: "^Bash$".into(), conditions: vec!["contains(parameters, 'chmod 777')".into()], action: policy::Decision::Ask, locked: false, reason: Some("chmod 777 grants world-readable/writable/executable access.".into()), alternative: Some("Use minimum permissions: 'chmod 755' for executables, 'chmod 644' for files, 'chmod 600' for secrets.".into()) },
             ]);
             let config = policy::PolicyConfig {
                 version: 1,
@@ -422,6 +428,26 @@ fn run() -> i32 {
             }
             vault::clear_pause_file();
             eprintln!("Policy enforcement resumed.");
+            0
+        }
+        Some(Command::Disable) => {
+            if vault::is_disabled_file() {
+                eprintln!("Already disabled.");
+                return 0;
+            }
+            vault::set_disabled_file();
+            eprintln!("Policy enforcement FULLY disabled.");
+            eprintln!("ALL rules bypassed including self-protection.");
+            eprintln!("Run 'signet-eval enable' to re-enable.");
+            0
+        }
+        Some(Command::Enable) => {
+            if !vault::is_disabled_file() {
+                eprintln!("Not currently disabled.");
+                return 0;
+            }
+            vault::clear_disabled_file();
+            eprintln!("Policy enforcement re-enabled.");
             0
         }
         Some(Command::PreflightOverride) => {

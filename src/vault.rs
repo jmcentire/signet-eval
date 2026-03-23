@@ -690,6 +690,9 @@ impl Vault {
 // === Setup & Unlock ===
 
 pub fn signet_dir() -> PathBuf {
+    if let Ok(dir) = std::env::var("SIGNET_DIR") {
+        return PathBuf::from(dir);
+    }
     dirs().join(".signet")
 }
 
@@ -739,6 +742,25 @@ pub fn pause_until_file() -> u64 {
         .ok()
         .and_then(|s| s.trim().parse().ok())
         .unwrap_or(0)
+}
+
+fn disabled_path() -> PathBuf { signet_dir().join("disabled") }
+
+/// Full disable — bypasses ALL rules including self-protection.
+pub fn set_disabled_file() {
+    let dir = signet_dir();
+    std::fs::create_dir_all(&dir).ok();
+    std::fs::write(disabled_path(), "1").ok();
+}
+
+/// Check if fully disabled.
+pub fn is_disabled_file() -> bool {
+    disabled_path().exists()
+}
+
+/// Remove the disable file (re-enable).
+pub fn clear_disabled_file() {
+    std::fs::remove_file(disabled_path()).ok();
 }
 
 /// Derive a device-specific key for encrypting the session key file.
