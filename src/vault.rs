@@ -677,58 +677,6 @@ impl Vault {
         Ok(())
     }
 
-    // --- Pause ---
-
-    /// Set a timed pause. Non-self-protection rules are bypassed until pause_until.
-    pub fn set_pause(&self, pause_until: u64) {
-        if let Ok(conn) = Connection::open(&self.db_path) {
-            let _ = conn.execute(
-                "INSERT OR REPLACE INTO session_state (key, value, updated_at) VALUES ('_pause_until', ?1, ?2)",
-                params![pause_until.to_string(), now_epoch()],
-            );
-        }
-    }
-
-    /// Check if evaluation is currently paused.
-    pub fn is_paused(&self) -> bool {
-        let conn = match Connection::open(&self.db_path) {
-            Ok(c) => c,
-            Err(_) => return false,
-        };
-        let until: Option<String> = conn.query_row(
-            "SELECT value FROM session_state WHERE key = '_pause_until'",
-            [], |row| row.get(0),
-        ).ok();
-        match until {
-            Some(s) => {
-                let ts: u64 = s.parse().unwrap_or(0);
-                if (now_epoch() as u64) < ts { true } else {
-                    let _ = conn.execute("DELETE FROM session_state WHERE key = '_pause_until'", []);
-                    false
-                }
-            }
-            None => false,
-        }
-    }
-
-    /// Clear the pause (resume immediately).
-    pub fn clear_pause(&self) {
-        if let Ok(conn) = Connection::open(&self.db_path) {
-            let _ = conn.execute("DELETE FROM session_state WHERE key = '_pause_until'", []);
-        }
-    }
-
-    /// Get pause expiry timestamp (0 if not paused).
-    pub fn pause_until(&self) -> u64 {
-        let conn = match Connection::open(&self.db_path) {
-            Ok(c) => c,
-            Err(_) => return 0,
-        };
-        conn.query_row(
-            "SELECT value FROM session_state WHERE key = '_pause_until'",
-            [], |row| row.get::<_, String>(0),
-        ).ok().and_then(|s| s.parse().ok()).unwrap_or(0)
-    }
 
     /// HMAC for preflight payload.
     fn preflight_hmac(&self, payload: &str) -> String {
@@ -754,6 +702,44 @@ fn db_path() -> PathBuf { signet_dir().join("state.db") }
 fn session_key_path() -> PathBuf { signet_dir().join(".session_key") }
 
 pub fn vault_exists() -> bool { meta_path().exists() }
+
+fn pause_path() -> PathBuf { signet_dir().join("pause_until") }
+
+/// File-based pause — works without vault. Stores Unix timestamp in a plain file.
+pub fn set_pause_file(pause_until: u64) {
+    let dir = signet_dir();
+    std::fs::create_dir_all(&dir).ok();
+    std::fs::write(pause_path(), pause_until.to_string()).ok();
+}
+
+/// Check if paused via file. No vault required.
+pub fn is_paused_file() -> bool {
+    match std::fs::read_to_string(pause_path()) {
+        Ok(s) => {
+            let ts: u64 = s.trim().parse().unwrap_or(0);
+            let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+            if now < ts { true } else {
+                // Expired — clean up
+                std::fs::remove_file(pause_path()).ok();
+                false
+            }
+        }
+        Err(_) => false,
+    }
+}
+
+/// Clear the pause file (resume).
+pub fn clear_pause_file() {
+    std::fs::remove_file(pause_path()).ok();
+}
+
+/// Get pause expiry from file (0 if not paused).
+pub fn pause_until_file() -> u64 {
+    std::fs::read_to_string(pause_path())
+        .ok()
+        .and_then(|s| s.trim().parse().ok())
+        .unwrap_or(0)
+}
 
 /// Derive a device-specific key for encrypting the session key file.
 /// Uses machine ID + username as entropy — not a passphrase, just prevents
