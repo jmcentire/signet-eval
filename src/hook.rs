@@ -30,6 +30,8 @@ struct HookOutput {
     permission_decision: String,
     #[serde(rename = "permissionDecisionReason", skip_serializing_if = "Option::is_none")]
     reason: Option<String>,
+    #[serde(rename = "additionalContext", skip_serializing_if = "Option::is_none")]
+    additional_context: Option<String>,
 }
 
 /// Evaluate a tool call against preflight soft constraints.
@@ -96,11 +98,11 @@ pub fn run_hook(policy: &CompiledPolicy, vault: Option<&Vault>) -> i32 {
         let result = policy::evaluate(&call, policy, vault);
         if result.decision == Decision::Deny && result.matched_locked {
             // Self-protection still enforced during pause
-            emit_decision("deny", result.reason);
+            emit_decision("deny", result.reason, None);
             return 0;
         }
         // Not a locked rule — allow during pause
-        emit_decision("allow", None);
+        emit_decision("allow", None, None);
         return 0;
     }
 
@@ -108,8 +110,8 @@ pub fn run_hook(policy: &CompiledPolicy, vault: Option<&Vault>) -> i32 {
     let result = policy::evaluate(&call, policy, vault);
 
     // Hard deny always wins — short-circuit
-    let (final_decision, final_reason) = if result.decision == Decision::Deny {
-        (result.decision, result.reason)
+    let (final_decision, final_reason, final_context) = if result.decision == Decision::Deny {
+        (result.decision, result.reason, None)
     } else {
         // Pass 2: Check active preflight soft constraints
         match vault.and_then(|v| {
@@ -118,12 +120,72 @@ pub fn run_hook(policy: &CompiledPolicy, vault: Option<&Vault>) -> i32 {
         }) {
             Some((v, preflight)) => {
                 if preflight.escalated {
-                    // Escalated preflight — require human review for everything
-                    let reason = format!(
-                        "Preflight escalated: {} violations. Review required.",
-                        preflight.violation_count
+                    // Escalated preflight — build rich context for Claude and user
+                    let violations = v.preflight_violations(&preflight.id);
+
+                    // Group violations by constraint
+                    let mut by_constraint: std::collections::HashMap<String, Vec<String>> =
+                        std::collections::HashMap::new();
+                    for viol in violations.iter().take(20) {
+                        by_constraint
+                            .entry(viol.constraint_name.clone())
+                            .or_default()
+                            .push(format!("{}({})", viol.tool_name,
+                                &viol.parameters_summary[..viol.parameters_summary.len().min(60)]));
+                    }
+
+                    // Build constraint detail block
+                    let mut constraint_detail = String::new();
+                    for constraint in &preflight.constraints {
+                        constraint_detail.push_str(&format!(
+                            "\n  - [{}] {} ({}): {}\n    INSTEAD: {}",
+                            constraint.action, constraint.name,
+                            constraint.tool_pattern, constraint.reason, constraint.alternative
+                        ));
+                        if let Some(hits) = by_constraint.get(&constraint.name) {
+                            constraint_detail.push_str(&format!(
+                                "\n    YOU DID THIS {} TIME(S): {}",
+                                hits.len(), hits.join("; ")
+                            ));
+                        }
+                    }
+
+                    let task_short = if preflight.task.len() > 80 {
+                        format!("{}...", &preflight.task[..77])
+                    } else {
+                        preflight.task.clone()
+                    };
+
+                    let context = format!(
+                        "CRITICAL — PREFLIGHT ESCALATED\n\
+                         \n\
+                         Your task: {task}\n\
+                         Violations: {count}\n\
+                         \n\
+                         You repeatedly violated constraints that were set BEFORE you started working. \
+                         ALL tool calls now require human approval until this is resolved.\n\
+                         \n\
+                         Constraints and what you did wrong:{detail}\n\
+                         \n\
+                         YOU MUST:\n\
+                         1. STOP your current approach immediately\n\
+                         2. Tell the user: your preflight constraints escalated, explain which ones and why\n\
+                         3. For each violated constraint, explain the alternative approach you should have used\n\
+                         4. Ask the user how to proceed — they can clear the escalation once you change approach\n\
+                         \n\
+                         Do NOT continue with the approach that caused these violations. \
+                         Do NOT try to work around the constraints. Change your approach.",
+                        task = preflight.task,
+                        count = preflight.violation_count,
+                        detail = constraint_detail,
                     );
-                    (Decision::Ask, Some(reason))
+
+                    let reason = format!(
+                        "PREFLIGHT ESCALATED: '{}' — {} violations. Claude should explain what went wrong.",
+                        task_short, preflight.violation_count
+                    );
+
+                    (Decision::Ask, Some(reason), Some(context))
                 } else {
                     // Evaluate soft constraints
                     match evaluate_preflight_constraint(&call, &preflight, v) {
@@ -143,24 +205,38 @@ pub fn run_hook(policy: &CompiledPolicy, vault: Option<&Vault>) -> i32 {
                             };
                             let _ = v.log_preflight_violation(&violation);
 
+                            // Build context so Claude knows what it violated
+                            let context = format!(
+                                "PREFLIGHT CONSTRAINT VIOLATED: '{}'\n\
+                                 Task: {}\n\
+                                 Rule: {}\n\
+                                 Alternative: {}\n\
+                                 \n\
+                                 You MUST use the alternative approach described above. \
+                                 Do NOT retry the same action. If you keep violating constraints, \
+                                 your preflight will escalate and ALL tool calls will require manual approval.",
+                                constraint.name, preflight.task,
+                                constraint.reason, constraint.alternative,
+                            );
+
                             // Parse constraint action
                             let decision = match constraint.action.to_uppercase().as_str() {
                                 "DENY" => Decision::Deny,
                                 "ASK" => Decision::Ask,
                                 _ => Decision::Ask,
                             };
-                            (decision, Some(reason))
+                            (decision, Some(reason), Some(context))
                         }
                         None => {
                             // No soft constraint matched — use Pass 1 result
-                            (result.decision, result.reason)
+                            (result.decision, result.reason, None)
                         }
                     }
                 }
             }
             None => {
                 // No active preflight — use Pass 1 result
-                (result.decision, result.reason)
+                (result.decision, result.reason, None)
             }
         }
     };
@@ -182,25 +258,27 @@ pub fn run_hook(policy: &CompiledPolicy, vault: Option<&Vault>) -> i32 {
     emit_decision(
         final_decision.as_lowercase(),
         if final_decision != Decision::Allow { final_reason } else { None },
+        final_context,
     );
     0
 }
 
-fn emit_decision(decision: &str, reason: Option<String>) {
+fn emit_decision(decision: &str, reason: Option<String>, additional_context: Option<String>) {
     let response = HookResponse {
         hook_specific_output: HookOutput {
             hook_event_name: "PreToolUse".into(),
             permission_decision: decision.into(),
             reason,
+            additional_context,
         },
     };
     println!("{}", serde_json::to_string(&response).unwrap());
 }
 
 fn emit_allow() {
-    emit_decision("allow", None);
+    emit_decision("allow", None, None);
 }
 
 fn emit_deny(reason: &str) {
-    emit_decision("deny", Some(reason.into()));
+    emit_decision("deny", Some(reason.into()), None);
 }
