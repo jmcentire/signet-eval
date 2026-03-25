@@ -1,0 +1,34 @@
+{
+  "name": "signet-eval",
+  "description": "Deterministic policy enforcement for AI agent tool calls. Controls what actions are allowed, denied, or require confirmation.",
+  "version": "3.1.0",
+  "author": {
+    "name": "Jeremy McEntire",
+    "url": "https://github.com/jmcentire"
+  },
+  "repository": "https://github.com/jmcentire/signet-eval",
+  "license": "MIT",
+  "keywords": [
+    "policy",
+    "security",
+    "authorization",
+    "claude-code",
+    "mcp"
+  ],
+  "categories": [
+    "security",
+    "policy-enforcement",
+    "developer-tools"
+  ],
+  "pricing": "free",
+  "features": {
+    "mcp_server": true,
+    "skills": false,
+    "hooks": true,
+    "commands": false
+  },
+  "requirements": {
+    "rust": "stable"
+  },
+  "install": "cargo install signet-eval"
+}

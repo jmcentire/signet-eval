@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "signet-eval",
+            "timeout": 2000
+          }
+        ]
+      }
+    ]
+  }
+}
