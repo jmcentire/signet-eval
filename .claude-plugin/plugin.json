@@ -1,7 +1,7 @@
 {
   "name": "signet-eval",
   "description": "Deterministic policy enforcement for AI agent tool calls. Controls what actions are allowed, denied, or require confirmation.",
-  "version": "3.1.0",
+  "version": "3.2.0",
   "author": {
     "name": "Jeremy McEntire",
     "url": "https://github.com/jmcentire"
