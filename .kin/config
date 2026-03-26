@@ -1,59 +1,8 @@
----
 name: signet-eval
 description: Deterministic policy enforcement for AI agent tool calls. Rust single binary. Claude Code PreToolUse hook + MCP management server + MCP proxy.
-version: 2.1.0
+version: 3.2.0
 author: Jeremy McEntire <jmc@cageandmirror.com>
 license: MIT
 repository: https://github.com/jmcentire/signet-eval
 tags: signet, security, policy, ai-safety, claude-code, mcp, rust
----
-
-# signet-eval
-
-## What it does
-Policy enforcement layer between AI agents and their tools. Every tool call the agent proposes passes through signet-eval before execution. Rules are deterministic — regex, string matching, numeric comparisons. No LLM in the authorization path.
-
-## Architecture
-- **Hook mode** (default): Reads Claude Code PreToolUse JSON from stdin, evaluates against policy, writes allow/deny/ask to stdout. 25ms end-to-end.
-- **MCP management server** (`serve`): 17 tools for conversational policy editing through Claude.
-- **MCP proxy** (`proxy`): Wraps upstream MCP servers with policy enforcement. Hot-reloads policy.
-- **Encrypted vault**: Argon2id + AES-256-GCM, 3-tier (public ledger, session-encrypted, compartment-encrypted). Spending ledger, scoped credentials with capability constraints.
-
-## Key design decisions
-- **Authorization must not be an LLM.** No NLP, no context window, no persuasion surface. A rule either matches or it doesn't.
-- **Self-protection via locked rules.** Four hardcoded locked rules prevent the agent from disabling its own policy enforcement. Locked rules can't be removed/edited/reordered via MCP. Direct file edits break HMAC, triggering fallback to safe defaults that also include self-protection. Closed loop.
-- **First-match-wins.** Rule ordering matters. Locked rules always occupy top positions.
-- **Fail-closed on integrity violation.** If policy HMAC doesn't match, fall back to hardcoded default policy (which includes self-protection).
-- **Auto-sign.** Every MCP mutation auto-signs the policy when vault is available.
-
-## Self-protection rules (locked)
-1. `protect_signet_dir` — DENY Write/Edit/Bash to .signet/
-2. `protect_signet_binary` — DENY tampering with signet-eval binary
-3. `protect_hook_config` — ASK on settings.json/settings.local.json changes
-4. `protect_signet_process` — DENY kill/pkill/killall signet
-
-## Condition functions (14)
-contains, any_of, param_eq, param_ne, param_gt, param_lt, param_contains,
-matches, has_credential, spend_gt, spend_plus_amount_gt, not, or, true/false
-
-## File map
-- `src/policy.rs` — PolicyRule struct (with `locked` field), evaluate(), default_policy(), self_protection_rules(), condition evaluation, validation
-- `src/vault.rs` — Vault struct, crypto (Argon2/AES-256-GCM/HKDF), spending ledger, credentials, capability requests, HMAC signing
-- `src/hook.rs` — Hook I/O (stdin JSON -> stdout JSON), vault logging
-- `src/mcp_server.rs` — 17 MCP tools, locked-rule guards, auto-sign, policy CRUD
-- `src/mcp_proxy.rs` — Upstream server management, tool proxying with policy enforcement
-- `src/main.rs` — CLI (clap), 15 subcommands
-
-## Performance
-- Hook eval: 25ms end-to-end (process spawn + policy load + eval + response)
-- In-process policy eval: 14-63 microseconds
-- CLI validate/rules: 8ms
-- Binary: 6.2MB (stripped, LTO)
-
-## Security properties
-- Device-specific session key encryption (machine ID + username)
-- Brute-force lockout: 5 attempts, 5-minute cooldown
-- Compartment-isolated Tier 3 credentials
-- Scoped credential access: domain, purpose, amount cap, one-time constraints
-- No eval(), no template expansion, no code injection surface
-- Adversarial test coverage: unicode homoglyphs, null bytes, 1MB inputs, SQL injection, path traversal
+audience: public

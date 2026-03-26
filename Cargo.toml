@@ -1,6 +1,6 @@
 [package]
 name = "signet-eval"
-version = "3.2.0"
+version = "3.3.0"
 edition = "2021"
 description = "Claude Code policy enforcement — deterministic authorization for AI agent tool calls"
 license = "MIT"
@@ -30,6 +30,9 @@ rusqlite = { version = "0.31", features = ["bundled"] }
 
 # Regex
 regex = "1"
+
+# Subprocess timeout (for ensure check scripts)
+wait-timeout = "0.2"
 
 # CLI
 clap = { version = "4", features = ["derive"] }

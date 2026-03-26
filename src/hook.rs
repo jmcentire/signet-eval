@@ -3,9 +3,11 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::io::{self, Read};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::process::{Command, Stdio};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use wait_timeout::ChildExt;
 
-use crate::policy::{self, CompiledPolicy, Decision, ToolCall};
+use crate::policy::{self, CompiledPolicy, Decision, EnsureConfig, EvaluationResult, ToolCall};
 use crate::vault::{Preflight, PreflightViolation, SoftConstraint, Vault};
 
 #[derive(Deserialize)]
@@ -97,9 +99,17 @@ pub fn run_hook(policy: &CompiledPolicy, vault: Option<&Vault>) -> i32 {
     if crate::vault::is_paused_file() {
         let result = policy::evaluate(&call, policy, vault);
         if result.decision == Decision::Deny && result.matched_locked {
-            // Self-protection still enforced during pause
+            // Self-protection: locked deny always enforced during pause
             emit_decision("deny", result.reason, None);
             return 0;
+        }
+        if result.decision == Decision::Ensure && result.matched_locked {
+            // Self-protection: locked ensure (e.g., identity guard) enforced during pause
+            let resolved = resolve_ensure_result(result);
+            if resolved.decision == Decision::Deny {
+                emit_decision("deny", resolved.reason, None);
+                return 0;
+            }
         }
         // Not a locked rule — allow during pause
         emit_decision("allow", None, None);
@@ -108,6 +118,13 @@ pub fn run_hook(policy: &CompiledPolicy, vault: Option<&Vault>) -> i32 {
 
     // Pass 1: Evaluate against compiled hard rules
     let result = policy::evaluate(&call, policy, vault);
+
+    // Resolve Ensure: run check script, convert to Allow/Deny
+    let result = if result.decision == Decision::Ensure {
+        resolve_ensure_result(result)
+    } else {
+        result
+    };
 
     // Hard deny always wins — short-circuit
     let (final_decision, final_reason, final_context) = if result.decision == Decision::Deny {
@@ -281,4 +298,92 @@ fn emit_allow() {
 
 fn emit_deny(reason: &str) {
     emit_decision("deny", Some(reason.into()), None);
+}
+
+/// Run an ensure check script and return (passed, stderr_output).
+fn resolve_ensure(config: &EnsureConfig) -> (bool, String) {
+    let script_path = match policy::resolve_ensure_script_path(&config.check) {
+        Ok(p) => p,
+        Err(e) => return (false, e),
+    };
+
+    if !script_path.exists() {
+        return (false, format!("Check script not found: {}", script_path.display()));
+    }
+
+    let timeout_secs = config.timeout.max(1).min(30) as u64;
+
+    let mut child = match Command::new(&script_path)
+        .stdin(Stdio::inherit())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+    {
+        Ok(c) => c,
+        Err(e) => return (false, format!("Failed to spawn check script: {e}")),
+    };
+
+    match child.wait_timeout(Duration::from_secs(timeout_secs)) {
+        Ok(Some(status)) => {
+            let stderr = child.stderr.take()
+                .and_then(|mut s| {
+                    let mut buf = Vec::new();
+                    io::Read::read_to_end(&mut s, &mut buf).ok()?;
+                    Some(String::from_utf8_lossy(&buf[..buf.len().min(500)]).to_string())
+                })
+                .unwrap_or_default();
+            if status.success() {
+                (true, String::new())
+            } else {
+                (false, stderr)
+            }
+        }
+        Ok(None) => {
+            let _ = child.kill();
+            let _ = child.wait();
+            (false, format!("Check script timed out after {timeout_secs}s"))
+        }
+        Err(e) => {
+            (false, format!("Error waiting for check script: {e}"))
+        }
+    }
+}
+
+/// Resolve an Ensure evaluation result by running the check script.
+fn resolve_ensure_result(result: EvaluationResult) -> EvaluationResult {
+    if let Some(ref ensure_config) = result.ensure_config {
+        let (passed, stderr) = resolve_ensure(ensure_config);
+        if passed {
+            EvaluationResult {
+                decision: Decision::Allow,
+                ensure_config: None,
+                ..result
+            }
+        } else {
+            let msg = if ensure_config.message.is_empty() {
+                format!("Ensure check '{}' failed", ensure_config.check)
+            } else {
+                ensure_config.message.clone()
+            };
+            let reason = if stderr.is_empty() {
+                msg
+            } else {
+                format!("{msg} -- {stderr}")
+            };
+            EvaluationResult {
+                decision: Decision::Deny,
+                reason: Some(reason),
+                ensure_config: None,
+                ..result
+            }
+        }
+    } else {
+        // Ensure without config — misconfigured, deny
+        EvaluationResult {
+            decision: Decision::Deny,
+            reason: Some("Ensure rule missing ensure config".into()),
+            ensure_config: None,
+            ..result
+        }
+    }
 }

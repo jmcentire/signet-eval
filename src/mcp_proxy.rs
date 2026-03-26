@@ -131,6 +131,15 @@ impl ServerHandler for ProxyServer {
                     let reason = result.reason.unwrap_or_else(|| "Requires approval".into());
                     Ok(CallToolResult::error(vec![Content::text(format!("REQUIRES APPROVAL: {reason}"))]))
                 }
+                Decision::Gate => {
+                    // Gate should be resolved by evaluate() — safety net
+                    let reason = result.reason.unwrap_or_else(|| "Gate check failed".into());
+                    Ok(CallToolResult::error(vec![Content::text(format!("DENIED by Signet: {reason}"))]))
+                }
+                Decision::Ensure => {
+                    let reason = result.reason.unwrap_or_else(|| "Ensure checks cannot run in proxy mode".into());
+                    Ok(CallToolResult::error(vec![Content::text(format!("DENIED by Signet: {reason}"))]))
+                }
                 Decision::Allow => {
                     let upstreams = self.upstreams.lock().await;
                     let upstream = upstreams.iter().find(|u| u.name == server_name);

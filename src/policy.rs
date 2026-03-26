@@ -15,6 +15,8 @@ pub enum Decision {
     Allow,
     Deny,
     Ask,
+    Gate,
+    Ensure,
 }
 
 impl Decision {
@@ -23,9 +25,31 @@ impl Decision {
             Decision::Allow => "allow",
             Decision::Deny => "deny",
             Decision::Ask => "ask",
+            Decision::Gate => "gate",
+            Decision::Ensure => "ensure",
         }
     }
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GateConfig {
+    pub requires_prior: String,
+    #[serde(default = "default_gate_within")]
+    pub within: u32,
+}
+
+fn default_gate_within() -> u32 { 50 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EnsureConfig {
+    pub check: String,
+    #[serde(default = "default_ensure_timeout")]
+    pub timeout: u32,
+    #[serde(default)]
+    pub message: String,
+}
+
+fn default_ensure_timeout() -> u32 { 5 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PolicyRule {
@@ -40,6 +64,10 @@ pub struct PolicyRule {
     pub alternative: Option<String>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub locked: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gate: Option<GateConfig>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ensure: Option<EnsureConfig>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -64,6 +92,8 @@ pub struct CompiledRule {
     pub reason: Option<String>,
     pub alternative: Option<String>,
     pub locked: bool,
+    pub gate: Option<GateConfig>,
+    pub ensure: Option<EnsureConfig>,
 }
 
 #[derive(Debug)]
@@ -78,6 +108,7 @@ pub struct EvaluationResult {
     pub matched_locked: bool,
     pub reason: Option<String>,
     pub evaluation_time_us: u64,
+    pub ensure_config: Option<EnsureConfig>,
 }
 
 /// Tool call being evaluated.
@@ -98,6 +129,8 @@ impl CompiledPolicy {
                 reason: r.reason.clone(),
                 alternative: r.alternative.clone(),
                 locked: r.locked,
+                gate: r.gate.clone(),
+                ensure: r.ensure.clone(),
             })
         }).collect();
 
@@ -333,12 +366,55 @@ pub fn evaluate(
                 (Some(r), Some(alt)) => Some(format!("{r} Instead: {alt}")),
                 (reason, _) => reason.clone(),
             };
+
+            // Resolve Gate inline (read-only vault query, like spend_gt)
+            if rule.action == Decision::Gate {
+                if let Some(ref gate_config) = rule.gate {
+                    let gate_passed = resolve_gate(gate_config, vault);
+                    let (decision, gate_reason) = if gate_passed {
+                        (Decision::Allow, reason)
+                    } else {
+                        (Decision::Deny, Some(format!(
+                            "Gate: '{}' not found in last {} allowed actions. {}",
+                            gate_config.requires_prior,
+                            gate_config.within,
+                            reason.as_deref().unwrap_or("")
+                        )))
+                    };
+                    return EvaluationResult {
+                        decision,
+                        matched_rule: Some(rule.name.clone()),
+                        matched_locked: rule.locked,
+                        reason: gate_reason,
+                        evaluation_time_us: elapsed,
+                        ensure_config: None,
+                    };
+                } else {
+                    return EvaluationResult {
+                        decision: Decision::Deny,
+                        matched_rule: Some(rule.name.clone()),
+                        matched_locked: rule.locked,
+                        reason: Some("Gate rule missing gate config".into()),
+                        evaluation_time_us: elapsed,
+                        ensure_config: None,
+                    };
+                }
+            }
+
+            // Ensure: return unresolved — caller (hook.rs) runs the script
+            let ensure_cfg = if rule.action == Decision::Ensure {
+                rule.ensure.clone()
+            } else {
+                None
+            };
+
             return EvaluationResult {
                 decision: rule.action,
                 matched_rule: Some(rule.name.clone()),
                 matched_locked: rule.locked,
                 reason,
                 evaluation_time_us: elapsed,
+                ensure_config: ensure_cfg,
             };
         }
     }
@@ -350,7 +426,17 @@ pub fn evaluate(
         matched_locked: false,
         reason: Some("No matching rules, using default action".into()),
         evaluation_time_us: elapsed,
+        ensure_config: None,
     }
+}
+
+/// Resolve a Gate action by checking the vault's action log.
+fn resolve_gate(config: &GateConfig, vault: Option<&Vault>) -> bool {
+    let vault = match vault {
+        Some(v) => v,
+        None => return false, // C008: fail-closed, no vault = deny
+    };
+    vault.has_recent_allowed_action(&config.requires_prior, config.within)
 }
 
 /// Load policy from file, falling back to defaults.
@@ -420,15 +506,95 @@ pub fn validate_policy(config: &PolicyConfig) -> Vec<String> {
             }
             // If no parens, it might be a raw quoted string (valid fallback)
         }
+
+        // Validate Gate config
+        if rule.action == Decision::Gate {
+            match &rule.gate {
+                None => errors.push(format!("{label}: action GATE requires 'gate' config")),
+                Some(gc) => {
+                    if gc.requires_prior.is_empty() {
+                        errors.push(format!("{label}: gate.requires_prior cannot be empty"));
+                    }
+                    if gc.within < 1 || gc.within > 500 {
+                        errors.push(format!("{label}: gate.within must be 1-500, got {}", gc.within));
+                    }
+                }
+            }
+        }
+
+        // Validate Ensure config
+        if rule.action == Decision::Ensure {
+            match &rule.ensure {
+                None => errors.push(format!("{label}: action ENSURE requires 'ensure' config")),
+                Some(ec) => {
+                    if let Err(e) = validate_ensure_check_name(&ec.check) {
+                        errors.push(format!("{label}: {e}"));
+                    }
+                    if ec.timeout < 1 || ec.timeout > 30 {
+                        errors.push(format!("{label}: ensure.timeout must be 1-30, got {}", ec.timeout));
+                    }
+                }
+            }
+        }
     }
 
     errors
+}
+
+/// Validate that a script name is safe for use with Ensure.
+pub fn validate_ensure_check_name(name: &str) -> Result<(), String> {
+    if name.is_empty() {
+        return Err("ensure.check cannot be empty".into());
+    }
+    if name.contains('/') || name.contains('\\') {
+        return Err(format!("ensure.check must not contain path separators: '{name}'"));
+    }
+    if name.contains("..") {
+        return Err(format!("ensure.check must not contain '..': '{name}'"));
+    }
+    if name.bytes().any(|b| b == 0) {
+        return Err("ensure.check must not contain null bytes".into());
+    }
+    if name.bytes().any(|b| b < 0x20 && b != b'\t') {
+        return Err("ensure.check must not contain control characters".into());
+    }
+    Ok(())
+}
+
+/// Resolve the full path for an ensure check script.
+/// Returns the canonicalized path if valid, or an error.
+pub fn resolve_ensure_script_path(check_name: &str) -> Result<std::path::PathBuf, String> {
+    validate_ensure_check_name(check_name)?;
+    let checks_dir = crate::vault::signet_dir().join("checks");
+    let script_path = checks_dir.join(check_name);
+    // If the checks dir doesn't exist yet, that's fine — script won't be found
+    let canonical = script_path.canonicalize()
+        .map_err(|e| format!("Cannot resolve script '{}': {e}", script_path.display()))?;
+    if let Ok(canonical_checks) = checks_dir.canonicalize() {
+        if !canonical.starts_with(&canonical_checks) {
+            return Err(format!("Script path escapes checks directory: {}", canonical.display()));
+        }
+    }
+    Ok(canonical)
 }
 
 /// Self-protection rules that ship locked in every default policy.
 /// These prevent an AI agent from disabling its own policy enforcement.
 pub fn self_protection_rules() -> Vec<PolicyRule> {
     vec![
+        // Highest priority: protect the checks directory used by Ensure scripts.
+        // Must be first so it's evaluated before all other rules, including during pause.
+        PolicyRule {
+            name: "protect_checks_dir".into(),
+            tool_pattern: ".*".into(),
+            conditions: vec!["any_of(parameters, '.signet/checks', '.Signet/checks', '.SIGNET/checks')".into()],
+            action: Decision::Deny,
+            locked: true,
+            reason: Some("Self-protection: the checks directory is protected.".into()),
+            alternative: Some("Check scripts must be installed manually by the user, not by AI agents. Ask the user to place scripts in the checks directory.".into()),
+            gate: None,
+            ensure: None,
+        },
         PolicyRule {
             name: "protect_signet_dir".into(),
             tool_pattern: ".*".into(),
@@ -437,6 +603,7 @@ pub fn self_protection_rules() -> Vec<PolicyRule> {
             locked: true,
             reason: Some("Self-protection: the policy directory is protected.".into()),
             alternative: Some("Refer to it as 'the policy directory'. To check policy status, use signet_status via MCP.".into()),
+            gate: None, ensure: None,
         },
         PolicyRule {
             name: "protect_signet_binary".into(),
@@ -446,6 +613,7 @@ pub fn self_protection_rules() -> Vec<PolicyRule> {
             locked: true,
             reason: Some("Self-protection: the permissions tool binary is protected.".into()),
             alternative: Some("Refer to it as 'the permissions tool'. To inspect rules, use signet_list_rules via MCP.".into()),
+            gate: None, ensure: None,
         },
         PolicyRule {
             name: "protect_hook_config".into(),
@@ -455,6 +623,7 @@ pub fn self_protection_rules() -> Vec<PolicyRule> {
             locked: true,
             reason: Some("Self-protection: hook config changes require user confirmation.".into()),
             alternative: Some("Describe the settings change you need and ask the user to apply it, or use the /update-config skill.".into()),
+            gate: None, ensure: None,
         },
         PolicyRule {
             name: "protect_signet_symlink".into(),
@@ -467,6 +636,7 @@ pub fn self_protection_rules() -> Vec<PolicyRule> {
             locked: true,
             reason: Some("Self-protection: symlink creation targeting the permissions tool is blocked.".into()),
             alternative: Some("Use absolute paths in code or configuration rather than symlinks.".into()),
+            gate: None, ensure: None,
         },
         PolicyRule {
             name: "protect_signet_process".into(),
@@ -479,6 +649,7 @@ pub fn self_protection_rules() -> Vec<PolicyRule> {
             locked: true,
             reason: Some("Self-protection: cannot terminate processes for the permissions tool.".into()),
             alternative: Some("If the permissions tool appears hung, ask the user to restart it.".into()),
+            gate: None, ensure: None,
         },
         PolicyRule {
             name: "protect_preflight_storage".into(),
@@ -491,6 +662,23 @@ pub fn self_protection_rules() -> Vec<PolicyRule> {
             locked: true,
             reason: Some("Self-protection: preflight records are tamper-protected.".into()),
             alternative: Some("Use signet_preflight_active or signet_preflight_violations to read your preflight data.".into()),
+            gate: None, ensure: None,
+        },
+        // Core identity enforcement: git remote operations must use the correct GitHub account.
+        PolicyRule {
+            name: "github_identity_guard".into(),
+            tool_pattern: "^Bash$".into(),
+            conditions: vec!["any_of(parameters, 'git push', 'git pull', 'git fetch', 'git clone')".into()],
+            action: Decision::Ensure,
+            locked: true,
+            reason: Some("Git remote operations must use the correct GitHub identity.".into()),
+            alternative: Some("Run 'gh auth switch --user <correct_user>' to match the remote's org.".into()),
+            gate: None,
+            ensure: Some(EnsureConfig {
+                check: "gh-identity-matches-remote".into(),
+                timeout: 15,
+                message: "GitHub identity mismatch. Run: gh auth switch --user <correct_user>".into(),
+            }),
         },
     ]
 }
@@ -506,6 +694,7 @@ pub fn default_policy() -> CompiledPolicy {
             locked: false,
             reason: Some("File deletion blocked by policy.".into()),
             alternative: Some("Use 'trash <file>' (recoverable) or 'mv <file> /tmp/' to stage for manual cleanup.".into()),
+            gate: None, ensure: None,
         },
         PolicyRule {
             name: "block_force_push".into(),
@@ -515,6 +704,7 @@ pub fn default_policy() -> CompiledPolicy {
             locked: false,
             reason: Some("Force push can overwrite others' work.".into()),
             alternative: Some("Use 'git push --force-with-lease' or push to a new branch: 'git push origin HEAD:fix/<name>'.".into()),
+            gate: None, ensure: None,
         },
         PolicyRule {
             name: "block_destructive_disk".into(),
@@ -524,6 +714,7 @@ pub fn default_policy() -> CompiledPolicy {
             locked: false,
             reason: Some("Destructive disk operations blocked.".into()),
             alternative: Some("Write to a temp file first: 'dd if=<src> of=/tmp/staging.img'. Ask the user to execute disk operations directly.".into()),
+            gate: None, ensure: None,
         },
         PolicyRule {
             name: "block_piped_exec".into(),
@@ -533,6 +724,7 @@ pub fn default_policy() -> CompiledPolicy {
             locked: false,
             reason: Some("Piped remote execution blocked.".into()),
             alternative: Some("Download first, then inspect: 'curl -o /tmp/script.sh <url>' followed by 'cat /tmp/script.sh'. Let the user review before executing.".into()),
+            gate: None, ensure: None,
         },
         PolicyRule {
             name: "block_credential_writes".into(),
@@ -542,6 +734,7 @@ pub fn default_policy() -> CompiledPolicy {
             locked: false,
             reason: Some("Writing to credential/secret files blocked.".into()),
             alternative: Some("Write to a '.example' or '.template' file with placeholder values, then instruct the user to copy and fill in real credentials.".into()),
+            gate: None, ensure: None,
         },
         PolicyRule {
             name: "block_chmod_777".into(),
@@ -551,6 +744,7 @@ pub fn default_policy() -> CompiledPolicy {
             locked: false,
             reason: Some("chmod 777 grants world-readable/writable/executable access.".into()),
             alternative: Some("Use minimum permissions: 'chmod 755' for executables, 'chmod 644' for files, 'chmod 600' for secrets.".into()),
+            gate: None, ensure: None,
         },
     ]);
     let config = PolicyConfig {
@@ -648,7 +842,10 @@ mod tests {
         let policy = default_policy();
         let call = make_call("Bash", serde_json::json!({"command": "git push --force origin main"}));
         let result = evaluate(&call, &policy, None);
-        assert_eq!(result.decision, Decision::Ask);
+        // github_identity_guard (locked ensure) fires first on "git push"
+        // The force-push Ask rule would fire after identity check passes
+        assert_eq!(result.decision, Decision::Ensure);
+        assert_eq!(result.matched_rule.as_deref(), Some("github_identity_guard"));
     }
 
     #[test]
@@ -680,6 +877,7 @@ mod tests {
                     action: Decision::Allow,
                     reason: Some("First rule".into()),
                 alternative: None, locked: false,
+                gate: None, ensure: None,
                 },
                 PolicyRule {
                     name: "deny_bash".into(),
@@ -688,6 +886,7 @@ mod tests {
                     action: Decision::Deny,
                     reason: Some("Second rule".into()),
                 alternative: None, locked: false,
+                gate: None, ensure: None,
                 },
             ],
         };
@@ -711,6 +910,7 @@ mod tests {
                     action: Decision::Deny,
                     reason: Some("Books blocked".into()),
                     alternative: None, locked: false,
+                    gate: None, ensure: None,
                 },
             ],
         };
@@ -736,6 +936,7 @@ mod tests {
                     action: Decision::Ask,
                     reason: Some("Large purchase".into()),
                     alternative: None, locked: false,
+                    gate: None, ensure: None,
                 },
             ],
         };
@@ -764,7 +965,7 @@ mod tests {
         let config = PolicyConfig { version: 1, default_action: Decision::Allow, rules: vec![
             PolicyRule { name: "cheap_only".into(), tool_pattern: ".*".into(),
                 conditions: vec!["not(param_lt(amount, 50))".into()], action: Decision::Deny,
-                reason: Some("Over budget".into()), alternative: None, locked: false },
+                reason: Some("Over budget".into()), alternative: None, locked: false, gate: None, ensure: None },
         ]};
         let policy = CompiledPolicy::from_config(&config);
         assert_eq!(evaluate(&make_call("shop", serde_json::json!({"amount": "30"})), &policy, None).decision, Decision::Allow);
@@ -776,7 +977,7 @@ mod tests {
         let config = PolicyConfig { version: 1, default_action: Decision::Allow, rules: vec![
             PolicyRule { name: "not_admin".into(), tool_pattern: ".*".into(),
                 conditions: vec!["param_ne(role, 'admin')".into()], action: Decision::Deny,
-                reason: Some("Non-admin denied".into()), alternative: None, locked: false },
+                reason: Some("Non-admin denied".into()), alternative: None, locked: false, gate: None, ensure: None },
         ]};
         let policy = CompiledPolicy::from_config(&config);
         assert_eq!(evaluate(&make_call("api", serde_json::json!({"role": "admin"})), &policy, None).decision, Decision::Allow);
@@ -788,7 +989,7 @@ mod tests {
         let config = PolicyConfig { version: 1, default_action: Decision::Allow, rules: vec![
             PolicyRule { name: "block_sudo".into(), tool_pattern: ".*".into(),
                 conditions: vec!["param_contains(command, 'sudo')".into()], action: Decision::Deny,
-                reason: Some("sudo blocked".into()), alternative: None, locked: false },
+                reason: Some("sudo blocked".into()), alternative: None, locked: false, gate: None, ensure: None },
         ]};
         let policy = CompiledPolicy::from_config(&config);
         assert_eq!(evaluate(&make_call("Bash", serde_json::json!({"command": "sudo apt install"})), &policy, None).decision, Decision::Deny);
@@ -800,7 +1001,7 @@ mod tests {
         let config = PolicyConfig { version: 1, default_action: Decision::Allow, rules: vec![
             PolicyRule { name: "block_ip".into(), tool_pattern: ".*".into(),
                 conditions: vec!["matches(host, '^\\d+\\.\\d+\\.\\d+\\.\\d+$')".into()], action: Decision::Deny,
-                reason: Some("Direct IP access blocked".into()), alternative: None, locked: false },
+                reason: Some("Direct IP access blocked".into()), alternative: None, locked: false, gate: None, ensure: None },
         ]};
         let policy = CompiledPolicy::from_config(&config);
         assert_eq!(evaluate(&make_call("fetch", serde_json::json!({"host": "192.168.1.1"})), &policy, None).decision, Decision::Deny);
@@ -812,7 +1013,7 @@ mod tests {
         let config = PolicyConfig { version: 1, default_action: Decision::Allow, rules: vec![
             PolicyRule { name: "deny_non_json".into(), tool_pattern: ".*".into(),
                 conditions: vec!["not(param_eq(format, 'json'))".into()], action: Decision::Deny,
-                reason: Some("Only JSON allowed".into()), alternative: None, locked: false },
+                reason: Some("Only JSON allowed".into()), alternative: None, locked: false, gate: None, ensure: None },
         ]};
         let policy = CompiledPolicy::from_config(&config);
         assert_eq!(evaluate(&make_call("api", serde_json::json!({"format": "json"})), &policy, None).decision, Decision::Allow);
@@ -858,7 +1059,7 @@ mod tests {
     fn test_empty_conditions_matches_any() {
         let config = PolicyConfig { version: 1, default_action: Decision::Allow, rules: vec![
             PolicyRule { name: "deny_all_bash".into(), tool_pattern: "^Bash$".into(),
-                conditions: vec![], action: Decision::Deny, reason: None, alternative: None, locked: false },
+                conditions: vec![], action: Decision::Deny, reason: None, alternative: None, locked: false, gate: None, ensure: None },
         ]};
         let policy = CompiledPolicy::from_config(&config);
         assert_eq!(evaluate(&make_call("Bash", serde_json::json!({})), &policy, None).decision, Decision::Deny);
@@ -869,9 +1070,9 @@ mod tests {
     fn test_invalid_regex_skipped() {
         let config = PolicyConfig { version: 1, default_action: Decision::Allow, rules: vec![
             PolicyRule { name: "bad_regex".into(), tool_pattern: "[invalid".into(),
-                conditions: vec![], action: Decision::Deny, reason: None, alternative: None, locked: false },
+                conditions: vec![], action: Decision::Deny, reason: None, alternative: None, locked: false, gate: None, ensure: None },
             PolicyRule { name: "good_rule".into(), tool_pattern: ".*".into(),
-                conditions: vec!["contains(parameters, 'test')".into()], action: Decision::Deny, reason: None, alternative: None, locked: false },
+                conditions: vec!["contains(parameters, 'test')".into()], action: Decision::Deny, reason: None, alternative: None, locked: false, gate: None, ensure: None },
         ]};
         let policy = CompiledPolicy::from_config(&config);
         // Bad regex rule is silently skipped; good rule still works
@@ -907,7 +1108,7 @@ mod tests {
     fn test_validate_policy_valid() {
         let config = PolicyConfig { version: 1, default_action: Decision::Allow, rules: vec![
             PolicyRule { name: "test".into(), tool_pattern: ".*".into(),
-                conditions: vec!["contains(parameters, 'x')".into()], action: Decision::Deny, reason: None, alternative: None, locked: false },
+                conditions: vec!["contains(parameters, 'x')".into()], action: Decision::Deny, reason: None, alternative: None, locked: false, gate: None, ensure: None },
         ]};
         assert!(validate_policy(&config).is_empty());
     }
@@ -916,7 +1117,7 @@ mod tests {
     fn test_validate_policy_bad_regex() {
         let config = PolicyConfig { version: 1, default_action: Decision::Allow, rules: vec![
             PolicyRule { name: "bad".into(), tool_pattern: "[invalid".into(),
-                conditions: vec![], action: Decision::Deny, reason: None, alternative: None, locked: false },
+                conditions: vec![], action: Decision::Deny, reason: None, alternative: None, locked: false, gate: None, ensure: None },
         ]};
         let errors = validate_policy(&config);
         assert_eq!(errors.len(), 1);
@@ -927,7 +1128,7 @@ mod tests {
     fn test_validate_policy_unknown_fn() {
         let config = PolicyConfig { version: 1, default_action: Decision::Allow, rules: vec![
             PolicyRule { name: "bad".into(), tool_pattern: ".*".into(),
-                conditions: vec!["bogus_fn(x)".into()], action: Decision::Deny, reason: None, alternative: None, locked: false },
+                conditions: vec!["bogus_fn(x)".into()], action: Decision::Deny, reason: None, alternative: None, locked: false, gate: None, ensure: None },
         ]};
         let errors = validate_policy(&config);
         assert_eq!(errors.len(), 1);
@@ -1065,7 +1266,7 @@ mod self_protection_tests {
     #[test]
     fn test_default_policy_has_locked_rules() {
         let rules = self_protection_rules();
-        assert_eq!(rules.len(), 6);
+        assert_eq!(rules.len(), 8);
         assert!(rules.iter().all(|r| r.locked));
     }
 
@@ -1237,6 +1438,7 @@ mod self_protection_tests {
             action: Decision::Deny,
             reason: None,
             alternative: None, locked: true,
+            gate: None, ensure: None,
         };
         let yaml = serde_yaml::to_string(&rule).unwrap();
         assert!(yaml.contains("locked: true"));
@@ -1260,6 +1462,7 @@ mod self_protection_tests {
             action: Decision::Deny,
             reason: None,
             alternative: None, locked: false,
+            gate: None, ensure: None,
         };
         let yaml = serde_yaml::to_string(&rule).unwrap();
         assert!(!yaml.contains("locked"), "locked: false should be skipped in serialization");
@@ -1297,10 +1500,10 @@ mod goodhart_tests {
         let config = PolicyConfig { version: 1, default_action: Decision::Allow, rules: vec![
             PolicyRule { name: "block_rm".into(), tool_pattern: ".*".into(),
                 conditions: vec!["contains(parameters, 'rm ')".into()], action: Decision::Deny,
-                reason: Some("blocked".into()), alternative: None, locked: false },
+                reason: Some("blocked".into()), alternative: None, locked: false, gate: None, ensure: None },
             PolicyRule { name: "allow_rm".into(), tool_pattern: ".*".into(),
                 conditions: vec!["contains(parameters, 'rm ')".into()], action: Decision::Allow,
-                reason: Some("allowed".into()), alternative: None, locked: false },
+                reason: Some("allowed".into()), alternative: None, locked: false, gate: None, ensure: None },
         ]};
         let policy = CompiledPolicy::from_config(&config);
         let call = make_call("Bash", serde_json::json!({"command": "rm foo"}));
@@ -1350,7 +1553,7 @@ mod goodhart_tests {
     fn test_many_rules_performance() {
         let rules: Vec<PolicyRule> = (0..1000).map(|i| PolicyRule {
             name: format!("rule_{i}"), tool_pattern: format!("tool_{i}"),
-            conditions: vec![], action: Decision::Deny, reason: None, alternative: None, locked: false,
+            conditions: vec![], action: Decision::Deny, reason: None, alternative: None, locked: false, gate: None, ensure: None,
         }).collect();
         let config = PolicyConfig { version: 1, default_action: Decision::Allow, rules };
         let policy = CompiledPolicy::from_config(&config);
@@ -1384,11 +1587,317 @@ mod goodhart_tests {
         // falling through to default — NOT crash
         let config = PolicyConfig { version: 1, default_action: Decision::Allow, rules: vec![
             PolicyRule { name: "bad_cond".into(), tool_pattern: ".*".into(),
-                conditions: vec!["matches(x, '[invalid')".into()], action: Decision::Deny, reason: None, alternative: None, locked: false },
+                conditions: vec!["matches(x, '[invalid')".into()], action: Decision::Deny, reason: None, alternative: None, locked: false, gate: None, ensure: None },
         ]};
         let policy = CompiledPolicy::from_config(&config);
         let call = make_call("Bash", serde_json::json!({"x": "test"}));
         // Bad regex → condition error → rule doesn't match → default Allow
         assert_eq!(evaluate(&call, &policy, None).decision, Decision::Allow);
+    }
+}
+
+/// Gate and Ensure action tests.
+#[cfg(test)]
+mod gate_ensure_tests {
+    use super::*;
+
+    fn make_call(tool: &str, params: serde_json::Value) -> ToolCall {
+        ToolCall { tool_name: tool.into(), parameters: params }
+    }
+
+    // --- Gate tests ---
+
+    #[test]
+    fn test_gate_no_vault_denies() {
+        let config = PolicyConfig { version: 1, default_action: Decision::Allow, rules: vec![
+            PolicyRule {
+                name: "gate_test".into(), tool_pattern: ".*".into(),
+                conditions: vec![], action: Decision::Gate,
+                reason: Some("test gate".into()), alternative: None, locked: false,
+                gate: Some(GateConfig { requires_prior: "authorize".into(), within: 50 }),
+                ensure: None,
+            },
+        ]};
+        let policy = CompiledPolicy::from_config(&config);
+        let call = make_call("Bash", serde_json::json!({"command": "do something"}));
+        let result = evaluate(&call, &policy, None);
+        assert_eq!(result.decision, Decision::Deny); // No vault = deny
+    }
+
+    #[test]
+    fn test_gate_with_vault() {
+        // Single test to avoid SIGNET_DIR env var races between parallel tests
+        let dir = tempfile::tempdir().unwrap();
+        std::env::set_var("SIGNET_DIR", dir.path());
+        let vault = crate::vault::setup_vault("testpass").unwrap();
+
+        let config = PolicyConfig { version: 1, default_action: Decision::Allow, rules: vec![
+            PolicyRule {
+                name: "gate_test".into(), tool_pattern: ".*".into(),
+                conditions: vec![], action: Decision::Gate,
+                reason: Some("test gate".into()), alternative: None, locked: false,
+                gate: Some(GateConfig { requires_prior: "gh auth switch --user jmcentire".into(), within: 50 }),
+                ensure: None,
+            },
+        ]};
+        let policy = CompiledPolicy::from_config(&config);
+        let call = make_call("Bash", serde_json::json!({"command": "git push"}));
+
+        // Prior not found → deny
+        let result = evaluate(&call, &policy, Some(&vault));
+        assert_eq!(result.decision, Decision::Deny);
+        assert!(result.reason.unwrap().contains("not found"));
+
+        // Log the required prior action
+        vault.log_action("Bash", "allow", "", 0.0, r#"{"command":"gh auth switch --user jmcentire"}"#);
+
+        // Prior found → allow
+        let result = evaluate(&call, &policy, Some(&vault));
+        assert_eq!(result.decision, Decision::Allow);
+
+        std::env::remove_var("SIGNET_DIR");
+    }
+
+    #[test]
+    fn test_gate_missing_config_denies() {
+        let config = PolicyConfig { version: 1, default_action: Decision::Allow, rules: vec![
+            PolicyRule {
+                name: "bad_gate".into(), tool_pattern: ".*".into(),
+                conditions: vec![], action: Decision::Gate,
+                reason: Some("bad".into()), alternative: None, locked: false,
+                gate: None, ensure: None,
+            },
+        ]};
+        let policy = CompiledPolicy::from_config(&config);
+        let call = make_call("Bash", serde_json::json!({"command": "test"}));
+        let result = evaluate(&call, &policy, None);
+        assert_eq!(result.decision, Decision::Deny);
+        assert!(result.reason.unwrap().contains("missing gate config"));
+    }
+
+    // --- Ensure tests ---
+
+    #[test]
+    fn test_ensure_returns_unresolved() {
+        let config = PolicyConfig { version: 1, default_action: Decision::Allow, rules: vec![
+            PolicyRule {
+                name: "ensure_test".into(), tool_pattern: ".*".into(),
+                conditions: vec![], action: Decision::Ensure,
+                reason: Some("test ensure".into()), alternative: None, locked: false,
+                gate: None,
+                ensure: Some(EnsureConfig { check: "test-script".into(), timeout: 5, message: "run test first".into() }),
+            },
+        ]};
+        let policy = CompiledPolicy::from_config(&config);
+        let call = make_call("Bash", serde_json::json!({"command": "test"}));
+        let result = evaluate(&call, &policy, None);
+        assert_eq!(result.decision, Decision::Ensure);
+        assert!(result.ensure_config.is_some());
+        assert_eq!(result.ensure_config.unwrap().check, "test-script");
+    }
+
+    #[test]
+    fn test_ensure_missing_config_denies() {
+        let config = PolicyConfig { version: 1, default_action: Decision::Allow, rules: vec![
+            PolicyRule {
+                name: "bad_ensure".into(), tool_pattern: ".*".into(),
+                conditions: vec![], action: Decision::Ensure,
+                reason: None, alternative: None, locked: false,
+                gate: None, ensure: None,
+            },
+        ]};
+        let policy = CompiledPolicy::from_config(&config);
+        let call = make_call("Bash", serde_json::json!({"command": "test"}));
+        let result = evaluate(&call, &policy, None);
+        // Ensure without config: still returns Decision::Ensure but with no config
+        assert_eq!(result.decision, Decision::Ensure);
+        assert!(result.ensure_config.is_none());
+    }
+
+    // --- Validation tests ---
+
+    #[test]
+    fn test_validate_ensure_check_name_valid() {
+        assert!(validate_ensure_check_name("gh-identity-matches-remote").is_ok());
+        assert!(validate_ensure_check_name("check_foo").is_ok());
+        assert!(validate_ensure_check_name("my-script.sh").is_ok());
+    }
+
+    #[test]
+    fn test_validate_ensure_check_name_rejects_slashes() {
+        assert!(validate_ensure_check_name("../evil").is_err());
+        assert!(validate_ensure_check_name("/etc/passwd").is_err());
+        assert!(validate_ensure_check_name("foo/bar").is_err());
+        assert!(validate_ensure_check_name("foo\\bar").is_err());
+    }
+
+    #[test]
+    fn test_validate_ensure_check_name_rejects_null_bytes() {
+        assert!(validate_ensure_check_name("foo\x00bar").is_err());
+    }
+
+    #[test]
+    fn test_validate_ensure_check_name_rejects_control_chars() {
+        assert!(validate_ensure_check_name("foo\x01bar").is_err());
+        assert!(validate_ensure_check_name("foo\nbar").is_err());
+    }
+
+    #[test]
+    fn test_validate_ensure_check_name_rejects_empty() {
+        assert!(validate_ensure_check_name("").is_err());
+    }
+
+    #[test]
+    fn test_validate_policy_gate_missing_config() {
+        let config = PolicyConfig { version: 1, default_action: Decision::Allow, rules: vec![
+            PolicyRule {
+                name: "bad".into(), tool_pattern: ".*".into(),
+                conditions: vec![], action: Decision::Gate,
+                reason: None, alternative: None, locked: false,
+                gate: None, ensure: None,
+            },
+        ]};
+        let errors = validate_policy(&config);
+        assert!(errors.iter().any(|e| e.contains("GATE requires 'gate' config")));
+    }
+
+    #[test]
+    fn test_validate_policy_ensure_missing_config() {
+        let config = PolicyConfig { version: 1, default_action: Decision::Allow, rules: vec![
+            PolicyRule {
+                name: "bad".into(), tool_pattern: ".*".into(),
+                conditions: vec![], action: Decision::Ensure,
+                reason: None, alternative: None, locked: false,
+                gate: None, ensure: None,
+            },
+        ]};
+        let errors = validate_policy(&config);
+        assert!(errors.iter().any(|e| e.contains("ENSURE requires 'ensure' config")));
+    }
+
+    #[test]
+    fn test_validate_policy_ensure_bad_check_name() {
+        let config = PolicyConfig { version: 1, default_action: Decision::Allow, rules: vec![
+            PolicyRule {
+                name: "bad".into(), tool_pattern: ".*".into(),
+                conditions: vec![], action: Decision::Ensure,
+                reason: None, alternative: None, locked: false,
+                gate: None,
+                ensure: Some(EnsureConfig { check: "../evil".into(), timeout: 5, message: String::new() }),
+            },
+        ]};
+        let errors = validate_policy(&config);
+        assert!(errors.iter().any(|e| e.contains("path separators")));
+    }
+
+    #[test]
+    fn test_validate_policy_ensure_bad_timeout() {
+        let config = PolicyConfig { version: 1, default_action: Decision::Allow, rules: vec![
+            PolicyRule {
+                name: "bad".into(), tool_pattern: ".*".into(),
+                conditions: vec![], action: Decision::Ensure,
+                reason: None, alternative: None, locked: false,
+                gate: None,
+                ensure: Some(EnsureConfig { check: "valid-script".into(), timeout: 60, message: String::new() }),
+            },
+        ]};
+        let errors = validate_policy(&config);
+        assert!(errors.iter().any(|e| e.contains("ensure.timeout must be 1-30")));
+    }
+
+    // --- Self-protection tests ---
+
+    #[test]
+    fn test_protect_checks_dir_is_first() {
+        let rules = self_protection_rules();
+        assert_eq!(rules[0].name, "protect_checks_dir");
+        assert!(rules[0].locked);
+        assert_eq!(rules[0].action, Decision::Deny);
+    }
+
+    #[test]
+    fn test_protect_checks_dir_blocks_write() {
+        let policy = default_policy();
+        let call = make_call("Write", serde_json::json!({
+            "file_path": "/home/user/.signet/checks/evil-script",
+            "content": "#!/bin/sh\nexit 0"
+        }));
+        let result = evaluate(&call, &policy, None);
+        assert_eq!(result.decision, Decision::Deny);
+        assert!(result.matched_locked);
+    }
+
+    #[test]
+    fn test_protect_checks_dir_blocks_bash() {
+        let policy = default_policy();
+        let call = make_call("Bash", serde_json::json!({
+            "command": "echo 'exit 0' > ~/.signet/checks/bypass"
+        }));
+        let result = evaluate(&call, &policy, None);
+        assert_eq!(result.decision, Decision::Deny);
+        assert!(result.matched_locked);
+    }
+
+    // --- Backward compatibility ---
+
+    #[test]
+    fn test_old_policy_yaml_deserializes() {
+        let yaml = r#"
+version: 1
+default_action: ALLOW
+rules:
+  - name: block_rm
+    tool_pattern: ".*"
+    conditions:
+      - "contains(parameters, 'rm ')"
+    action: DENY
+    reason: blocked
+"#;
+        let config: PolicyConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(config.rules.len(), 1);
+        assert_eq!(config.rules[0].action, Decision::Deny);
+        assert!(config.rules[0].gate.is_none());
+        assert!(config.rules[0].ensure.is_none());
+    }
+
+    #[test]
+    fn test_gate_ensure_yaml_round_trip() {
+        let yaml = r#"
+version: 1
+default_action: ALLOW
+rules:
+  - name: gate_rule
+    tool_pattern: ".*"
+    action: GATE
+    reason: need prior auth
+    gate:
+      requires_prior: "gh auth switch"
+      within: 100
+  - name: ensure_rule
+    tool_pattern: "Bash"
+    action: ENSURE
+    reason: check identity
+    ensure:
+      check: gh-identity-check
+      timeout: 10
+      message: Wrong identity
+"#;
+        let config: PolicyConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(config.rules.len(), 2);
+        assert_eq!(config.rules[0].action, Decision::Gate);
+        let gc = config.rules[0].gate.as_ref().unwrap();
+        assert_eq!(gc.requires_prior, "gh auth switch");
+        assert_eq!(gc.within, 100);
+        assert_eq!(config.rules[1].action, Decision::Ensure);
+        let ec = config.rules[1].ensure.as_ref().unwrap();
+        assert_eq!(ec.check, "gh-identity-check");
+        assert_eq!(ec.timeout, 10);
+        assert_eq!(ec.message, "Wrong identity");
+
+        // Round-trip: serialize and deserialize again
+        let serialized = serde_yaml::to_string(&config).unwrap();
+        let config2: PolicyConfig = serde_yaml::from_str(&serialized).unwrap();
+        assert_eq!(config2.rules[0].action, Decision::Gate);
+        assert_eq!(config2.rules[1].action, Decision::Ensure);
     }
 }

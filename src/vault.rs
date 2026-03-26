@@ -361,6 +361,21 @@ impl Vault {
         }).unwrap().filter_map(|r| r.ok()).collect()
     }
 
+    /// Check if any of the last N allowed actions contain the given substring in their detail.
+    /// Used by Gate action to verify a prerequisite command was recently executed.
+    pub fn has_recent_allowed_action(&self, search: &str, within: u32) -> bool {
+        let conn = match Connection::open(&self.db_path) {
+            Ok(c) => c,
+            Err(_) => return false,
+        };
+        let count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM (SELECT detail FROM ledger WHERE decision = 'allow' ORDER BY id DESC LIMIT ?1) WHERE detail LIKE '%' || ?2 || '%'",
+            params![within.min(500).max(1), search],
+            |row| row.get(0),
+        ).unwrap_or(0);
+        count > 0
+    }
+
     // --- Credentials ---
 
     pub fn store_credential(&self, name: &str, value: &str, tier: u8) {

@@ -8,7 +8,7 @@ use std::borrow::Cow;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::policy::{PolicyConfig, PolicyRule, Decision};
+use crate::policy::{PolicyConfig, PolicyRule, Decision, GateConfig, EnsureConfig};
 use crate::vault;
 
 fn policy_path() -> PathBuf {
@@ -79,14 +79,16 @@ impl ServerHandler for SignetMcpServer {
         async {
             let tools = vec![
                 make_tool("signet_list_rules", "List all current policy rules. Shows what's blocked, allowed, or requires confirmation.", serde_json::json!({"type": "object", "properties": {}})),
-                make_tool("signet_add_rule", "Add a policy rule. Action must be ALLOW, DENY, or ASK.", serde_json::json!({
+                make_tool("signet_add_rule", "Add a policy rule. Action: ALLOW, DENY, ASK, GATE, or ENSURE.", serde_json::json!({
                     "type": "object",
                     "properties": {
                         "name": {"type": "string", "description": "Rule name (e.g. 'block_rm', 'limit_amazon')"},
-                        "action": {"type": "string", "description": "ALLOW, DENY, or ASK"},
+                        "action": {"type": "string", "description": "ALLOW, DENY, ASK, GATE, or ENSURE"},
                         "reason": {"type": "string", "description": "Why this rule exists"},
                         "tool_pattern": {"type": "string", "description": "Regex matching tool names (default '.*')", "default": ".*"},
-                        "conditions": {"type": "array", "items": {"type": "string"}, "description": "Condition expressions"}
+                        "conditions": {"type": "array", "items": {"type": "string"}, "description": "Condition expressions"},
+                        "gate": {"type": "object", "properties": {"requires_prior": {"type": "string"}, "within": {"type": "integer", "default": 50}}, "description": "Gate config (required for GATE action)"},
+                        "ensure": {"type": "object", "properties": {"check": {"type": "string"}, "timeout": {"type": "integer", "default": 5}, "message": {"type": "string"}}, "description": "Ensure config (required for ENSURE action)"}
                     },
                     "required": ["name", "action", "reason"]
                 })),
@@ -146,10 +148,12 @@ impl ServerHandler for SignetMcpServer {
                     "type": "object",
                     "properties": {
                         "name": {"type": "string", "description": "Rule name to edit"},
-                        "action": {"type": "string", "description": "New action (ALLOW/DENY/ASK)"},
+                        "action": {"type": "string", "description": "New action (ALLOW/DENY/ASK/GATE/ENSURE)"},
                         "reason": {"type": "string", "description": "New reason"},
                         "tool_pattern": {"type": "string", "description": "New tool pattern regex"},
-                        "conditions": {"type": "array", "items": {"type": "string"}, "description": "New conditions (replaces existing)"}
+                        "conditions": {"type": "array", "items": {"type": "string"}, "description": "New conditions (replaces existing)"},
+                        "gate": {"type": "object", "properties": {"requires_prior": {"type": "string"}, "within": {"type": "integer"}}, "description": "Gate config (required for GATE action)"},
+                        "ensure": {"type": "object", "properties": {"check": {"type": "string"}, "timeout": {"type": "integer"}, "message": {"type": "string"}}, "description": "Ensure config (required for ENSURE action)"}
                     },
                     "required": ["name"]
                 })),
@@ -281,6 +285,15 @@ fn handle_list_rules() -> String {
         for c in &r.conditions {
             lines.push(format!("     Condition: {c}"));
         }
+        if let Some(ref gc) = r.gate {
+            lines.push(format!("     Gate: requires '{}' in last {} actions", gc.requires_prior, gc.within));
+        }
+        if let Some(ref ec) = r.ensure {
+            lines.push(format!("     Ensure: check='{}' timeout={}s", ec.check, ec.timeout));
+            if !ec.message.is_empty() {
+                lines.push(format!("     Message: {}", ec.message));
+            }
+        }
         lines.push(String::new());
     }
     lines.join("\n")
@@ -300,8 +313,49 @@ fn handle_add_rule(args: &serde_json::Map<String, Value>) -> String {
         "ALLOW" => Decision::Allow,
         "DENY" => Decision::Deny,
         "ASK" => Decision::Ask,
-        _ => return format!("Invalid action '{action_str}'. Must be ALLOW, DENY, or ASK."),
+        "GATE" => Decision::Gate,
+        "ENSURE" => Decision::Ensure,
+        _ => return format!("Invalid action '{action_str}'. Must be ALLOW, DENY, ASK, GATE, or ENSURE."),
     };
+
+    // Parse Gate config
+    let gate = if action == Decision::Gate {
+        let gc = args.get("gate").and_then(|v| v.as_object());
+        match gc {
+            Some(g) => {
+                let requires_prior = g.get("requires_prior").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                if requires_prior.is_empty() {
+                    return "GATE action requires gate.requires_prior".into();
+                }
+                let within = g.get("within").and_then(|v| v.as_u64()).unwrap_or(50) as u32;
+                if within < 1 || within > 500 {
+                    return "gate.within must be 1-500".into();
+                }
+                Some(GateConfig { requires_prior, within })
+            }
+            None => return "GATE action requires a 'gate' config object".into(),
+        }
+    } else { None };
+
+    // Parse Ensure config
+    let ensure = if action == Decision::Ensure {
+        let ec = args.get("ensure").and_then(|v| v.as_object());
+        match ec {
+            Some(e) => {
+                let check = e.get("check").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                if let Err(err) = crate::policy::validate_ensure_check_name(&check) {
+                    return format!("Invalid ensure.check: {err}");
+                }
+                let timeout = e.get("timeout").and_then(|v| v.as_u64()).unwrap_or(5) as u32;
+                if timeout < 1 || timeout > 30 {
+                    return "ensure.timeout must be 1-30".into();
+                }
+                let message = e.get("message").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                Some(EnsureConfig { check, timeout, message })
+            }
+            None => return "ENSURE action requires an 'ensure' config object".into(),
+        }
+    } else { None };
 
     let mut config = load_policy_raw();
     if config.rules.iter().any(|r| r.name == name) {
@@ -312,6 +366,7 @@ fn handle_add_rule(args: &serde_json::Map<String, Value>) -> String {
         name: name.into(), tool_pattern: tool_pattern.into(),
         conditions, action, reason: Some(reason.into()),
         alternative: None, locked: false,
+        gate, ensure,
     });
     save_policy(&config);
     auto_sign_policy();
@@ -357,6 +412,7 @@ fn handle_set_limit(args: &serde_json::Map<String, Value>) -> String {
         action: Decision::Deny,
         reason: Some(format!("Spending limit: ${max_amount:.0}/{per} on {category}")),
         alternative: None, locked: false,
+        gate: None, ensure: None,
     });
     save_policy(&config);
     auto_sign_policy();
@@ -549,6 +605,8 @@ fn handle_edit_rule(args: &serde_json::Map<String, Value>) -> String {
                     "ALLOW" => { rule.action = Decision::Allow; changes.push("action"); }
                     "DENY" => { rule.action = Decision::Deny; changes.push("action"); }
                     "ASK" => { rule.action = Decision::Ask; changes.push("action"); }
+                    "GATE" => { rule.action = Decision::Gate; changes.push("action"); }
+                    "ENSURE" => { rule.action = Decision::Ensure; changes.push("action"); }
                     _ => return format!("Invalid action '{action_str}'."),
                 }
             }
@@ -563,6 +621,25 @@ fn handle_edit_rule(args: &serde_json::Map<String, Value>) -> String {
             if let Some(conds) = args.get("conditions").and_then(|v| v.as_array()) {
                 rule.conditions = conds.iter().filter_map(|v| v.as_str().map(String::from)).collect();
                 changes.push("conditions");
+            }
+            if let Some(gc) = args.get("gate").and_then(|v| v.as_object()) {
+                let requires_prior = gc.get("requires_prior").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                if requires_prior.is_empty() {
+                    return "gate.requires_prior cannot be empty".into();
+                }
+                let within = gc.get("within").and_then(|v| v.as_u64()).unwrap_or(50) as u32;
+                rule.gate = Some(GateConfig { requires_prior, within });
+                changes.push("gate");
+            }
+            if let Some(ec) = args.get("ensure").and_then(|v| v.as_object()) {
+                let check = ec.get("check").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                if let Err(err) = crate::policy::validate_ensure_check_name(&check) {
+                    return format!("Invalid ensure.check: {err}");
+                }
+                let timeout = ec.get("timeout").and_then(|v| v.as_u64()).unwrap_or(5) as u32;
+                let message = ec.get("message").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                rule.ensure = Some(EnsureConfig { check, timeout, message });
+                changes.push("ensure");
             }
             save_policy(&config);
             auto_sign_policy();
@@ -643,7 +720,26 @@ Examples:
   Books limit $200:      spend_plus_amount_gt('books', amount, 200)
   Only allow JSON:       not(param_eq(format, 'json'))
   Block large purchases: param_gt(amount, 500)
-  Block IP access:       matches(host, '^\d+\.\d+\.\d+\.\d+$')"#.into()
+  Block IP access:       matches(host, '^\d+\.\d+\.\d+\.\d+$')
+
+Action Types:
+  ALLOW   — permit the tool call
+  DENY    — block the tool call
+  ASK     — require user confirmation
+  GATE    — require a prior command in the action log before allowing
+  ENSURE  — run a validation script from ~/.signet/checks/ before allowing
+
+Gate config (required when action=GATE):
+  gate.requires_prior: string to search for in recent allowed actions
+  gate.within: number of recent entries to search (default 50, max 500)
+  No vault = deny. Only entries with decision=allow are searched.
+
+Ensure config (required when action=ENSURE):
+  ensure.check: script name in ~/.signet/checks/ (simple filename, no paths)
+  ensure.timeout: max seconds to wait (default 5, max 30)
+  ensure.message: message shown to agent on failure
+  Exit 0 = allow, non-zero = deny. Script stderr is captured and relayed.
+  Note: ensure scripts add latency. Use gate when a log check suffices."#.into()
 }
 
 // === Preflight Handlers ===
