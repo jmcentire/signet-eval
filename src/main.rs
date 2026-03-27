@@ -123,7 +123,7 @@ fn run() -> i32 {
             rules.extend(vec![
                 policy::PolicyRule { name: "block_rm".into(), tool_pattern: "^Bash$".into(), conditions: vec!["contains(parameters, 'rm ')".into()], action: policy::Decision::Deny, locked: false, reason: Some("File deletion blocked.".into()), alternative: Some("Use 'trash <file>' (recoverable) or 'mv <file> /tmp/'.".into()), gate: None, ensure: None },
                 policy::PolicyRule { name: "block_force_push".into(), tool_pattern: "^Bash$".into(), conditions: vec!["any_of(parameters, 'push --force', 'push -f')".into()], action: policy::Decision::Ask, locked: false, reason: Some("Force push can overwrite others' work.".into()), alternative: Some("Use 'git push --force-with-lease' or push to a new branch.".into()), gate: None, ensure: None },
-                policy::PolicyRule { name: "block_destructive".into(), tool_pattern: "^Bash$".into(), conditions: vec!["any_of(parameters, 'mkfs', 'format ', 'dd if=')".into()], action: policy::Decision::Deny, locked: false, reason: Some("Destructive disk ops blocked.".into()), alternative: Some("Write to a temp file first. Ask the user to execute disk operations directly.".into()), gate: None, ensure: None },
+                policy::PolicyRule { name: "block_destructive".into(), tool_pattern: "^Bash$".into(), conditions: vec!["or(contains_word(parameters, 'mkfs') || contains(parameters, 'dd if=') || contains(parameters, 'diskutil erase') || contains(parameters, 'wipefs'))".into()], action: policy::Decision::Deny, locked: false, reason: Some("Destructive disk ops blocked.".into()), alternative: Some("Write to a temp file first. Ask the user to execute disk operations directly.".into()), gate: None, ensure: None },
                 policy::PolicyRule { name: "block_piped_exec".into(), tool_pattern: "^Bash$".into(), conditions: vec!["any_of(parameters, 'curl', 'wget')".into(), "contains(parameters, '| sh')".into()], action: policy::Decision::Deny, locked: false, reason: Some("Piped remote execution blocked.".into()), alternative: Some("Download first: 'curl -o /tmp/script.sh <url>', then inspect with 'cat'. Let the user review.".into()), gate: None, ensure: None },
                 policy::PolicyRule { name: "block_credential_writes".into(), tool_pattern: "^(Write|Edit)$".into(), conditions: vec!["matches(file_path, '\\.(env|pem|key|secret|credentials)$')".into()], action: policy::Decision::Deny, locked: false, reason: Some("Writing to credential/secret files blocked.".into()), alternative: Some("Write to a '.example' file with placeholder values, then instruct the user to copy and fill in real credentials.".into()), gate: None, ensure: None },
                 policy::PolicyRule { name: "block_chmod_777".into(), tool_pattern: "^Bash$".into(), conditions: vec!["contains(parameters, 'chmod 777')".into()], action: policy::Decision::Ask, locked: false, reason: Some("chmod 777 grants world-readable/writable/executable access.".into()), alternative: Some("Use minimum permissions: 'chmod 755' for executables, 'chmod 644' for files, 'chmod 600' for secrets.".into()), gate: None, ensure: None },
@@ -139,11 +139,11 @@ fn run() -> i32 {
             }
             match std::fs::write(&policy_path, &yaml) {
                 Ok(_) => {
-                    eprintln!("Policy written to {}", policy_path.display());
+                    println!("Policy written to {}", policy_path.display());
                     // Auto-sign if vault exists
                     if let Some(v) = vault::try_load_vault() {
                         match vault::sign_policy(v.session_key(), &policy_path) {
-                            Ok(_) => eprintln!("Policy signed (HMAC verified on every eval)."),
+                            Ok(_) => println!("Policy signed (HMAC verified on every eval)."),
                             Err(e) => eprintln!("Warning: could not sign policy: {e}"),
                         }
                     } else {
@@ -170,7 +170,7 @@ fn run() -> i32 {
                     1
                 } else {
                     match vault::setup_vault(&pass) {
-                        Ok(_) => { eprintln!("Vault created. Session key cached."); 0 }
+                        Ok(_) => { println!("Vault created. Session key cached."); 0 }
                         Err(e) => { eprintln!("Error: {e}"); 1 }
                     }
                 }
@@ -182,20 +182,20 @@ fn run() -> i32 {
                     let spend = v.session_spend("");
                     let creds = v.list_credentials();
                     let actions = v.recent_actions(10);
-                    eprintln!("Vault: unlocked");
-                    eprintln!("Credentials: {}", creds.len());
-                    if spend > 0.0 { eprintln!("Session spend: ${spend:.2}"); }
+                    println!("Vault: unlocked");
+                    println!("Credentials: {}", creds.len());
+                    if spend > 0.0 { println!("Session spend: ${spend:.2}"); }
                     if !actions.is_empty() {
-                        eprintln!("\nRecent actions:");
+                        println!("\nRecent actions:");
                         for a in &actions {
                             let tool = a["tool"].as_str().unwrap_or("?");
                             let dec = a["decision"].as_str().unwrap_or("?");
                             let amt = a["amount"].as_f64().unwrap_or(0.0);
                             let cat = a["category"].as_str().unwrap_or("");
                             if amt > 0.0 {
-                                eprintln!("  {tool} [{cat}] ${amt:.2} -> {dec}");
+                                println!("  {tool} [{cat}] ${amt:.2} -> {dec}");
                             } else {
-                                eprintln!("  {tool} -> {dec}");
+                                println!("  {tool} -> {dec}");
                             }
                         }
                     }
@@ -208,7 +208,7 @@ fn run() -> i32 {
             match vault::try_load_vault() {
                 Some(v) => {
                     v.store_credential(&name, &value, 3);
-                    eprintln!("Stored '{name}' (Tier 3 compartment-encrypted)");
+                    println!("Stored '{name}' (Tier 3 compartment-encrypted)");
                     0
                 }
                 None => { eprintln!("Vault not set up or locked."); 1 }
@@ -217,21 +217,21 @@ fn run() -> i32 {
         Some(Command::Rules) => {
             match policy::load_policy_config(&policy_path) {
                 Ok(config) => {
-                    eprintln!("Policy: {} (v{})", policy_path.display(), config.version);
-                    eprintln!("Default action: {:?}", config.default_action);
-                    eprintln!("Rules: {}\n", config.rules.len());
+                    println!("Policy: {} (v{})", policy_path.display(), config.version);
+                    println!("Default action: {:?}", config.default_action);
+                    println!("Rules: {}\n", config.rules.len());
                     for rule in &config.rules {
                         let action = format!("{:?}", rule.action).to_uppercase();
                         let lock_tag = if rule.locked { " [LOCKED]" } else { "" };
-                        eprintln!("  {} [{}]{}", rule.name, action, lock_tag);
-                        eprintln!("    tool: {}", rule.tool_pattern);
+                        println!("  {} [{}]{}", rule.name, action, lock_tag);
+                        println!("    tool: {}", rule.tool_pattern);
                         for cond in &rule.conditions {
-                            eprintln!("    when: {cond}");
+                            println!("    when: {cond}");
                         }
                         if let Some(reason) = &rule.reason {
-                            eprintln!("    reason: {reason}");
+                            println!("    reason: {reason}");
                         }
-                        eprintln!();
+                        println!();
                     }
                     0
                 }
@@ -243,10 +243,10 @@ fn run() -> i32 {
                 Some(v) => {
                     let actions = v.recent_actions(limit);
                     if actions.is_empty() {
-                        eprintln!("No actions recorded.");
+                        println!("No actions recorded.");
                     } else {
-                        eprintln!("{:<24} {:<12} {:<10} {:>8} {}", "TIMESTAMP", "TOOL", "CATEGORY", "AMOUNT", "DECISION");
-                        eprintln!("{}", "-".repeat(70));
+                        println!("{:<24} {:<12} {:<10} {:>8} {}", "TIMESTAMP", "TOOL", "CATEGORY", "AMOUNT", "DECISION");
+                        println!("{}", "-".repeat(70));
                         for a in &actions {
                             let ts = a["timestamp"].as_f64().unwrap_or(0.0);
                             let dt = chrono::DateTime::from_timestamp(ts as i64, 0)
@@ -257,7 +257,7 @@ fn run() -> i32 {
                             let amt = a["amount"].as_f64().unwrap_or(0.0);
                             let dec = a["decision"].as_str().unwrap_or("?");
                             let amt_str = if amt > 0.0 { format!("${amt:.2}") } else { "-".into() };
-                            eprintln!("{dt:<24} {tool:<12} {cat:<10} {amt_str:>8} {dec}");
+                            println!("{dt:<24} {tool:<12} {cat:<10} {amt_str:>8} {dec}");
                         }
                     }
                     0
@@ -286,23 +286,23 @@ fn run() -> i32 {
                 parameters: input.parameters.unwrap_or(serde_json::Value::Object(Default::default())),
             };
             let result = policy::evaluate(&call, &compiled, v.as_ref());
-            eprintln!("Decision:     {:?}", result.decision);
+            println!("Decision:     {:?}", result.decision);
             if let Some(rule) = &result.matched_rule {
-                eprintln!("Matched rule: {rule}");
+                println!("Matched rule: {rule}");
             } else {
-                eprintln!("Matched rule: (none — default action)");
+                println!("Matched rule: (none — default action)");
             }
             if let Some(reason) = &result.reason {
-                eprintln!("Reason:       {reason}");
+                println!("Reason:       {reason}");
             }
-            eprintln!("Eval time:    {}us", result.evaluation_time_us);
+            println!("Eval time:    {}us", result.evaluation_time_us);
             0
         }
         Some(Command::Delete { name }) => {
             match vault::try_load_vault() {
                 Some(v) => {
                     if v.delete_credential(&name) {
-                        eprintln!("Deleted credential '{name}'.");
+                        println!("Deleted credential '{name}'.");
                         0
                     } else {
                         eprintln!("Credential '{name}' not found.");
@@ -316,7 +316,7 @@ fn run() -> i32 {
             match vault::try_load_vault() {
                 Some(mut v) => {
                     v.reset_session();
-                    eprintln!("Session reset. Spending counters cleared.");
+                    println!("Session reset. Spending counters cleared.");
                     0
                 }
                 None => { eprintln!("Vault not set up or locked."); 1 }
@@ -326,7 +326,7 @@ fn run() -> i32 {
             match vault::try_load_vault() {
                 Some(v) => {
                     match vault::sign_policy(v.session_key(), &policy_path) {
-                        Ok(_) => { eprintln!("Policy signed: {}", policy_path.with_extension("hmac").display()); 0 }
+                        Ok(_) => { println!("Policy signed: {}", policy_path.with_extension("hmac").display()); 0 }
                         Err(e) => { eprintln!("Error: {e}"); 1 }
                     }
                 }
@@ -340,7 +340,7 @@ fn run() -> i32 {
             } else {
                 let pass = rpassword::prompt_password("Vault passphrase: ").unwrap_or_default();
                 match vault::unlock_vault(&pass) {
-                    Ok(_) => { eprintln!("Vault unlocked. Session key refreshed."); 0 }
+                    Ok(_) => { println!("Vault unlocked. Session key refreshed."); 0 }
                     Err(e) => { eprintln!("Error: {e}"); 1 }
                 }
             }
@@ -350,7 +350,7 @@ fn run() -> i32 {
                 Ok(config) => {
                     let errors = policy::validate_policy(&config);
                     if errors.is_empty() {
-                        eprintln!("Policy valid: {} rules", config.rules.len());
+                        println!("Policy valid: {} rules", config.rules.len());
                         0
                     } else {
                         for e in &errors {
@@ -383,21 +383,21 @@ fn run() -> i32 {
                 Some(v) => {
                     match v.active_preflight() {
                         Some(pf) => {
-                            eprintln!("Active preflight: {}", pf.id);
-                            eprintln!("Task: {}", pf.task);
-                            eprintln!("Constraints: {}", pf.constraints.len());
-                            eprintln!("Violations: {}", pf.violation_count);
-                            eprintln!("Escalated: {}", pf.escalated);
-                            eprintln!("Lockout until: {}", pf.lockout_until);
+                            println!("Active preflight: {}", pf.id);
+                            println!("Task: {}", pf.task);
+                            println!("Constraints: {}", pf.constraints.len());
+                            println!("Violations: {}", pf.violation_count);
+                            println!("Escalated: {}", pf.escalated);
+                            println!("Lockout until: {}", pf.lockout_until);
                             let locked = v.is_preflight_locked();
-                            eprintln!("Locked: {locked}");
+                            println!("Locked: {locked}");
                             for (i, c) in pf.constraints.iter().enumerate() {
-                                eprintln!("  {}. [{}] {} — {}", i + 1, c.action, c.name, c.reason);
-                                eprintln!("     Plan B: {}", c.alternative);
+                                println!("  {}. [{}] {} — {}", i + 1, c.action, c.name, c.reason);
+                                println!("     Plan B: {}", c.alternative);
                             }
                             0
                         }
-                        None => { eprintln!("No active preflight."); 0 }
+                        None => { println!("No active preflight."); 0 }
                     }
                 }
                 None => { eprintln!("Vault not set up or locked."); 1 }
@@ -416,9 +416,9 @@ fn run() -> i32 {
                 .duration_since(std::time::UNIX_EPOCH).unwrap().as_secs()
                 + (minutes as u64 * 60);
             vault::set_pause_file(until);
-            eprintln!("Policy enforcement paused for {minutes} minutes.");
-            eprintln!("Self-protection rules remain active.");
-            eprintln!("Run 'signet-eval resume' to end early.");
+            println!("Policy enforcement paused for {minutes} minutes.");
+            println!("Self-protection rules remain active.");
+            println!("Run 'signet-eval resume' to end early.");
             0
         }
         Some(Command::Resume) => {
@@ -427,7 +427,7 @@ fn run() -> i32 {
                 return 0;
             }
             vault::clear_pause_file();
-            eprintln!("Policy enforcement resumed.");
+            println!("Policy enforcement resumed.");
             0
         }
         Some(Command::Disable) => {
@@ -436,9 +436,9 @@ fn run() -> i32 {
                 return 0;
             }
             vault::set_disabled_file();
-            eprintln!("Policy enforcement FULLY disabled.");
-            eprintln!("ALL rules bypassed including self-protection.");
-            eprintln!("Run 'signet-eval enable' to re-enable.");
+            println!("Policy enforcement FULLY disabled.");
+            println!("ALL rules bypassed including self-protection.");
+            println!("Run 'signet-eval enable' to re-enable.");
             0
         }
         Some(Command::Enable) => {
@@ -447,7 +447,7 @@ fn run() -> i32 {
                 return 0;
             }
             vault::clear_disabled_file();
-            eprintln!("Policy enforcement re-enabled.");
+            println!("Policy enforcement re-enabled.");
             0
         }
         Some(Command::PreflightOverride) => {
@@ -455,14 +455,14 @@ fn run() -> i32 {
                 Some(v) => {
                     match v.active_preflight() {
                         Some(pf) => {
-                            eprintln!("Active preflight: {} (task: {})", pf.id, pf.task);
-                            eprintln!("Violations: {}, Escalated: {}", pf.violation_count, pf.escalated);
+                            println!("Active preflight: {} (task: {})", pf.id, pf.task);
+                            println!("Violations: {}, Escalated: {}", pf.violation_count, pf.escalated);
                             // Require passphrase confirmation for override
                             let pass = rpassword::prompt_password("Vault passphrase to confirm override: ").unwrap_or_default();
                             match vault::unlock_vault(&pass) {
                                 Ok(_) => {
                                     match v.override_preflight() {
-                                        Ok(_) => { eprintln!("Preflight overridden. Soft constraints deactivated."); 0 }
+                                        Ok(_) => { println!("Preflight overridden. Soft constraints deactivated."); 0 }
                                         Err(e) => { eprintln!("Error: {e}"); 1 }
                                     }
                                 }

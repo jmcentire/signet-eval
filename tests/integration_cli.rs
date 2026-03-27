@@ -45,9 +45,9 @@ fn test_init_and_validate() {
     assert_eq!(code, 0, "init failed: {stderr}");
     assert!(policy_path.exists());
 
-    let (_, stderr, code) = signet_eval(&["--policy-path", path_str, "validate"]);
+    let (stdout, stderr, code) = signet_eval(&["--policy-path", path_str, "validate"]);
     assert_eq!(code, 0, "validate failed: {stderr}");
-    assert!(stderr.contains("Policy valid"));
+    assert!(stdout.contains("Policy valid"), "stdout should contain 'Policy valid': {stdout}");
 }
 
 #[test]
@@ -57,9 +57,9 @@ fn test_rules_command() {
     let path_str = policy_path.to_str().unwrap();
 
     signet_eval(&["--policy-path", path_str, "init"]);
-    let (_, stderr, code) = signet_eval(&["--policy-path", path_str, "rules"]);
+    let (stdout, _, code) = signet_eval(&["--policy-path", path_str, "rules"]);
     assert_eq!(code, 0);
-    assert!(stderr.contains("block_rm"));
+    assert!(stdout.contains("block_rm"), "stdout should contain block_rm: {stdout}");
 }
 
 #[test]
@@ -70,20 +70,22 @@ fn test_test_command() {
 
     signet_eval(&["--policy-path", path_str, "init"]);
 
-    let (_, stderr, code) = signet_eval(&["--policy-path", path_str, "test",
+    let (stdout, _, code) = signet_eval(&["--policy-path", path_str, "test",
         r#"{"tool_name":"Bash","tool_input":{"command":"rm foo"}}"#]);
     assert_eq!(code, 0);
-    assert!(stderr.contains("Deny"));
+    assert!(stdout.contains("Deny"), "stdout should contain Deny: {stdout}");
 
-    let (_, stderr, code) = signet_eval(&["--policy-path", path_str, "test",
+    let (stdout, _, code) = signet_eval(&["--policy-path", path_str, "test",
         r#"{"tool_name":"Bash","tool_input":{"command":"ls"}}"#]);
     assert_eq!(code, 0);
-    assert!(stderr.contains("Allow"));
+    assert!(stdout.contains("Allow"), "stdout should contain Allow: {stdout}");
 }
 
 #[test]
 fn test_status_no_vault() {
-    let (_, stderr, code) = signet_eval(&["status"]);
-    // Without a vault, should tell user to set up
-    assert!(code != 0 || stderr.contains("not set up") || stderr.contains("locked"));
+    let (stdout, stderr, code) = signet_eval(&["status"]);
+    // Without a vault, should tell user to set up (error goes to stderr)
+    // With a vault, status goes to stdout
+    let combined = format!("{stdout}{stderr}");
+    assert!(code != 0 || combined.contains("not set up") || combined.contains("locked") || combined.contains("Vault"));
 }
