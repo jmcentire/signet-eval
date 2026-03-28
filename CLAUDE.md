@@ -6,7 +6,7 @@ Deterministic policy enforcement for AI agent tool calls. Rust. Single binary.
 
 ```bash
 cargo build --release          # build
-cargo test                     # 88 tests (unit, integration, adversarial, self-protection)
+cargo test                     # 128 tests (unit, integration, adversarial, self-protection)
 cargo install --path .         # install to ~/.cargo/bin
 
 # Hook mode (default — reads stdin, writes stdout)
@@ -34,7 +34,7 @@ signet-eval proxy              # MCP proxy
 ```
 src/
   main.rs          — CLI entry point (clap), 15 subcommands
-  policy.rs        — Policy engine, 14 condition functions, first-match-wins, locked rules, self-protection
+  policy.rs        — Policy engine, 15 condition functions, first-match-wins, locked rules, self-protection
   vault.rs         — Encrypted vault (Argon2id + AES-256-GCM), 3-tier, spending ledger, scoped credentials
   hook.rs          — PreToolUse hook I/O (stdin JSON → stdout JSON)
   mcp_server.rs    — MCP management server (17 tools, rmcp), locked-rule guards, auto-sign
@@ -63,7 +63,7 @@ examples/
 
 `contains`, `any_of`, `param_eq`, `param_ne`, `param_gt`, `param_lt`,
 `param_contains`, `matches`, `has_credential`, `spend_gt`,
-`spend_plus_amount_gt`, `not`, `or`, `true`/`false`
+`spend_plus_amount_gt`, `has_recent_action`, `not`, `or`, `true`/`false`
 
 ## MCP Server Tools (17)
 

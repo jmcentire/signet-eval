@@ -43,6 +43,8 @@ Self-protection rules are **locked** — they cannot be removed, edited, or reor
 | Write/Edit/Bash touching `signet-eval` binary | **deny** | yes |
 | Write/Edit `settings.json` / `settings.local.json` | **ask** | yes |
 | Bash `kill`/`pkill`/`killall` + `signet` | **deny** | yes |
+| Edit/Write/NotebookEdit without recent plan | **ask** | |
+| Edit/Write on core/DSL/schema paths | **ask** | |
 | `rm`, `rmdir` | **deny** | |
 | `git push --force` | **ask** | |
 | `mkfs`, `format`, `dd if=` | **deny** | |
@@ -104,6 +106,7 @@ Rules are evaluated in order — first match wins. Multiple conditions on a rule
 | `spend_plus_amount_gt('cat', field, N)` | Spend + this amount > limit | `spend_plus_amount_gt('books', amount, 200)` |
 | `not(condition)` | Negate condition | `not(param_eq(format, 'json'))` |
 | `or(A \|\| B)` | Either condition | `or(contains(parameters, '-f') \|\| contains(parameters, '--force'))` |
+| `has_recent_action('search', N)` | Recent allowed action matches in tool name or detail; pipe-delimited OR | `has_recent_action('EnterPlanMode\|TaskCreate', 500)` |
 | `true` / `false` | Literal | `true` |
 
 ## Encrypted Vault

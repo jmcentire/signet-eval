@@ -68,9 +68,11 @@ fn test_hook_allows_read() {
 
 #[test]
 fn test_hook_denies_credential_write() {
+    // Without a plan logged, require_plan_before_code fires first (ask).
+    // The credential write deny would fire after a plan is present.
     let (out, code) = run_hook(r#"{"tool_name":"Write","tool_input":{"file_path":"/app/.env","content":"SECRET=x"}}"#);
     assert_eq!(code, 0);
-    assert_eq!(parse_decision(&out), "deny");
+    assert_eq!(parse_decision(&out), "ask");
 }
 
 #[test]

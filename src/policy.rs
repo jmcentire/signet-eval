@@ -263,6 +263,19 @@ pub(crate) fn evaluate_condition(
         return Ok(vault.map(|v| v.credential_exists(&name)).unwrap_or(false));
     }
 
+    // has_recent_action('search', within) — check if a recent allowed action matches.
+    // Searches both tool name and detail (parameters) columns in the action ledger.
+    // Supports pipe-delimited OR: 'EnterPlanMode|TaskCreate' matches either.
+    // Fails closed: no vault = false.
+    if let Some(args) = strip_fn(cond, "has_recent_action") {
+        let parts: Vec<&str> = args.splitn(2, ',').collect();
+        if parts.len() == 2 {
+            let search = extract_quoted(parts[0]).unwrap_or_default();
+            let within: u32 = parts[1].trim().parse().unwrap_or(50);
+            return Ok(vault.map(|v| v.has_recent_allowed_action(&search, within)).unwrap_or(false));
+        }
+    }
+
     // not(condition) — negate any condition
     if let Some(inner) = strip_fn(cond, "not") {
         let result = evaluate_condition(inner, call, vault)?;
@@ -686,6 +699,31 @@ pub fn self_protection_rules() -> Vec<PolicyRule> {
 pub fn default_policy() -> CompiledPolicy {
     let mut rules = self_protection_rules();
     rules.extend(vec![
+        // Planning gate: require a plan before writing code.
+        // Uses condition (not GATE action) so later rules like protect_core_files still fire.
+        PolicyRule {
+            name: "require_plan_before_code".into(),
+            tool_pattern: "^(Edit|Write|NotebookEdit)$".into(),
+            conditions: vec!["not(has_recent_action('EnterPlanMode|TaskCreate', 500))".into()],
+            action: Decision::Ask,
+            locked: false,
+            reason: Some("Present a plan before writing code.".into()),
+            alternative: Some("Use /plan to enter plan mode, or create tasks with TaskCreate first.".into()),
+            gate: None, ensure: None,
+        },
+        // Core/DSL file protection: require explicit permission for core file modifications.
+        PolicyRule {
+            name: "protect_core_files".into(),
+            tool_pattern: "^(Edit|Write)$".into(),
+            conditions: vec![
+                "or(matches(file_path, '/(core|dsl|models|schema|engine)/') || matches(file_path, '\\.(grammar|dsl|schema)$'))".into(),
+            ],
+            action: Decision::Ask,
+            locked: false,
+            reason: Some("This appears to be a core/DSL file. Confirm core file modifications are in scope for this task.".into()),
+            alternative: Some("Work on net-new files only, or clarify with the user that core file changes are needed.".into()),
+            gate: None, ensure: None,
+        },
         PolicyRule {
             name: "block_rm".into(),
             tool_pattern: "^Bash$".into(),
@@ -1089,9 +1127,17 @@ mod tests {
 
     #[test]
     fn test_default_policy_blocks_credential_writes() {
+        // Without vault/plan, require_plan_before_code fires first (ASK).
+        // With a vault that has a plan logged, credential writes hit block_credential_writes (DENY).
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("state.db");
+        let key = crate::vault::derive_master_key("testpass", &[0u8; 16]);
+        let vault = crate::vault::Vault::new(key, db);
+        vault.log_action("EnterPlanMode", "allow", "", 0.0, "{}");
+
         let policy = default_policy();
         let call = make_call("Write", serde_json::json!({"file_path": "/app/.env"}));
-        let result = evaluate(&call, &policy, None);
+        let result = evaluate(&call, &policy, Some(&vault));
         assert_eq!(result.decision, Decision::Deny);
         assert_eq!(result.matched_rule.as_deref(), Some("block_credential_writes"));
     }
@@ -1418,12 +1464,14 @@ mod self_protection_tests {
         // Normal Bash
         let call = make_call("Bash", serde_json::json!({"command": "ls -la"}));
         assert_eq!(evaluate(&call, &policy, None).decision, Decision::Allow);
-        // Normal Write
+        // Normal Write without vault → ASK (require_plan_before_code fires, no vault = no plan)
         let call = make_call("Write", serde_json::json!({
             "file_path": "/home/user/code/main.rs",
             "content": "fn main() {}"
         }));
-        assert_eq!(evaluate(&call, &policy, None).decision, Decision::Allow);
+        let result = evaluate(&call, &policy, None);
+        assert_eq!(result.decision, Decision::Ask);
+        assert_eq!(result.matched_rule.as_deref(), Some("require_plan_before_code"));
         // Normal Read — not matched by Write/Edit/Bash patterns
         let call = make_call("Read", serde_json::json!({"file_path": "/tmp/foo"}));
         assert_eq!(evaluate(&call, &policy, None).decision, Decision::Allow);
@@ -1673,6 +1721,151 @@ mod gate_ensure_tests {
         let result = evaluate(&call, &policy, None);
         assert_eq!(result.decision, Decision::Deny);
         assert!(result.reason.unwrap().contains("missing gate config"));
+    }
+
+    // --- Gate: dual-column search + pipe-delimited OR ---
+
+    #[test]
+    fn test_gate_matches_tool_name_column() {
+        // GATE should find a match in the tool column, not just detail
+        let (_dir, vault) = make_policy_test_vault();
+
+        let config = PolicyConfig { version: 1, default_action: Decision::Allow, rules: vec![
+            PolicyRule {
+                name: "gate_tool_col".into(), tool_pattern: "^Edit$".into(),
+                conditions: vec![], action: Decision::Gate,
+                reason: Some("need plan first".into()), alternative: None, locked: false,
+                gate: Some(GateConfig { requires_prior: "EnterPlanMode".into(), within: 50 }),
+                ensure: None,
+            },
+        ]};
+        let policy = CompiledPolicy::from_config(&config);
+        let call = make_call("Edit", serde_json::json!({"file_path": "/tmp/test.rs", "old_string": "a", "new_string": "b"}));
+
+        // No prior plan → deny
+        let result = evaluate(&call, &policy, Some(&vault));
+        assert_eq!(result.decision, Decision::Deny);
+
+        // Log EnterPlanMode as a tool call (tool column = "EnterPlanMode", detail has no mention of it)
+        vault.log_action("EnterPlanMode", "allow", "", 0.0, r#"{"description":"refactor auth"}"#);
+
+        // Now gate should pass via tool column match
+        let result = evaluate(&call, &policy, Some(&vault));
+        assert_eq!(result.decision, Decision::Allow);
+    }
+
+    #[test]
+    fn test_gate_pipe_delimited_or() {
+        // requires_prior: "EnterPlanMode|TaskCreate" should match either
+        let (_dir, vault) = make_policy_test_vault();
+
+        let config = PolicyConfig { version: 1, default_action: Decision::Allow, rules: vec![
+            PolicyRule {
+                name: "gate_pipe_or".into(), tool_pattern: "^Write$".into(),
+                conditions: vec![], action: Decision::Gate,
+                reason: Some("need plan".into()), alternative: None, locked: false,
+                gate: Some(GateConfig { requires_prior: "EnterPlanMode|TaskCreate".into(), within: 50 }),
+                ensure: None,
+            },
+        ]};
+        let policy = CompiledPolicy::from_config(&config);
+        let call = make_call("Write", serde_json::json!({"file_path": "/tmp/new.rs", "content": "fn main() {}"}));
+
+        // No prior → deny
+        let result = evaluate(&call, &policy, Some(&vault));
+        assert_eq!(result.decision, Decision::Deny);
+
+        // Log TaskCreate (second term in pipe OR)
+        vault.log_action("TaskCreate", "allow", "", 0.0, r#"{"subject":"implement feature"}"#);
+
+        // Gate passes via second OR term
+        let result = evaluate(&call, &policy, Some(&vault));
+        assert_eq!(result.decision, Decision::Allow);
+    }
+
+    // --- has_recent_action condition ---
+
+    fn make_policy_test_vault() -> (tempfile::TempDir, crate::vault::Vault) {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("state.db");
+        let salt = [0u8; 16];
+        let key = crate::vault::derive_master_key("testpass", &salt);
+        let vault = crate::vault::Vault::new(key, db);
+        (dir, vault)
+    }
+
+    #[test]
+    fn test_has_recent_action_condition() {
+        let (_dir, vault) = make_policy_test_vault();
+
+        // Rule: ASK for Edit if no recent plan
+        let config = PolicyConfig { version: 1, default_action: Decision::Allow, rules: vec![
+            PolicyRule {
+                name: "plan_check".into(), tool_pattern: "^Edit$".into(),
+                conditions: vec!["not(has_recent_action('EnterPlanMode|TaskCreate', 500))".into()],
+                action: Decision::Ask,
+                reason: Some("Plan first".into()), alternative: None, locked: false,
+                gate: None, ensure: None,
+            },
+        ]};
+        let policy = CompiledPolicy::from_config(&config);
+        let call = make_call("Edit", serde_json::json!({"file_path": "/tmp/x.rs", "old_string": "a", "new_string": "b"}));
+
+        // No plan → condition true (not(false)) → ASK
+        let result = evaluate(&call, &policy, Some(&vault));
+        assert_eq!(result.decision, Decision::Ask);
+
+        // Log a plan action
+        vault.log_action("EnterPlanMode", "allow", "", 0.0, "{}");
+
+        // Plan exists → condition false (not(true)) → rule doesn't match → default ALLOW
+        let result = evaluate(&call, &policy, Some(&vault));
+        assert_eq!(result.decision, Decision::Allow);
+    }
+
+    #[test]
+    fn test_plan_gate_and_core_files_compose() {
+        // Both rules should fire independently:
+        // Rule 1: ASK if no plan
+        // Rule 2: ASK if editing core files (even after planning)
+        let (_dir, vault) = make_policy_test_vault();
+
+        let config = PolicyConfig { version: 1, default_action: Decision::Allow, rules: vec![
+            PolicyRule {
+                name: "require_plan".into(), tool_pattern: "^Edit$".into(),
+                conditions: vec!["not(has_recent_action('EnterPlanMode', 500))".into()],
+                action: Decision::Ask,
+                reason: Some("Plan first".into()), alternative: None, locked: false,
+                gate: None, ensure: None,
+            },
+            PolicyRule {
+                name: "protect_core".into(), tool_pattern: "^Edit$".into(),
+                conditions: vec!["matches(file_path, '/(core|dsl)/')".into()],
+                action: Decision::Ask,
+                reason: Some("Core file".into()), alternative: None, locked: false,
+                gate: None, ensure: None,
+            },
+        ]};
+        let policy = CompiledPolicy::from_config(&config);
+
+        // Edit core file with no plan → first rule matches (ASK for plan)
+        let core_call = make_call("Edit", serde_json::json!({"file_path": "/project/src/core/engine.rs", "old_string": "a", "new_string": "b"}));
+        let result = evaluate(&core_call, &policy, Some(&vault));
+        assert_eq!(result.decision, Decision::Ask);
+        assert_eq!(result.matched_rule.as_deref(), Some("require_plan"));
+
+        // Log a plan
+        vault.log_action("EnterPlanMode", "allow", "", 0.0, "{}");
+
+        // Edit core file WITH plan → first rule skipped, second rule matches (ASK for core)
+        let result = evaluate(&core_call, &policy, Some(&vault));
+        assert_eq!(result.decision, Decision::Ask);
+        assert_eq!(result.matched_rule.as_deref(), Some("protect_core"));
+
+        // Edit non-core file WITH plan → both rules skip → default ALLOW
+        let normal_call = make_call("Edit", serde_json::json!({"file_path": "/project/src/utils/helper.rs", "old_string": "a", "new_string": "b"}));
+        let result = evaluate(&normal_call, &policy, Some(&vault));
+        assert_eq!(result.decision, Decision::Allow);
     }
 
     // --- Ensure tests ---

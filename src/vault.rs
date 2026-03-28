@@ -46,7 +46,7 @@ pub(crate) fn random_hex_id() -> String {
 
 // === Key Derivation ===
 
-fn derive_master_key(passphrase: &str, salt: &[u8]) -> [u8; KEY_LEN] {
+pub(crate) fn derive_master_key(passphrase: &str, salt: &[u8]) -> [u8; KEY_LEN] {
     let mut key = [0u8; KEY_LEN];
     Argon2::default()
         .hash_password_into(passphrase.as_bytes(), salt, &mut key)
@@ -203,7 +203,7 @@ pub struct Vault {
 }
 
 impl Vault {
-    fn new(master_key: [u8; KEY_LEN], db_path: PathBuf) -> Self {
+    pub(crate) fn new(master_key: [u8; KEY_LEN], db_path: PathBuf) -> Self {
         let session_key = derive_subkey(&master_key, "session");
         let compartment_key = derive_subkey(&master_key, "compartment");
 
@@ -361,18 +361,38 @@ impl Vault {
         }).unwrap().filter_map(|r| r.ok()).collect()
     }
 
-    /// Check if any of the last N allowed actions contain the given substring in their detail.
-    /// Used by Gate action to verify a prerequisite command was recently executed.
+    /// Check if any of the last N allowed actions match the given search term(s)
+    /// in their tool name OR detail (serialized parameters).
+    /// Supports pipe-delimited OR: "EnterPlanMode|TaskCreate" matches either.
+    /// Used by Gate action to verify a prerequisite was recently executed.
     pub fn has_recent_allowed_action(&self, search: &str, within: u32) -> bool {
         let conn = match Connection::open(&self.db_path) {
             Ok(c) => c,
             Err(_) => return false,
         };
-        let count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM (SELECT detail FROM ledger WHERE decision = 'allow' ORDER BY id DESC LIMIT ?1) WHERE detail LIKE '%' || ?2 || '%'",
-            params![within.min(500).max(1), search],
-            |row| row.get(0),
-        ).unwrap_or(0);
+        let terms: Vec<&str> = search.split('|').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
+        if terms.is_empty() {
+            return false;
+        }
+        // Build OR clause: (tool LIKE '%term1%' OR detail LIKE '%term1%' OR tool LIKE '%term2%' OR ...)
+        let placeholders: Vec<String> = terms.iter().enumerate().flat_map(|(i, _)| {
+            let p = i * 2 + 2; // params start at ?2 (within is ?1)
+            vec![format!("tool LIKE '%' || ?{p} || '%' OR detail LIKE '%' || ?{} || '%'", p + 1)]
+        }).collect();
+        let where_clause = placeholders.join(" OR ");
+        let sql = format!(
+            "SELECT COUNT(*) FROM (SELECT tool, detail FROM ledger WHERE decision = 'allow' ORDER BY id DESC LIMIT ?1) WHERE {where_clause}"
+        );
+        let limit = within.min(500).max(1);
+        // Build parameter vector: [limit, term1, term1, term2, term2, ...]
+        let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+        param_values.push(Box::new(limit));
+        for term in &terms {
+            param_values.push(Box::new(term.to_string()));
+            param_values.push(Box::new(term.to_string())); // once for tool, once for detail
+        }
+        let params_ref: Vec<&dyn rusqlite::types::ToSql> = param_values.iter().map(|b| b.as_ref()).collect();
+        let count: i64 = conn.query_row(&sql, params_ref.as_slice(), |row| row.get(0)).unwrap_or(0);
         count > 0
     }
 
@@ -976,6 +996,38 @@ mod tests {
         vault.log_action("read", "ALLOW", "", 0.0, "");
         vault.log_action("write", "DENY", "", 0.0, "blocked");
         assert_eq!(vault.recent_actions(10).len(), 2);
+    }
+
+    #[test]
+    fn test_has_recent_allowed_action_searches_tool_column() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault = make_test_vault(dir.path(), "testpass123");
+        // Log action where "EnterPlanMode" is the tool name, not in detail
+        vault.log_action("EnterPlanMode", "allow", "", 0.0, r#"{"description":"refactor"}"#);
+        // Should find via tool column
+        assert!(vault.has_recent_allowed_action("EnterPlanMode", 10));
+        // Should NOT find something that's nowhere
+        assert!(!vault.has_recent_allowed_action("NonExistent", 10));
+    }
+
+    #[test]
+    fn test_has_recent_allowed_action_pipe_delimited_or() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault = make_test_vault(dir.path(), "testpass123");
+        vault.log_action("TaskCreate", "allow", "", 0.0, r#"{"subject":"do stuff"}"#);
+        // "EnterPlanMode|TaskCreate" — TaskCreate is present
+        assert!(vault.has_recent_allowed_action("EnterPlanMode|TaskCreate", 10));
+        // Neither present
+        assert!(!vault.has_recent_allowed_action("FooTool|BarTool", 10));
+    }
+
+    #[test]
+    fn test_has_recent_allowed_action_ignores_denied() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault = make_test_vault(dir.path(), "testpass123");
+        // Log a DENIED action — should not count
+        vault.log_action("EnterPlanMode", "deny", "", 0.0, "{}");
+        assert!(!vault.has_recent_allowed_action("EnterPlanMode", 10));
     }
 
     #[test]
