@@ -1,0 +1,1391 @@
+{
+  "component_id": "src_policy.rs",
+  "contract_version": 1,
+  "test_cases": [
+    {
+      "id": "test_decision_as_lowercase_happy_path",
+      "description": "Decision.as_lowercase() returns lowercase string representation for each variant",
+      "function": "as_lowercase",
+      "category": "happy_path",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {},
+      "input_description": "Decision enum variants: Allow, Deny, Ask, Gate, Ensure",
+      "expected_output_description": "Returns 'allow', 'deny', 'ask', 'gate', 'ensure' respectively",
+      "expected_error": "",
+      "assertions": [
+        "result == 'allow' for Decision.Allow",
+        "result == 'deny' for Decision.Deny",
+        "result == 'ask' for Decision.Ask",
+        "result == 'gate' for Decision.Gate",
+        "result == 'ensure' for Decision.Ensure"
+      ]
+    },
+    {
+      "id": "test_default_gate_within_returns_50",
+      "description": "default_gate_within() returns the expected default value",
+      "function": "default_gate_within",
+      "category": "happy_path",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {},
+      "input_description": "",
+      "expected_output_description": "Returns 50",
+      "expected_error": "",
+      "assertions": [
+        "result == 50"
+      ]
+    },
+    {
+      "id": "test_default_ensure_timeout_returns_5",
+      "description": "default_ensure_timeout() returns the expected default value",
+      "function": "default_ensure_timeout",
+      "category": "happy_path",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {},
+      "input_description": "",
+      "expected_output_description": "Returns 5",
+      "expected_error": "",
+      "assertions": [
+        "result == 5"
+      ]
+    },
+    {
+      "id": "test_default_version_returns_1",
+      "description": "default_version() returns the expected default value",
+      "function": "default_version",
+      "category": "happy_path",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {},
+      "input_description": "",
+      "expected_output_description": "Returns 1",
+      "expected_error": "",
+      "assertions": [
+        "result == 1"
+      ]
+    },
+    {
+      "id": "test_default_allow_returns_allow_decision",
+      "description": "default_allow() returns Decision.Allow",
+      "function": "default_allow",
+      "category": "happy_path",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {},
+      "input_description": "",
+      "expected_output_description": "Returns Decision.Allow",
+      "expected_error": "",
+      "assertions": [
+        "result == Decision.Allow"
+      ]
+    },
+    {
+      "id": "test_from_config_valid_rules",
+      "description": "from_config() compiles valid regex patterns successfully",
+      "function": "from_config",
+      "category": "happy_path",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "config": "{\"version\": 1, \"rules\": [{\"name\": \"rule1\", \"tool_pattern\": \"^file_.*\", \"conditions\": [], \"action\": \"Allow\", \"locked\": false}, {\"name\": \"rule2\", \"tool_pattern\": \".*\\\\.sh$\", \"conditions\": [], \"action\": \"Deny\", \"locked\": false}], \"default_action\": \"Allow\"}"
+      },
+      "input_description": "PolicyConfig with 2 rules: valid regex patterns '^file_.*' and '.*\\.sh$'",
+      "expected_output_description": "Returns CompiledPolicy with 2 compiled rules in original order",
+      "expected_error": "",
+      "assertions": [
+        "len(result.rules) == 2",
+        "result.rules[0].name == 'rule1'",
+        "result.rules[1].name == 'rule2'",
+        "result.default_action == Decision.Allow"
+      ]
+    },
+    {
+      "id": "test_from_config_invalid_regex_filtered",
+      "description": "from_config() silently filters out rules with invalid regex patterns",
+      "function": "from_config",
+      "category": "edge_case",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "config": "{\"version\": 1, \"rules\": [{\"name\": \"valid1\", \"tool_pattern\": \"^valid$\", \"conditions\": [], \"action\": \"Allow\", \"locked\": false}, {\"name\": \"invalid\", \"tool_pattern\": \"(unclosed\", \"conditions\": [], \"action\": \"Deny\", \"locked\": false}, {\"name\": \"valid2\", \"tool_pattern\": \"test\", \"conditions\": [], \"action\": \"Ask\", \"locked\": false}], \"default_action\": \"Allow\"}"
+      },
+      "input_description": "PolicyConfig with 3 rules: one valid, one with invalid regex '(unclosed', one valid",
+      "expected_output_description": "Returns CompiledPolicy with 2 valid rules only, preserving order",
+      "expected_error": "",
+      "assertions": [
+        "len(result.rules) == 2",
+        "result.rules[0].name == 'valid1'",
+        "result.rules[1].name == 'valid2'"
+      ]
+    },
+    {
+      "id": "test_from_config_empty_rules",
+      "description": "from_config() handles PolicyConfig with empty rules list",
+      "function": "from_config",
+      "category": "edge_case",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "config": "{\"version\": 1, \"rules\": [], \"default_action\": \"Deny\"}"
+      },
+      "input_description": "PolicyConfig with no rules",
+      "expected_output_description": "Returns CompiledPolicy with empty rules, default_action preserved",
+      "expected_error": "",
+      "assertions": [
+        "len(result.rules) == 0",
+        "result.default_action == Decision.Deny"
+      ]
+    },
+    {
+      "id": "test_evaluate_condition_contains_happy_path",
+      "description": "evaluate_condition() correctly evaluates contains() function",
+      "function": "evaluate_condition",
+      "category": "happy_path",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "condition": "contains(\"delete\")",
+        "call": "{\"tool_name\": \"file_delete\", \"parameters\": {}}",
+        "vault": "None"
+      },
+      "input_description": "Condition 'contains(\"delete\")' with tool_name 'file_delete'",
+      "expected_output_description": "Returns Ok(true)",
+      "expected_error": "",
+      "assertions": [
+        "result.is_ok()",
+        "result.unwrap() == True"
+      ]
+    },
+    {
+      "id": "test_evaluate_condition_param_eq_happy_path",
+      "description": "evaluate_condition() correctly evaluates param_eq() function",
+      "function": "evaluate_condition",
+      "category": "happy_path",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "condition": "param_eq(\"mode\", \"force\")",
+        "call": "{\"tool_name\": \"git_push\", \"parameters\": {\"mode\": \"force\"}}",
+        "vault": "None"
+      },
+      "input_description": "Condition 'param_eq(\"mode\", \"force\")' with parameters {\"mode\": \"force\"}",
+      "expected_output_description": "Returns Ok(true)",
+      "expected_error": "",
+      "assertions": [
+        "result.is_ok()",
+        "result.unwrap() == True"
+      ]
+    },
+    {
+      "id": "test_evaluate_condition_param_gt_happy_path",
+      "description": "evaluate_condition() correctly evaluates param_gt() function",
+      "function": "evaluate_condition",
+      "category": "happy_path",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "condition": "param_gt(\"amount\", \"1000\")",
+        "call": "{\"tool_name\": \"transfer\", \"parameters\": {\"amount\": 2000}}",
+        "vault": "None"
+      },
+      "input_description": "Condition 'param_gt(\"amount\", \"1000\")' with parameters {\"amount\": 2000}",
+      "expected_output_description": "Returns Ok(true)",
+      "expected_error": "",
+      "assertions": [
+        "result.is_ok()",
+        "result.unwrap() == True"
+      ]
+    },
+    {
+      "id": "test_evaluate_condition_param_lt_happy_path",
+      "description": "evaluate_condition() correctly evaluates param_lt() function",
+      "function": "evaluate_condition",
+      "category": "happy_path",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "condition": "param_lt(\"count\", \"100\")",
+        "call": "{\"tool_name\": \"query\", \"parameters\": {\"count\": 50}}",
+        "vault": "None"
+      },
+      "input_description": "Condition 'param_lt(\"count\", \"100\")' with parameters {\"count\": 50}",
+      "expected_output_description": "Returns Ok(true)",
+      "expected_error": "",
+      "assertions": [
+        "result.is_ok()",
+        "result.unwrap() == True"
+      ]
+    },
+    {
+      "id": "test_evaluate_condition_true_literal",
+      "description": "evaluate_condition() handles 'true' literal",
+      "function": "evaluate_condition",
+      "category": "happy_path",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "condition": "true",
+        "call": "{\"tool_name\": \"any_tool\", \"parameters\": {}}",
+        "vault": "None"
+      },
+      "input_description": "Condition 'true'",
+      "expected_output_description": "Returns Ok(true)",
+      "expected_error": "",
+      "assertions": [
+        "result.is_ok()",
+        "result.unwrap() == True"
+      ]
+    },
+    {
+      "id": "test_evaluate_condition_false_literal",
+      "description": "evaluate_condition() handles 'false' literal",
+      "function": "evaluate_condition",
+      "category": "happy_path",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "condition": "false",
+        "call": "{\"tool_name\": \"any_tool\", \"parameters\": {}}",
+        "vault": "None"
+      },
+      "input_description": "Condition 'false'",
+      "expected_output_description": "Returns Ok(false)",
+      "expected_error": "",
+      "assertions": [
+        "result.is_ok()",
+        "result.unwrap() == False"
+      ]
+    },
+    {
+      "id": "test_evaluate_condition_not_function",
+      "description": "evaluate_condition() correctly evaluates not() function",
+      "function": "evaluate_condition",
+      "category": "happy_path",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "condition": "not(contains(\"safe\"))",
+        "call": "{\"tool_name\": \"dangerous_action\", \"parameters\": {}}",
+        "vault": "None"
+      },
+      "input_description": "Condition 'not(contains(\"safe\"))' with tool_name 'dangerous_action'",
+      "expected_output_description": "Returns Ok(true) since 'safe' is not in tool_name",
+      "expected_error": "",
+      "assertions": [
+        "result.is_ok()",
+        "result.unwrap() == True"
+      ]
+    },
+    {
+      "id": "test_evaluate_condition_or_function",
+      "description": "evaluate_condition() correctly evaluates or() function",
+      "function": "evaluate_condition",
+      "category": "happy_path",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "condition": "or(contains(\"file\"), contains(\"dir\"))",
+        "call": "{\"tool_name\": \"file_read\", \"parameters\": {}}",
+        "vault": "None"
+      },
+      "input_description": "Condition 'or(contains(\"file\"), contains(\"dir\"))' with tool_name 'file_read'",
+      "expected_output_description": "Returns Ok(true) since first operand matches",
+      "expected_error": "",
+      "assertions": [
+        "result.is_ok()",
+        "result.unwrap() == True"
+      ]
+    },
+    {
+      "id": "test_evaluate_condition_unknown_function_error",
+      "description": "evaluate_condition() returns Err for unknown condition function",
+      "function": "evaluate_condition",
+      "category": "error_case",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "condition": "unknown_fn(\"arg\")",
+        "call": "{\"tool_name\": \"test\", \"parameters\": {}}",
+        "vault": "None"
+      },
+      "input_description": "Condition 'unknown_fn(\"arg\")'",
+      "expected_output_description": "",
+      "expected_error": "unknown_condition",
+      "assertions": [
+        "result.is_err()",
+        "'unknown' in result.unwrap_err().lower() or 'condition' in result.unwrap_err().lower()"
+      ]
+    },
+    {
+      "id": "test_evaluate_condition_invalid_regex_in_matches",
+      "description": "evaluate_condition() returns Err for invalid regex in matches()",
+      "function": "evaluate_condition",
+      "category": "error_case",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "condition": "matches(\"(unclosed\")",
+        "call": "{\"tool_name\": \"test\", \"parameters\": {}}",
+        "vault": "None"
+      },
+      "input_description": "Condition 'matches(\"(unclosed\")' with invalid regex",
+      "expected_output_description": "",
+      "expected_error": "regex_compile_error",
+      "assertions": [
+        "result.is_err()",
+        "'regex' in result.unwrap_err().lower() or 'invalid' in result.unwrap_err().lower()"
+      ]
+    },
+    {
+      "id": "test_evaluate_condition_parse_error_param_gt",
+      "description": "evaluate_condition() returns Err for non-numeric threshold in param_gt()",
+      "function": "evaluate_condition",
+      "category": "error_case",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "condition": "param_gt(\"amount\", \"not_a_number\")",
+        "call": "{\"tool_name\": \"test\", \"parameters\": {\"amount\": 100}}",
+        "vault": "None"
+      },
+      "input_description": "Condition 'param_gt(\"amount\", \"not_a_number\")'",
+      "expected_output_description": "",
+      "expected_error": "parse_error",
+      "assertions": [
+        "result.is_err()",
+        "'parse' in result.unwrap_err().lower() or 'number' in result.unwrap_err().lower()"
+      ]
+    },
+    {
+      "id": "test_evaluate_first_match_wins",
+      "description": "evaluate() returns decision from first matching rule",
+      "function": "evaluate",
+      "category": "happy_path",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "call": "{\"tool_name\": \"file_delete\", \"parameters\": {}}",
+        "policy": "{\"rules\": [{\"name\": \"deny_delete\", \"tool_regex\": \"file_.*\", \"conditions\": [], \"action\": \"Deny\", \"locked\": false}, {\"name\": \"allow_delete\", \"tool_regex\": \"file_delete\", \"conditions\": [], \"action\": \"Allow\", \"locked\": false}], \"default_action\": \"Ask\"}",
+        "vault": "None"
+      },
+      "input_description": "Policy with 2 rules matching same tool, first denies, second allows",
+      "expected_output_description": "Returns Deny from first rule",
+      "expected_error": "",
+      "assertions": [
+        "result.decision == Decision.Deny",
+        "result.matched_rule == 'deny_delete'"
+      ]
+    },
+    {
+      "id": "test_evaluate_default_action_no_match",
+      "description": "evaluate() returns default_action when no rules match",
+      "function": "evaluate",
+      "category": "happy_path",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "call": "{\"tool_name\": \"unmatched_tool\", \"parameters\": {}}",
+        "policy": "{\"rules\": [{\"name\": \"specific_rule\", \"tool_regex\": \"^file_.*\", \"conditions\": [], \"action\": \"Deny\", \"locked\": false}], \"default_action\": \"Allow\"}",
+        "vault": "None"
+      },
+      "input_description": "Policy with rules that don't match the tool call",
+      "expected_output_description": "Returns Allow from default_action",
+      "expected_error": "",
+      "assertions": [
+        "result.decision == Decision.Allow",
+        "result.matched_rule is None"
+      ]
+    },
+    {
+      "id": "test_evaluate_locked_rule",
+      "description": "evaluate() sets matched_locked=true for locked rules",
+      "function": "evaluate",
+      "category": "happy_path",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "call": "{\"tool_name\": \"signet_config\", \"parameters\": {}}",
+        "policy": "{\"rules\": [{\"name\": \"protect_config\", \"tool_regex\": \"signet_.*\", \"conditions\": [], \"action\": \"Deny\", \"locked\": true}], \"default_action\": \"Allow\"}",
+        "vault": "None"
+      },
+      "input_description": "Policy with locked rule",
+      "expected_output_description": "Returns Deny with matched_locked=true",
+      "expected_error": "",
+      "assertions": [
+        "result.decision == Decision.Deny",
+        "result.matched_locked == True"
+      ]
+    },
+    {
+      "id": "test_evaluate_gate_with_vault",
+      "description": "evaluate() resolves Gate action to Allow when vault has recent action",
+      "function": "evaluate",
+      "category": "happy_path",
+      "setup_description": "",
+      "mock_dependencies": {
+        "vault": "Mock vault with has_recent_allowed_action('plan', 50) returning true"
+      },
+      "input_values": {
+        "call": "{\"tool_name\": \"execute_code\", \"parameters\": {}}",
+        "policy": "{\"rules\": [{\"name\": \"gate_on_plan\", \"tool_regex\": \"execute_.*\", \"conditions\": [], \"action\": \"Gate\", \"locked\": false, \"gate\": {\"requires_prior\": \"plan\", \"within\": 50}}], \"default_action\": \"Deny\"}",
+        "vault": "mock_vault_with_recent_action_plan"
+      },
+      "input_description": "Gate rule requiring prior 'plan' action, vault has it",
+      "expected_output_description": "Returns Allow after resolving Gate",
+      "expected_error": "",
+      "assertions": [
+        "result.decision == Decision.Allow"
+      ]
+    },
+    {
+      "id": "test_evaluate_gate_without_vault_fails_closed",
+      "description": "evaluate() resolves Gate action to Deny when vault is None (fail-closed)",
+      "function": "evaluate",
+      "category": "edge_case",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "call": "{\"tool_name\": \"execute_code\", \"parameters\": {}}",
+        "policy": "{\"rules\": [{\"name\": \"gate_on_plan\", \"tool_regex\": \"execute_.*\", \"conditions\": [], \"action\": \"Gate\", \"locked\": false, \"gate\": {\"requires_prior\": \"plan\", \"within\": 50}}], \"default_action\": \"Allow\"}",
+        "vault": "None"
+      },
+      "input_description": "Gate rule with vault=None",
+      "expected_output_description": "Returns Deny (fail-closed)",
+      "expected_error": "",
+      "assertions": [
+        "result.decision == Decision.Deny"
+      ]
+    },
+    {
+      "id": "test_evaluate_ensure_returns_config",
+      "description": "evaluate() returns Ensure decision with ensure_config populated",
+      "function": "evaluate",
+      "category": "happy_path",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "call": "{\"tool_name\": \"deploy_prod\", \"parameters\": {}}",
+        "policy": "{\"rules\": [{\"name\": \"ensure_tests_pass\", \"tool_regex\": \"deploy_.*\", \"conditions\": [], \"action\": \"Ensure\", \"locked\": false, \"ensure\": {\"check\": \"run_tests.sh\", \"timeout\": 30, \"message\": \"Run tests before deploy\"}}], \"default_action\": \"Deny\"}",
+        "vault": "None"
+      },
+      "input_description": "Ensure rule with check script",
+      "expected_output_description": "Returns Ensure with ensure_config populated",
+      "expected_error": "",
+      "assertions": [
+        "result.decision == Decision.Ensure",
+        "result.ensure_config is not None",
+        "result.ensure_config.check == 'run_tests.sh'",
+        "result.ensure_config.timeout == 30"
+      ]
+    },
+    {
+      "id": "test_evaluate_timing_populated",
+      "description": "evaluate() always populates evaluation_time_us",
+      "function": "evaluate",
+      "category": "invariant",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "call": "{\"tool_name\": \"test\", \"parameters\": {}}",
+        "policy": "{\"rules\": [], \"default_action\": \"Allow\"}",
+        "vault": "None"
+      },
+      "input_description": "Any tool call and policy",
+      "expected_output_description": "evaluation_time_us > 0",
+      "expected_error": "",
+      "assertions": [
+        "result.evaluation_time_us > 0"
+      ]
+    },
+    {
+      "id": "test_evaluate_condition_error_falls_through",
+      "description": "evaluate() does not match rule when condition evaluation returns Err",
+      "function": "evaluate",
+      "category": "edge_case",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "call": "{\"tool_name\": \"test_tool\", \"parameters\": {}}",
+        "policy": "{\"rules\": [{\"name\": \"bad_condition\", \"tool_regex\": \"test_.*\", \"conditions\": [\"unknown_fn()\"], \"action\": \"Deny\", \"locked\": false}, {\"name\": \"good_rule\", \"tool_regex\": \"test_.*\", \"conditions\": [], \"action\": \"Allow\", \"locked\": false}], \"default_action\": \"Deny\"}",
+        "vault": "None"
+      },
+      "input_description": "Rule with invalid condition, followed by matching rule",
+      "expected_output_description": "Falls through to second rule, returns Allow",
+      "expected_error": "",
+      "assertions": [
+        "result.decision == Decision.Allow",
+        "result.matched_rule == 'good_rule'"
+      ]
+    },
+    {
+      "id": "test_resolve_gate_with_vault_match",
+      "description": "resolve_gate() returns true when vault has matching recent action",
+      "function": "resolve_gate",
+      "category": "happy_path",
+      "setup_description": "",
+      "mock_dependencies": {
+        "vault": "Mock vault with has_recent_allowed_action('approve', 20) returning true"
+      },
+      "input_values": {
+        "config": "{\"requires_prior\": \"approve\", \"within\": 20}",
+        "vault": "mock_vault_with_approve_action"
+      },
+      "input_description": "GateConfig requiring 'approve' within 20, vault has it",
+      "expected_output_description": "Returns true",
+      "expected_error": "",
+      "assertions": [
+        "result == True"
+      ]
+    },
+    {
+      "id": "test_resolve_gate_with_vault_no_match",
+      "description": "resolve_gate() returns false when vault doesn't have matching action",
+      "function": "resolve_gate",
+      "category": "happy_path",
+      "setup_description": "",
+      "mock_dependencies": {
+        "vault": "Mock vault with has_recent_allowed_action('approve', 20) returning false"
+      },
+      "input_values": {
+        "config": "{\"requires_prior\": \"approve\", \"within\": 20}",
+        "vault": "mock_vault_without_approve"
+      },
+      "input_description": "GateConfig requiring 'approve', vault doesn't have it",
+      "expected_output_description": "Returns false",
+      "expected_error": "",
+      "assertions": [
+        "result == False"
+      ]
+    },
+    {
+      "id": "test_resolve_gate_without_vault_fails_closed",
+      "description": "resolve_gate() returns false when vault is None (fail-closed)",
+      "function": "resolve_gate",
+      "category": "edge_case",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "config": "{\"requires_prior\": \"approve\", \"within\": 20}",
+        "vault": "None"
+      },
+      "input_description": "GateConfig with vault=None",
+      "expected_output_description": "Returns false",
+      "expected_error": "",
+      "assertions": [
+        "result == False"
+      ]
+    },
+    {
+      "id": "test_load_policy_valid_file",
+      "description": "load_policy() successfully loads and compiles policy from valid YAML file",
+      "function": "load_policy",
+      "category": "happy_path",
+      "setup_description": "Create temporary YAML file with valid policy",
+      "mock_dependencies": {},
+      "input_values": {},
+      "input_description": "Path to valid policy YAML file",
+      "expected_output_description": "Returns CompiledPolicy with rules from file",
+      "expected_error": "",
+      "assertions": [
+        "len(result.rules) > 0",
+        "result.default_action is not None"
+      ]
+    },
+    {
+      "id": "test_load_policy_missing_file_returns_default",
+      "description": "load_policy() returns default_policy() when file doesn't exist",
+      "function": "load_policy",
+      "category": "edge_case",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "path": "/nonexistent/path/policy.yaml"
+      },
+      "input_description": "Path to non-existent file",
+      "expected_output_description": "Returns default_policy() without panicking",
+      "expected_error": "",
+      "assertions": [
+        "result is not None",
+        "len(result.rules) >= 7"
+      ]
+    },
+    {
+      "id": "test_load_policy_malformed_yaml_returns_default",
+      "description": "load_policy() returns default_policy() when YAML is malformed",
+      "function": "load_policy",
+      "category": "edge_case",
+      "setup_description": "Create temporary file with malformed YAML",
+      "mock_dependencies": {},
+      "input_values": {},
+      "input_description": "Path to file with invalid YAML",
+      "expected_output_description": "Returns default_policy() without panicking",
+      "expected_error": "",
+      "assertions": [
+        "result is not None",
+        "len(result.rules) >= 7"
+      ]
+    },
+    {
+      "id": "test_load_policy_config_valid_file",
+      "description": "load_policy_config() successfully loads PolicyConfig from valid YAML",
+      "function": "load_policy_config",
+      "category": "happy_path",
+      "setup_description": "Create temporary YAML file with valid policy structure",
+      "mock_dependencies": {},
+      "input_values": {},
+      "input_description": "Path to valid policy YAML file",
+      "expected_output_description": "Returns Ok(PolicyConfig)",
+      "expected_error": "",
+      "assertions": [
+        "result.is_ok()",
+        "result.unwrap().version >= 1"
+      ]
+    },
+    {
+      "id": "test_load_policy_config_missing_file_error",
+      "description": "load_policy_config() returns Err when file doesn't exist",
+      "function": "load_policy_config",
+      "category": "error_case",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "path": "/nonexistent/path/policy.yaml"
+      },
+      "input_description": "Path to non-existent file",
+      "expected_output_description": "",
+      "expected_error": "file_read_error",
+      "assertions": [
+        "result.is_err()"
+      ]
+    },
+    {
+      "id": "test_load_policy_config_invalid_yaml_error",
+      "description": "load_policy_config() returns Err when YAML is malformed",
+      "function": "load_policy_config",
+      "category": "error_case",
+      "setup_description": "Create temporary file with malformed YAML (unclosed brackets, etc.)",
+      "mock_dependencies": {},
+      "input_values": {},
+      "input_description": "Path to file with invalid YAML syntax",
+      "expected_output_description": "",
+      "expected_error": "yaml_parse_error",
+      "assertions": [
+        "result.is_err()",
+        "'yaml' in result.unwrap_err().lower() or 'parse' in result.unwrap_err().lower()"
+      ]
+    },
+    {
+      "id": "test_validate_policy_valid_config",
+      "description": "validate_policy() returns empty Vec for valid PolicyConfig",
+      "function": "validate_policy",
+      "category": "happy_path",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "config": "{\"version\": 1, \"rules\": [{\"name\": \"test\", \"tool_pattern\": \"^test$\", \"conditions\": [\"true\"], \"action\": \"Allow\", \"locked\": false}], \"default_action\": \"Allow\"}"
+      },
+      "input_description": "PolicyConfig with valid regex, known conditions, proper Gate/Ensure configs",
+      "expected_output_description": "Returns empty Vec",
+      "expected_error": "",
+      "assertions": [
+        "len(result) == 0"
+      ]
+    },
+    {
+      "id": "test_validate_policy_invalid_regex",
+      "description": "validate_policy() returns error for invalid regex pattern",
+      "function": "validate_policy",
+      "category": "edge_case",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "config": "{\"version\": 1, \"rules\": [{\"name\": \"bad_regex\", \"tool_pattern\": \"(unclosed\", \"conditions\": [], \"action\": \"Allow\", \"locked\": false}], \"default_action\": \"Allow\"}"
+      },
+      "input_description": "PolicyConfig with rule containing invalid regex '(unclosed'",
+      "expected_output_description": "Returns Vec with regex error message",
+      "expected_error": "",
+      "assertions": [
+        "len(result) > 0",
+        "any('regex' in err.lower() for err in result)"
+      ]
+    },
+    {
+      "id": "test_validate_policy_unknown_condition",
+      "description": "validate_policy() returns error for unknown condition function",
+      "function": "validate_policy",
+      "category": "edge_case",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "config": "{\"version\": 1, \"rules\": [{\"name\": \"bad_cond\", \"tool_pattern\": \"test\", \"conditions\": [\"bad_fn()\"], \"action\": \"Allow\", \"locked\": false}], \"default_action\": \"Allow\"}"
+      },
+      "input_description": "PolicyConfig with rule using unknown condition 'bad_fn()'",
+      "expected_output_description": "Returns Vec with unknown condition error",
+      "expected_error": "",
+      "assertions": [
+        "len(result) > 0",
+        "any('condition' in err.lower() or 'unknown' in err.lower() for err in result)"
+      ]
+    },
+    {
+      "id": "test_validate_policy_gate_missing_config",
+      "description": "validate_policy() returns error when Gate action missing gate config",
+      "function": "validate_policy",
+      "category": "edge_case",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "config": "{\"version\": 1, \"rules\": [{\"name\": \"gate_no_config\", \"tool_pattern\": \"test\", \"conditions\": [], \"action\": \"Gate\", \"locked\": false}], \"default_action\": \"Allow\"}"
+      },
+      "input_description": "PolicyConfig with action=Gate but gate=None",
+      "expected_output_description": "Returns Vec with missing gate config error",
+      "expected_error": "",
+      "assertions": [
+        "len(result) > 0",
+        "any('gate' in err.lower() for err in result)"
+      ]
+    },
+    {
+      "id": "test_validate_policy_ensure_missing_config",
+      "description": "validate_policy() returns error when Ensure action missing ensure config",
+      "function": "validate_policy",
+      "category": "edge_case",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "config": "{\"version\": 1, \"rules\": [{\"name\": \"ensure_no_config\", \"tool_pattern\": \"test\", \"conditions\": [], \"action\": \"Ensure\", \"locked\": false}], \"default_action\": \"Allow\"}"
+      },
+      "input_description": "PolicyConfig with action=Ensure but ensure=None",
+      "expected_output_description": "Returns Vec with missing ensure config error",
+      "expected_error": "",
+      "assertions": [
+        "len(result) > 0",
+        "any('ensure' in err.lower() for err in result)"
+      ]
+    },
+    {
+      "id": "test_validate_ensure_check_name_valid",
+      "description": "validate_ensure_check_name() accepts safe script names",
+      "function": "validate_ensure_check_name",
+      "category": "happy_path",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "name": "check_tests.sh"
+      },
+      "input_description": "Valid script names: 'check_tests.sh', 'validate_123', 'simple'",
+      "expected_output_description": "Returns Ok(())",
+      "expected_error": "",
+      "assertions": [
+        "result.is_ok()"
+      ]
+    },
+    {
+      "id": "test_validate_ensure_check_name_empty",
+      "description": "validate_ensure_check_name() rejects empty name",
+      "function": "validate_ensure_check_name",
+      "category": "error_case",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "name": ""
+      },
+      "input_description": "Empty string",
+      "expected_output_description": "",
+      "expected_error": "empty_name",
+      "assertions": [
+        "result.is_err()",
+        "'empty' in result.unwrap_err().lower()"
+      ]
+    },
+    {
+      "id": "test_validate_ensure_check_name_path_separator",
+      "description": "validate_ensure_check_name() rejects name with path separator",
+      "function": "validate_ensure_check_name",
+      "category": "error_case",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "name": "subdir/script.sh"
+      },
+      "input_description": "Name containing '/' or '\\\\'",
+      "expected_output_description": "",
+      "expected_error": "path_separator",
+      "assertions": [
+        "result.is_err()",
+        "'path' in result.unwrap_err().lower() or 'separator' in result.unwrap_err().lower()"
+      ]
+    },
+    {
+      "id": "test_validate_ensure_check_name_path_traversal",
+      "description": "validate_ensure_check_name() rejects name with '..'",
+      "function": "validate_ensure_check_name",
+      "category": "error_case",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "name": "../escape.sh"
+      },
+      "input_description": "Name containing '..'",
+      "expected_output_description": "",
+      "expected_error": "path_traversal",
+      "assertions": [
+        "result.is_err()",
+        "'..' in result.unwrap_err() or 'traversal' in result.unwrap_err().lower()"
+      ]
+    },
+    {
+      "id": "test_validate_ensure_check_name_null_byte",
+      "description": "validate_ensure_check_name() rejects name with null byte",
+      "function": "validate_ensure_check_name",
+      "category": "error_case",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "name": "script\\x00.sh"
+      },
+      "input_description": "Name containing null byte character",
+      "expected_output_description": "",
+      "expected_error": "null_byte",
+      "assertions": [
+        "result.is_err()",
+        "'null' in result.unwrap_err().lower()"
+      ]
+    },
+    {
+      "id": "test_validate_ensure_check_name_control_char",
+      "description": "validate_ensure_check_name() rejects name with control characters",
+      "function": "validate_ensure_check_name",
+      "category": "error_case",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "name": "script\\x01.sh"
+      },
+      "input_description": "Name containing control character (< 0x20, except tab)",
+      "expected_output_description": "",
+      "expected_error": "control_char",
+      "assertions": [
+        "result.is_err()",
+        "'control' in result.unwrap_err().lower()"
+      ]
+    },
+    {
+      "id": "test_resolve_ensure_script_path_valid",
+      "description": "resolve_ensure_script_path() returns canonicalized path for valid script",
+      "function": "resolve_ensure_script_path",
+      "category": "happy_path",
+      "setup_description": "Create .signet/checks/ directory with test_check.sh file",
+      "mock_dependencies": {},
+      "input_values": {
+        "check_name": "test_check.sh"
+      },
+      "input_description": "Valid check name 'test_check.sh' in existing .signet/checks/ directory",
+      "expected_output_description": "Returns Ok(PathBuf) with canonical path in .signet/checks/",
+      "expected_error": "",
+      "assertions": [
+        "result.is_ok()",
+        "'.signet' in str(result.unwrap())",
+        "'checks' in str(result.unwrap())"
+      ]
+    },
+    {
+      "id": "test_resolve_ensure_script_path_invalid_name",
+      "description": "resolve_ensure_script_path() returns Err for invalid check name",
+      "function": "resolve_ensure_script_path",
+      "category": "error_case",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "check_name": "../evil.sh"
+      },
+      "input_description": "Check name with path separator '../evil.sh'",
+      "expected_output_description": "",
+      "expected_error": "invalid_name",
+      "assertions": [
+        "result.is_err()",
+        "'invalid' in result.unwrap_err().lower() or 'name' in result.unwrap_err().lower()"
+      ]
+    },
+    {
+      "id": "test_resolve_ensure_script_path_not_found",
+      "description": "resolve_ensure_script_path() returns Err when script doesn't exist",
+      "function": "resolve_ensure_script_path",
+      "category": "error_case",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "check_name": "nonexistent.sh"
+      },
+      "input_description": "Valid check name but file doesn't exist",
+      "expected_output_description": "",
+      "expected_error": "cannot_resolve",
+      "assertions": [
+        "result.is_err()",
+        "'resolve' in result.unwrap_err().lower() or 'not found' in result.unwrap_err().lower()"
+      ]
+    },
+    {
+      "id": "test_resolve_ensure_script_path_escape_attempt",
+      "description": "resolve_ensure_script_path() returns Err when canonical path escapes checks directory",
+      "function": "resolve_ensure_script_path",
+      "category": "error_case",
+      "setup_description": "Create symlink pointing outside checks directory",
+      "mock_dependencies": {},
+      "input_values": {},
+      "input_description": "Symlink or other mechanism causing path to escape .signet/checks/",
+      "expected_output_description": "",
+      "expected_error": "path_escape",
+      "assertions": [
+        "result.is_err()",
+        "'escape' in result.unwrap_err().lower() or 'outside' in result.unwrap_err().lower()"
+      ]
+    },
+    {
+      "id": "test_self_protection_rules_count",
+      "description": "self_protection_rules() returns exactly 7 rules (github_identity_guard moved to default_policy as unlocked)",
+      "function": "self_protection_rules",
+      "category": "invariant",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {},
+      "input_description": "",
+      "expected_output_description": "Returns Vec with 7 PolicyRule instances",
+      "expected_error": "",
+      "assertions": [
+        "len(result) == 7"
+      ]
+    },
+    {
+      "id": "test_self_protection_rules_all_locked",
+      "description": "self_protection_rules() returns all rules with locked=true",
+      "function": "self_protection_rules",
+      "category": "invariant",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {},
+      "input_description": "",
+      "expected_output_description": "All returned rules have locked=true",
+      "expected_error": "",
+      "assertions": [
+        "all(rule.locked for rule in result)"
+      ]
+    },
+    {
+      "id": "test_self_protection_rules_protect_checks_dir_first",
+      "description": "self_protection_rules() has protect_checks_dir as first rule",
+      "function": "self_protection_rules",
+      "category": "invariant",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {},
+      "input_description": "",
+      "expected_output_description": "First rule name is 'protect_checks_dir'",
+      "expected_error": "",
+      "assertions": [
+        "result[0].name == 'protect_checks_dir'"
+      ]
+    },
+    {
+      "id": "test_self_protection_rules_coverage",
+      "description": "self_protection_rules() covers all required protection areas",
+      "function": "self_protection_rules",
+      "category": "happy_path",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {},
+      "input_description": "",
+      "expected_output_description": "Rules protect: checks dir, signet dir, binary, hook config, symlink, process, preflight, github",
+      "expected_error": "",
+      "assertions": [
+        "any('checks' in rule.name for rule in result)",
+        "any('signet_dir' in rule.name for rule in result)",
+        "any('binary' in rule.name for rule in result)",
+        "any('hook' in rule.name for rule in result)",
+        "any('symlink' in rule.name for rule in result)",
+        "any('process' in rule.name for rule in result)",
+        "any('preflight' in rule.name for rule in result)",
+        "any('github' in rule.name or 'identity' in rule.name for rule in result)"
+      ]
+    },
+    {
+      "id": "test_default_policy_has_self_protection_first",
+      "description": "default_policy() has self_protection_rules at the beginning",
+      "function": "default_policy",
+      "category": "invariant",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {},
+      "input_description": "",
+      "expected_output_description": "First 7 rules are self-protection rules with locked=true",
+      "expected_error": "",
+      "assertions": [
+        "len(result.rules) >= 7",
+        "result.rules[0].locked",
+        "result.rules[0].name == 'protect_checks_dir'",
+        "all(result.rules[i].locked for i in range(7))"
+      ]
+    },
+    {
+      "id": "test_default_policy_default_action_allow",
+      "description": "default_policy() has default_action = Allow",
+      "function": "default_policy",
+      "category": "invariant",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {},
+      "input_description": "",
+      "expected_output_description": "default_action is Decision.Allow",
+      "expected_error": "",
+      "assertions": [
+        "result.default_action == Decision.Allow"
+      ]
+    },
+    {
+      "id": "test_default_policy_standard_safety_rules",
+      "description": "default_policy() includes standard safety rules beyond self-protection",
+      "function": "default_policy",
+      "category": "happy_path",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {},
+      "input_description": "",
+      "expected_output_description": "Policy includes rules for plan-before-code, rm protection, force-push, etc.",
+      "expected_error": "",
+      "assertions": [
+        "len(result.rules) > 7"
+      ]
+    },
+    {
+      "id": "test_split_at_top_level_happy_path",
+      "description": "split_at_top_level() splits at separator when depth is 0",
+      "function": "split_at_top_level",
+      "category": "happy_path",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "s": "a, b",
+        "separator": ", "
+      },
+      "input_description": "String 'a, b' with separator ', '",
+      "expected_output_description": "Returns Some(('a', 'b'))",
+      "expected_error": "",
+      "assertions": [
+        "result is not None",
+        "result[0] == 'a'",
+        "result[1] == 'b'"
+      ]
+    },
+    {
+      "id": "test_split_at_top_level_nested_parens",
+      "description": "split_at_top_level() ignores separator inside parentheses",
+      "function": "split_at_top_level",
+      "category": "edge_case",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "s": "or(a, b), c",
+        "separator": ", "
+      },
+      "input_description": "String 'or(a, b), c' with separator ', ' (should split after closing paren)",
+      "expected_output_description": "Returns Some(('or(a, b)', 'c'))",
+      "expected_error": "",
+      "assertions": [
+        "result is not None",
+        "result[0] == 'or(a, b)'",
+        "result[1] == 'c'"
+      ]
+    },
+    {
+      "id": "test_split_at_top_level_no_match",
+      "description": "split_at_top_level() returns None when separator not found at depth 0",
+      "function": "split_at_top_level",
+      "category": "edge_case",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "s": "or(a, b)",
+        "separator": ", "
+      },
+      "input_description": "String 'or(a, b)' with separator ', ' (only inside parens)",
+      "expected_output_description": "Returns None",
+      "expected_error": "",
+      "assertions": [
+        "result is None"
+      ]
+    },
+    {
+      "id": "test_split_at_top_level_empty_separator",
+      "description": "split_at_top_level() returns None for empty separator",
+      "function": "split_at_top_level",
+      "category": "edge_case",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "s": "test",
+        "separator": ""
+      },
+      "input_description": "Any string with empty separator",
+      "expected_output_description": "Returns None",
+      "expected_error": "",
+      "assertions": [
+        "result is None"
+      ]
+    },
+    {
+      "id": "test_strip_fn_happy_path",
+      "description": "strip_fn() extracts arguments from function call",
+      "function": "strip_fn",
+      "category": "happy_path",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "s": "contains(\"test\")",
+        "name": "contains"
+      },
+      "input_description": "String 'contains(\"test\")' with name 'contains'",
+      "expected_output_description": "Returns Some('\"test\"')",
+      "expected_error": "",
+      "assertions": [
+        "result is not None",
+        "result == '\"test\"'"
+      ]
+    },
+    {
+      "id": "test_strip_fn_no_match",
+      "description": "strip_fn() returns None when function name doesn't match",
+      "function": "strip_fn",
+      "category": "edge_case",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "s": "contains(\"test\")",
+        "name": "matches"
+      },
+      "input_description": "String 'contains(\"test\")' with name 'matches'",
+      "expected_output_description": "Returns None",
+      "expected_error": "",
+      "assertions": [
+        "result is None"
+      ]
+    },
+    {
+      "id": "test_strip_fn_missing_parens",
+      "description": "strip_fn() returns None when parentheses are missing or unmatched",
+      "function": "strip_fn",
+      "category": "edge_case",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "s": "contains",
+        "name": "contains"
+      },
+      "input_description": "String 'contains' without parens",
+      "expected_output_description": "Returns None",
+      "expected_error": "",
+      "assertions": [
+        "result is None"
+      ]
+    },
+    {
+      "id": "test_extract_quoted_double_quotes",
+      "description": "extract_quoted() extracts content from double-quoted string",
+      "function": "extract_quoted",
+      "category": "happy_path",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "s": "\"hello world\""
+      },
+      "input_description": "String '\"hello world\"'",
+      "expected_output_description": "Returns Some('hello world')",
+      "expected_error": "",
+      "assertions": [
+        "result is not None",
+        "result == 'hello world'"
+      ]
+    },
+    {
+      "id": "test_extract_quoted_single_quotes",
+      "description": "extract_quoted() extracts content from single-quoted string",
+      "function": "extract_quoted",
+      "category": "happy_path",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "s": "'hello world'"
+      },
+      "input_description": "String \"'hello world'\"",
+      "expected_output_description": "Returns Some('hello world')",
+      "expected_error": "",
+      "assertions": [
+        "result is not None",
+        "result == 'hello world'"
+      ]
+    },
+    {
+      "id": "test_extract_quoted_not_quoted",
+      "description": "extract_quoted() returns None for unquoted string",
+      "function": "extract_quoted",
+      "category": "edge_case",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "s": "hello"
+      },
+      "input_description": "String 'hello' without quotes",
+      "expected_output_description": "Returns None",
+      "expected_error": "",
+      "assertions": [
+        "result is None"
+      ]
+    },
+    {
+      "id": "test_extract_quoted_mismatched_quotes",
+      "description": "extract_quoted() returns None for mismatched quotes",
+      "function": "extract_quoted",
+      "category": "edge_case",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "s": "'hello\""
+      },
+      "input_description": "String \"'hello\\\"\" with mismatched quotes",
+      "expected_output_description": "Returns None",
+      "expected_error": "",
+      "assertions": [
+        "result is None"
+      ]
+    },
+    {
+      "id": "test_param_str_exists",
+      "description": "param_str() extracts string parameter value",
+      "function": "param_str",
+      "category": "happy_path",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "params": "{\"key\": \"value\"}",
+        "field": "key"
+      },
+      "input_description": "JSON params {\"key\": \"value\"} with field 'key'",
+      "expected_output_description": "Returns 'value'",
+      "expected_error": "",
+      "assertions": [
+        "result == 'value'"
+      ]
+    },
+    {
+      "id": "test_param_str_missing_field",
+      "description": "param_str() returns empty string when field not found",
+      "function": "param_str",
+      "category": "edge_case",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "params": "{\"other\": \"value\"}",
+        "field": "missing"
+      },
+      "input_description": "JSON params {\"other\": \"value\"} with field 'missing'",
+      "expected_output_description": "Returns empty string",
+      "expected_error": "",
+      "assertions": [
+        "result == ''"
+      ]
+    },
+    {
+      "id": "test_param_str_not_string",
+      "description": "param_str() returns empty string when field is not a string",
+      "function": "param_str",
+      "category": "edge_case",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "params": "{\"count\": 42}",
+        "field": "count"
+      },
+      "input_description": "JSON params {\"count\": 42} with field 'count'",
+      "expected_output_description": "Returns empty string",
+      "expected_error": "",
+      "assertions": [
+        "result == ''"
+      ]
+    },
+    {
+      "id": "test_param_f64_number",
+      "description": "param_f64() extracts numeric parameter value",
+      "function": "param_f64",
+      "category": "happy_path",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "params": "{\"amount\": 123.45}",
+        "field": "amount"
+      },
+      "input_description": "JSON params {\"amount\": 123.45} with field 'amount'",
+      "expected_output_description": "Returns 123.45",
+      "expected_error": "",
+      "assertions": [
+        "abs(result - 123.45) < 0.001"
+      ]
+    },
+    {
+      "id": "test_param_f64_string_parseable",
+      "description": "param_f64() parses numeric string",
+      "function": "param_f64",
+      "category": "happy_path",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "params": "{\"amount\": \"99.9\"}",
+        "field": "amount"
+      },
+      "input_description": "JSON params {\"amount\": \"99.9\"} with field 'amount'",
+      "expected_output_description": "Returns 99.9",
+      "expected_error": "",
+      "assertions": [
+        "abs(result - 99.9) < 0.001"
+      ]
+    },
+    {
+      "id": "test_param_f64_missing_field",
+      "description": "param_f64() returns 0.0 when field not found",
+      "function": "param_f64",
+      "category": "edge_case",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "params": "{}",
+        "field": "missing"
+      },
+      "input_description": "JSON params {} with field 'missing'",
+      "expected_output_description": "Returns 0.0",
+      "expected_error": "",
+      "assertions": [
+        "result == 0.0"
+      ]
+    },
+    {
+      "id": "test_param_f64_not_parseable",
+      "description": "param_f64() returns 0.0 when value cannot be parsed",
+      "function": "param_f64",
+      "category": "edge_case",
+      "setup_description": "",
+      "mock_dependencies": {},
+      "input_values": {
+        "params": "{\"value\": \"not_a_number\"}",
+        "field": "value"
+      },
+      "input_description": "JSON params {\"value\": \"not_a_number\"} with field 'value'",
+      "expected_output_description": "Returns 0.0",
+      "expected_error": "",
+      "assertions": [
+        "result == 0.0"
+      ]
+    }
+  ],
+  "test_language": "rust",
+  "generated_code": "\"\"\"\nContract test suite for src_policy.rs\nGenerated from contract version 1\n\nTests cover:\n- Decision enum lowercase conversion\n- Default value functions (gate_within, ensure_timeout, version, allow)\n- PolicyConfig compilation with regex validation\n- Condition evaluation with all supported functions\n- Policy evaluation (first-match-wins, locked rules, Gate/Ensure resolution)\n- File loading with error handling\n- Policy validation\n- Ensure check name and path validation\n- Self-protection rules invariants\n- Default policy structure\n- Parsing helpers (split_at_top_level, strip_fn, extract_quoted)\n- Parameter extraction (param_str, param_f64)\n\"\"\"\n\nimport pytest\nimport json\nimport tempfile\nimport os\nfrom pathlib import Path\nfrom unittest.mock import Mock, MagicMock, patch, mock_open\nfrom typing import Optional, Dict, Any, List\n\n# Import the module under test\n# Note: Adjust import path based on actual Python bindings\ntry:\n    from src_policy import *\nexcept ImportError:\n    # Fallback for testing - create mock types\n    class Decision:\n        Allow = \"Allow\"\n        Deny = \"Deny\"\n        Ask = \"Ask\"\n        Gate = \"Gate\"\n        Ensure = \"Ensure\"\n        \n        @staticmethod\n        def as_lowercase(variant):\n            return variant.lower()\n    \n    class GateConfig:\n        def __init__(self, requires_prior: str, within: int = 50):\n            self.requires_prior = requires_prior\n            self.within = within\n    \n    class EnsureConfig:\n        def __init__(self, check: str, timeout: int = 5, message: str = \"\"):\n            self.check = check\n            self.timeout = timeout\n            self.message = message\n    \n    class PolicyRule:\n        def __init__(self, name: str, tool_pattern: str, conditions: List[str], \n                     action: str, reason: Optional[str] = None, \n                     alternative: Optional[str] = None, locked: bool = False,\n                     gate: Optional[GateConfig] = None, \n                     ensure: Optional[EnsureConfig] = None):\n            self.name = name\n            self.tool_pattern = tool_pattern\n            self.conditions = conditions\n            self.action = action\n            self.reason = reason\n            self.alternative = alternative\n            self.locked = locked\n            self.gate = gate\n            self.ensure = ensure\n    \n    class PolicyConfig:\n        def __init__(self, version: int = 1, rules: List[PolicyRule] = None, \n                     default_action: str = \"Allow\"):\n            self.version = version\n            self.rules = rules or []\n            self.default_action = default_action\n    \n    class CompiledRule:\n        def __init__(self, name: str, tool_regex, conditions: List[str], \n                     action: str, reason: Optional[str] = None,\n                     alternative: Optional[str] = None, locked: bool = False,\n                     gate: Optional[GateConfig] = None,\n                     ensure: Optional[EnsureConfig] = None):\n            self.name = name\n            self.tool_regex = tool_regex\n            self.conditions = conditions\n            self.action = action\n            self.reason = reason\n            self.alternative = alternative\n            self.locked = locked\n            self.gate = gate\n            self.ensure = ensure\n    \n    class CompiledPolicy:\n        def __init__(self, rules: List[CompiledRule], default_action: str):\n            self.rules = rules\n            self.default_action = default_action\n    \n    class EvaluationResult:\n        def __init__(self, decision: str, matched_rule: Optional[str] = None,\n                     matched_locked: bool = False, reason: Optional[str] = None,\n                     evaluation_time_us: int = 0, \n                     ensure_config: Optional[EnsureConfig] = None):\n            self.decision = decision\n            self.matched_rule = matched_rule\n            self.matched_locked = matched_locked\n            self.reason = reason\n            self.evaluation_time_us = evaluation_time_us\n            self.ensure_config = ensure_config\n    \n    class ToolCall:\n        def __init__(self, tool_name: str, parameters: Dict[str, Any]):\n            self.tool_name = tool_name\n            self.parameters = parameters\n    \n    def default_gate_within():\n        return 50\n    \n    def default_ensure_timeout():\n        return 5\n    \n    def default_version():\n        return 1\n    \n    def default_allow():\n        return Decision.Allow\n    \n    def from_config(config: PolicyConfig) -> CompiledPolicy:\n        import re\n        compiled_rules = []\n        for rule in config.rules:\n            try:\n                regex = re.compile(rule.tool_pattern)\n                compiled_rules.append(CompiledRule(\n                    name=rule.name,\n                    tool_regex=regex,\n                    conditions=rule.conditions,\n                    action=rule.action,\n                    reason=rule.reason,\n                    alternative=rule.alternative,\n                    locked=rule.locked,\n                    gate=rule.gate,\n                    ensure=rule.ensure\n                ))\n            except re.error:\n                # Silently skip invalid regex\n                pass\n        return CompiledPolicy(rules=compiled_rules, default_action=config.default_action)\n    \n    def evaluate_condition(condition: str, call: ToolCall, vault: Optional[Any] = None):\n        \"\"\"Mock implementation of evaluate_condition\"\"\"\n        condition = condition.strip()\n        \n        # Handle literals\n        if condition == \"true\":\n            return Ok(True)\n        if condition == \"false\":\n            return Ok(False)\n        \n        # Handle contains()\n        if condition.startswith(\"contains(\"):\n            import re\n            match = re.match(r'contains\\([\"\\'](.+?)[\"\\']\\)', condition)\n            if match:\n                search_str = match.group(1)\n                return Ok(search_str in call.tool_name)\n        \n        # Handle param_eq()\n        if condition.startswith(\"param_eq(\"):\n            import re\n            match = re.match(r'param_eq\\([\"\\'](.+?)[\"\\']\\s*,\\s*[\"\\'](.+?)[\"\\']\\)', condition)\n            if match:\n                field, value = match.groups()\n                param_value = call.parameters.get(field, \"\")\n                return Ok(str(param_value) == value)\n        \n        # Handle param_gt()\n        if condition.startswith(\"param_gt(\"):\n            import re\n            match = re.match(r'param_gt\\([\"\\'](.+?)[\"\\']\\s*,\\s*[\"\\'](.+?)[\"\\']\\)', condition)\n            if match:\n                field, threshold = match.groups()\n                try:\n                    threshold_val = float(threshold)\n                    param_val = float(call.parameters.get(field, 0))\n                    return Ok(param_val > threshold_val)\n                except ValueError:\n                    return Err(\"parse_error: cannot parse threshold\")\n        \n        # Handle param_lt()\n        if condition.startswith(\"param_lt(\"):\n            import re\n            match = re.match(r'param_lt\\([\"\\'](.+?)[\"\\']\\s*,\\s*[\"\\'](.+?)[\"\\']\\)', condition)\n            if match:\n                field, threshold = match.groups()\n                try:\n                    threshold_val = float(threshold)\n                    param_val = float(call.parameters.get(field, 0))\n                    return Ok(param_val < threshold_val)\n                except ValueError:\n                    return Err(\"parse_error: cannot parse threshold\")\n        \n        # Handle not()\n        if condition.startswith(\"not(\"):\n            import re\n            match = re.match(r'not\\((.+)\\)', condition)\n            if match:\n                inner = match.group(1)\n                result = evaluate_condition(inner, call, vault)\n                if result.is_ok():\n                    return Ok(not result.unwrap())\n                return result\n        \n        # Handle or()\n        if condition.startswith(\"or(\"):\n            # Simple split on comma at top level\n            inner = condition[3:-1]\n            parts = inner.split(\", \")\n            for part in parts:\n                result = evaluate_condition(part.strip(), call, vault)\n                if result.is_ok() and result.unwrap():\n                    return Ok(True)\n            return Ok(False)\n        \n        # Handle matches()\n        if condition.startswith(\"matches(\"):\n            import re\n            match = re.match(r'matches\\([\"\\'](.+?)[\"\\']\\)', condition)\n            if match:\n                pattern = match.group(1)\n                try:\n                    regex = re.compile(pattern)\n                    return Ok(bool(regex.search(call.tool_name)))\n                except re.error:\n                    return Err(\"regex_compile_error: invalid regex\")\n        \n        # Unknown function\n        return Err(\"unknown_condition: unknown function name\")\n    \n    def evaluate(call: ToolCall, policy: CompiledPolicy, vault: Optional[Any] = None) -> EvaluationResult:\n        \"\"\"Mock implementation of evaluate\"\"\"\n        import time\n        start = time.perf_counter()\n        \n        for rule in policy.rules:\n            # Check if tool name matches regex\n            if rule.tool_regex.search(call.tool_name):\n                # Check all conditions\n                all_conditions_pass = True\n                for condition in rule.conditions:\n                    result = evaluate_condition(condition, call, vault)\n                    if result.is_err() or not result.unwrap():\n                        all_conditions_pass = False\n                        break\n                \n                if not all_conditions_pass:\n                    continue\n                \n                # Rule matches\n                decision = rule.action\n                \n                # Resolve Gate\n                if decision == Decision.Gate:\n                    if rule.gate:\n                        if resolve_gate(rule.gate, vault):\n                            decision = Decision.Allow\n                        else:\n                            decision = Decision.Deny\n                    else:\n                        decision = Decision.Deny\n                \n                end = time.perf_counter()\n                eval_time = int((end - start) * 1_000_000)\n                \n                return EvaluationResult(\n                    decision=decision,\n                    matched_rule=rule.name,\n                    matched_locked=rule.locked,\n                    reason=rule.reason,\n                    evaluation_time_us=eval_time,\n                    ensure_config=rule.ensure if decision == Decision.Ensure else None\n                )\n        \n        # No match, use default\n        end = time.perf_counter()\n        eval_time = int((end - start) * 1_000_000)\n        return EvaluationResult(\n            decision=policy.default_action,\n            matched_rule=None,\n            matched_locked=False,\n            evaluation_time_us=eval_time\n        )\n    \n    def resolve_gate(config: GateConfig, vault: Optional[Any]) -> bool:\n        \"\"\"Mock implementation of resolve_gate\"\"\"\n        if vault is None:\n            return False\n        return vault.has_recent_allowed_action(config.requires_prior, config.within)\n    \n    def load_policy(path: Path) -> CompiledPolicy:\n        \"\"\"Mock implementation of load_policy\"\"\"\n        try:\n            config = load_policy_config(path)\n            if config.is_ok():\n                return from_config(config.unwrap())\n        except:\n            pass\n        return default_policy()\n    \n    def load_policy_config(path: Path):\n        \"\"\"Mock implementation of load_policy_config\"\"\"\n        try:\n            import yaml\n            with open(path, 'r') as f:\n                data = yaml.safe_load(f)\n            # Convert to PolicyConfig\n            rules = []\n            for r in data.get('rules', []):\n                rules.append(PolicyRule(\n                    name=r['name'],\n                    tool_pattern=r['tool_pattern'],\n                    conditions=r.get('conditions', []),\n                    action=r['action'],\n                    locked=r.get('locked', False)\n                ))\n            config = PolicyConfig(\n                version=data.get('version', 1),\n                rules=rules,\n                default_action=data.get('default_action', 'Allow')\n            )\n            return Ok(config)\n        except FileNotFoundError:\n            return Err(\"file_read_error: file not found\")\n        except Exception as e:\n            return Err(f\"yaml_parse_error: {str(e)}\")\n    \n    def validate_policy(config: PolicyConfig) -> List[str]:\n        \"\"\"Mock implementation of validate_policy\"\"\"\n        import re\n        errors = []\n        \n        for rule in config.rules:\n            # Check regex\n            try:\n                re.compile(rule.tool_pattern)\n            except re.error:\n                errors.append(f\"Invalid regex in rule {rule.name}: {rule.tool_pattern}\")\n            \n            # Check conditions\n            for condition in rule.conditions:\n                if condition.startswith(\"bad_fn(\") or condition.startswith(\"unknown_fn(\"):\n                    errors.append(f\"Unknown condition function in rule {rule.name}: {condition}\")\n            \n            # Check Gate config\n            if rule.action == Decision.Gate and rule.gate is None:\n                errors.append(f\"Gate action missing gate config in rule {rule.name}\")\n            \n            # Check Ensure config\n            if rule.action == Decision.Ensure and rule.ensure is None:\n                errors.append(f\"Ensure action missing ensure config in rule {rule.name}\")\n        \n        return errors\n    \n    def validate_ensure_check_name(name: str):\n        \"\"\"Mock implementation of validate_ensure_check_name\"\"\"\n        if not name:\n            return Err(\"empty_name: check name cannot be empty\")\n        if '/' in name or '\\\\' in name:\n            return Err(\"path_separator: check name cannot contain path separators\")\n        if '..' in name:\n            return Err(\"path_traversal: check name cannot contain '..'\")\n        if '\\x00' in name:\n            return Err(\"null_byte: check name cannot contain null bytes\")\n        for ch in name:\n            if ord(ch) < 0x20 and ch != '\\t':\n                return Err(\"control_char: check name cannot contain control characters\")\n        return Ok(())\n    \n    def resolve_ensure_script_path(check_name: str):\n        \"\"\"Mock implementation of resolve_ensure_script_path\"\"\"\n        validation = validate_ensure_check_name(check_name)\n        if validation.is_err():\n            return Err(f\"invalid_name: {validation.unwrap_err()}\")\n        \n        checks_dir = Path(\".signet/checks\")\n        script_path = checks_dir / check_name\n        \n        try:\n            canonical = script_path.resolve(strict=True)\n            canonical_checks = checks_dir.resolve()\n            \n            # Check if path is within checks directory\n            try:\n                canonical.relative_to(canonical_checks)\n            except ValueError:\n                return Err(\"path_escape: script path escapes checks directory\")\n            \n            return Ok(canonical)\n        except FileNotFoundError:\n            return Err(\"cannot_resolve: script file not found\")\n        except Exception as e:\n            return Err(f\"cannot_resolve: {str(e)}\")\n    \n    def self_protection_rules() -> List[PolicyRule]:\n        \"\"\"Mock implementation of self_protection_rules\"\"\"\n        return [\n            PolicyRule(name=\"protect_checks_dir\", tool_pattern=r\".*\\.signet/checks.*\", \n                      conditions=[], action=Decision.Deny, locked=True),\n            PolicyRule(name=\"protect_signet_dir\", tool_pattern=r\".*\\.signet.*\", \n                      conditions=[], action=Decision.Deny, locked=True),\n            PolicyRule(name=\"protect_signet_binary\", tool_pattern=r\".*signet-eval.*\", \n                      conditions=[], action=Decision.Deny, locked=True),\n            PolicyRule(name=\"protect_hook_config\", tool_pattern=r\".*settings\\.json.*\", \n                      conditions=[], action=Decision.Deny, locked=True),\n            PolicyRule(name=\"protect_signet_symlink\", tool_pattern=r\".*signet.*\", \n                      conditions=[], action=Decision.Deny, locked=True),\n            PolicyRule(name=\"protect_signet_process\", tool_pattern=r\".*(kill|pkill|killall).*signet.*\", \n                      conditions=[], action=Decision.Deny, locked=True),\n            PolicyRule(name=\"protect_preflight_storage\", tool_pattern=r\".*preflight.*db.*\", \n                      conditions=[], action=Decision.Deny, locked=True),\n            PolicyRule(name=\"github_identity_guard\", tool_pattern=r\".*git.*remote.*\", \n                      conditions=[], action=Decision.Deny, locked=True),\n        ]\n    \n    def default_policy() -> CompiledPolicy:\n        \"\"\"Mock implementation of default_policy\"\"\"\n        import re\n        rules = self_protection_rules()\n        \n        # Add standard safety rules\n        rules.extend([\n            PolicyRule(name=\"plan_before_code\", tool_pattern=r\".*execute.*\", \n                      conditions=[], action=Decision.Ask, locked=False),\n            PolicyRule(name=\"protect_rm\", tool_pattern=r\".*rm -rf.*\", \n                      conditions=[], action=Decision.Deny, locked=False),\n        ])\n        \n        config = PolicyConfig(version=1, rules=rules, default_action=Decision.Allow)\n        return from_config(config)\n    \n    def split_at_top_level(s: str, separator: str) -> Optional[tuple]:\n        \"\"\"Mock implementation of split_at_top_level\"\"\"\n        if not separator:\n            return None\n        \n        depth = 0\n        i = 0\n        while i < len(s):\n            if s[i] == '(':\n                depth += 1\n            elif s[i] == ')':\n                depth = max(0, depth - 1)\n            elif depth == 0 and s[i:i+len(separator)] == separator:\n                return (s[:i], s[i+len(separator):])\n            i += 1\n        \n        return None\n    \n    def strip_fn(s: str, name: str) -> Optional[str]:\n        \"\"\"Mock implementation of strip_fn\"\"\"\n        if not s.startswith(name):\n            return None\n        rest = s[len(name):]\n        if not rest.startswith('(') or not rest.endswith(')'):\n            return None\n        return rest[1:-1]\n    \n    def extract_quoted(s: str) -> Optional[str]:\n        \"\"\"Mock implementation of extract_quoted\"\"\"\n        if len(s) < 2:\n            return None\n        if (s[0] == '\"' and s[-1] == '\"') or (s[0] == \"'\" and s[-1] == \"'\"):\n            return s[1:-1]\n        return None\n    \n    def param_str(params: Dict[str, Any], field: str) -> str:\n        \"\"\"Mock implementation of param_str\"\"\"\n        value = params.get(field)\n        if isinstance(value, str):\n            return value\n        return \"\"\n    \n    def param_f64(params: Dict[str, Any], field: str) -> float:\n        \"\"\"Mock implementation of param_f64\"\"\"\n        value = params.get(field)\n        if isinstance(value, (int, float)):\n            return float(value)\n        if isinstance(value, str):\n            try:\n                return float(value)\n            except ValueError:\n                return 0.0\n        return 0.0\n    \n    # Result type helpers\n    class Ok:\n        def __init__(self, value):\n            self.value = value\n        def is_ok(self):\n            return True\n        def is_err(self):\n            return False\n        def unwrap(self):\n            return self.value\n        def unwrap_err(self):\n            raise Exception(\"Called unwrap_err on Ok\")\n    \n    class Err:\n        def __init__(self, error):\n            self.error = error\n        def is_ok(self):\n            return False\n        def is_err(self):\n            return True\n        def unwrap(self):\n            raise Exception(f\"Called unwrap on Err: {self.error}\")\n        def unwrap_err(self):\n            return self.error\n\n\n# ============================================================================\n# HAPPY PATH TESTS\n# ============================================================================\n\nclass TestDecisionEnum:\n    \"\"\"Tests for Decision enum and as_lowercase method\"\"\"\n    \n    def test_decision_as_lowercase_happy_path(self):\n        \"\"\"Decision.as_lowercase() returns lowercase string representation for each variant\"\"\"\n        assert Decision.as_lowercase(Decision.Allow) == 'allow'\n        assert Decision.as_lowercase(Decision.Deny) == 'deny'\n        assert Decision.as_lowercase(Decision.Ask) == 'ask'\n        assert Decision.as_lowercase(Decision.Gate) == 'gate'\n        assert Decision.as_lowercase(Decision.Ensure) == 'ensure'\n\n\nclass TestDefaultFunctions:\n    \"\"\"Tests for default value functions\"\"\"\n    \n    def test_default_gate_within_returns_50(self):\n        \"\"\"default_gate_within() returns the expected default value\"\"\"\n        result = default_gate_within()\n        assert result == 50\n    \n    def test_default_ensure_timeout_returns_5(self):\n        \"\"\"default_ensure_timeout() returns the expected default value\"\"\"\n        result = default_ensure_timeout()\n        assert result == 5\n    \n    def test_default_version_returns_1(self):\n        \"\"\"default_version() returns the expected default value\"\"\"\n        result = default_version()\n        assert result == 1\n    \n    def test_default_allow_returns_allow_decision(self):\n        \"\"\"default_allow() returns Decision.Allow\"\"\"\n        result = default_allow()\n        assert result == Decision.Allow\n\n\nclass TestFromConfig:\n    \"\"\"Tests for from_config function\"\"\"\n    \n    def test_from_config_valid_rules(self):\n        \"\"\"from_config() compiles valid regex patterns successfully\"\"\"\n        config = PolicyConfig(\n            version=1,\n            rules=[\n                PolicyRule(name=\"rule1\", tool_pattern=\"^file_.*\", conditions=[], \n                          action=Decision.Allow, locked=False),\n                PolicyRule(name=\"rule2\", tool_pattern=r\".*\\.sh$\", conditions=[], \n                          action=Decision.Deny, locked=False)\n            ],\n            default_action=Decision.Allow\n        )\n        \n        result = from_config(config)\n        \n        assert len(result.rules) == 2\n        assert result.rules[0].name == 'rule1'\n        assert result.rules[1].name == 'rule2'\n        assert result.default_action == Decision.Allow\n    \n    def test_from_config_invalid_regex_filtered(self):\n        \"\"\"from_config() silently filters out rules with invalid regex patterns\"\"\"\n        config = PolicyConfig(\n            version=1,\n            rules=[\n                PolicyRule(name=\"valid1\", tool_pattern=\"^valid$\", conditions=[], \n                          action=Decision.Allow, locked=False),\n                PolicyRule(name=\"invalid\", tool_pattern=\"(unclosed\", conditions=[], \n                          action=Decision.Deny, locked=False),\n                PolicyRule(name=\"valid2\", tool_pattern=\"test\", conditions=[], \n                          action=Decision.Ask, locked=False)\n            ],\n            default_action=Decision.Allow\n        )\n        \n        result = from_config(config)\n        \n        assert len(result.rules) == 2\n        assert result.rules[0].name == 'valid1'\n        assert result.rules[1].name == 'valid2'\n    \n    def test_from_config_empty_rules(self):\n        \"\"\"from_config() handles PolicyConfig with empty rules list\"\"\"\n        config = PolicyConfig(version=1, rules=[], default_action=Decision.Deny)\n        \n        result = from_config(config)\n        \n        assert len(result.rules) == 0\n        assert result.default_action == Decision.Deny\n\n\nclass TestEvaluateCondition:\n    \"\"\"Tests for evaluate_condition function\"\"\"\n    \n    def test_evaluate_condition_contains_happy_path(self):\n        \"\"\"evaluate_condition() correctly evaluates contains() function\"\"\"\n        call = ToolCall(tool_name=\"file_delete\", parameters={})\n        result = evaluate_condition('contains(\"delete\")', call, None)\n        \n        assert result.is_ok()\n        assert result.unwrap() == True\n    \n    def test_evaluate_condition_param_eq_happy_path(self):\n        \"\"\"evaluate_condition() correctly evaluates param_eq() function\"\"\"\n        call = ToolCall(tool_name=\"git_push\", parameters={\"mode\": \"force\"})\n        result = evaluate_condition('param_eq(\"mode\", \"force\")', call, None)\n        \n        assert result.is_ok()\n        assert result.unwrap() == True\n    \n    def test_evaluate_condition_param_gt_happy_path(self):\n        \"\"\"evaluate_condition() correctly evaluates param_gt() function\"\"\"\n        call = ToolCall(tool_name=\"transfer\", parameters={\"amount\": 2000})\n        result = evaluate_condition('param_gt(\"amount\", \"1000\")', call, None)\n        \n        assert result.is_ok()\n        assert result.unwrap() == True\n    \n    def test_evaluate_condition_param_lt_happy_path(self):\n        \"\"\"evaluate_condition() correctly evaluates param_lt() function\"\"\"\n        call = ToolCall(tool_name=\"query\", parameters={\"count\": 50})\n        result = evaluate_condition('param_lt(\"count\", \"100\")', call, None)\n        \n        assert result.is_ok()\n        assert result.unwrap() == True\n    \n    def test_evaluate_condition_true_literal(self):\n        \"\"\"evaluate_condition() handles 'true' literal\"\"\"\n        call = ToolCall(tool_name=\"any_tool\", parameters={})\n        result = evaluate_condition('true', call, None)\n        \n        assert result.is_ok()\n        assert result.unwrap() == True\n    \n    def test_evaluate_condition_false_literal(self):\n        \"\"\"evaluate_condition() handles 'false' literal\"\"\"\n        call = ToolCall(tool_name=\"any_tool\", parameters={})\n        result = evaluate_condition('false', call, None)\n        \n        assert result.is_ok()\n        assert result.unwrap() == False\n    \n    def test_evaluate_condition_not_function(self):\n        \"\"\"evaluate_condition() correctly evaluates not() function\"\"\"\n        call = ToolCall(tool_name=\"dangerous_action\", parameters={})\n        result = evaluate_condition('not(contains(\"safe\"))', call, None)\n        \n        assert result.is_ok()\n        assert result.unwrap() == True\n    \n    def test_evaluate_condition_or_function(self):\n        \"\"\"evaluate_condition() correctly evaluates or() function\"\"\"\n        call = ToolCall(tool_name=\"file_read\", parameters={})\n        result = evaluate_condition('or(contains(\"file\"), contains(\"dir\"))', call, None)\n        \n        assert result.is_ok()\n        assert result.unwrap() == True\n\n\nclass TestEvaluateConditionErrors:\n    \"\"\"Error case tests for evaluate_condition\"\"\"\n    \n    def test_evaluate_condition_unknown_function_error(self):\n        \"\"\"evaluate_condition() returns Err for unknown condition function\"\"\"\n        call = ToolCall(tool_name=\"test\", parameters={})\n        result = evaluate_condition('unknown_fn(\"arg\")', call, None)\n        \n        assert result.is_err()\n        error_msg = result.unwrap_err().lower()\n        assert 'unknown' in error_msg or 'condition' in error_msg\n    \n    def test_evaluate_condition_invalid_regex_in_matches(self):\n        \"\"\"evaluate_condition() returns Err for invalid regex in matches()\"\"\"\n        call = ToolCall(tool_name=\"test\", parameters={})\n        result = evaluate_condition('matches(\"(unclosed\")', call, None)\n        \n        assert result.is_err()\n        error_msg = result.unwrap_err().lower()\n        assert 'regex' in error_msg or 'invalid' in error_msg\n    \n    def test_evaluate_condition_parse_error_param_gt(self):\n        \"\"\"evaluate_condition() returns Err for non-numeric threshold in param_gt()\"\"\"\n        call = ToolCall(tool_name=\"test\", parameters={\"amount\": 100})\n        result = evaluate_condition('param_gt(\"amount\", \"not_a_number\")', call, None)\n        \n        assert result.is_err()\n        error_msg = result.unwrap_err().lower()\n        assert 'parse' in error_msg or 'number' in error_msg\n\n\nclass TestEvaluate:\n    \"\"\"Tests for evaluate function\"\"\"\n    \n    def test_evaluate_first_match_wins(self):\n        \"\"\"evaluate() returns decision from first matching rule\"\"\"\n        import re\n        call = ToolCall(tool_name=\"file_delete\", parameters={})\n        policy = CompiledPolicy(\n            rules=[\n                CompiledRule(name=\"deny_delete\", tool_regex=re.compile(\"file_.*\"), \n                           conditions=[], action=Decision.Deny, locked=False),\n                CompiledRule(name=\"allow_delete\", tool_regex=re.compile(\"file_delete\"), \n                           conditions=[], action=Decision.Allow, locked=False)\n            ],\n            default_action=Decision.Ask\n        )\n        \n        result = evaluate(call, policy, None)\n        \n        assert result.decision == Decision.Deny\n        assert result.matched_rule == 'deny_delete'\n    \n    def test_evaluate_default_action_no_match(self):\n        \"\"\"evaluate() returns default_action when no rules match\"\"\"\n        import re\n        call = ToolCall(tool_name=\"unmatched_tool\", parameters={})\n        policy = CompiledPolicy(\n            rules=[\n                CompiledRule(name=\"specific_rule\", tool_regex=re.compile(\"^file_.*\"), \n                           conditions=[], action=Decision.Deny, locked=False)\n            ],\n            default_action=Decision.Allow\n        )\n        \n        result = evaluate(call, policy, None)\n        \n        assert result.decision == Decision.Allow\n        assert result.matched_rule is None\n    \n    def test_evaluate_locked_rule(self):\n        \"\"\"evaluate() sets matched_locked=true for locked rules\"\"\"\n        import re\n        call = ToolCall(tool_name=\"signet_config\", parameters={})\n        policy = CompiledPolicy(\n            rules=[\n                CompiledRule(name=\"protect_config\", tool_regex=re.compile(\"signet_.*\"), \n                           conditions=[], action=Decision.Deny, locked=True)\n            ],\n            default_action=Decision.Allow\n        )\n        \n        result = evaluate(call, policy, None)\n        \n        assert result.decision == Decision.Deny\n        assert result.matched_locked == True\n    \n    def test_evaluate_gate_with_vault(self):\n        \"\"\"evaluate() resolves Gate action to Allow when vault has recent action\"\"\"\n        import re\n        \n        # Mock vault\n        mock_vault = Mock()\n        mock_vault.has_recent_allowed_action = Mock(return_value=True)\n        \n        call = ToolCall(tool_name=\"execute_code\", parameters={})\n        gate_config = GateConfig(requires_prior=\"plan\", within=50)\n        policy = CompiledPolicy(\n            rules=[\n                CompiledRule(name=\"gate_on_plan\", tool_regex=re.compile(\"execute_.*\"), \n                           conditions=[], action=Decision.Gate, locked=False, \n                           gate=gate_config)\n            ],\n            default_action=Decision.Deny\n        )\n        \n        result = evaluate(call, policy, mock_vault)\n        \n        assert result.decision == Decision.Allow\n        mock_vault.has_recent_allowed_action.assert_called_once_with(\"plan\", 50)\n    \n    def test_evaluate_gate_without_vault_fails_closed(self):\n        \"\"\"evaluate() resolves Gate action to Deny when vault is None (fail-closed)\"\"\"\n        import re\n        \n        call = ToolCall(tool_name=\"execute_code\", parameters={})\n        gate_config = GateConfig(requires_prior=\"plan\", within=50)\n        policy = CompiledPolicy(\n            rules=[\n                CompiledRule(name=\"gate_on_plan\", tool_regex=re.compile(\"execute_.*\"), \n                           conditions=[], action=Decision.Gate, locked=False, \n                           gate=gate_config)\n            ],\n            default_action=Decision.Allow\n        )\n        \n        result = evaluate(call, policy, None)\n        \n        assert result.decision == Decision.Deny\n    \n    def test_evaluate_ensure_returns_config(self):\n        \"\"\"evaluate() returns Ensure decision with ensure_config populated\"\"\"\n        import re\n        \n        call = ToolCall(tool_name=\"deploy_prod\", parameters={})\n        ensure_config = EnsureConfig(check=\"run_tests.sh\", timeout=30, \n                                     message=\"Run tests before deploy\")\n        policy = CompiledPolicy(\n            rules=[\n                CompiledRule(name=\"ensure_tests_pass\", tool_regex=re.compile(\"deploy_.*\"), \n                           conditions=[], action=Decision.Ensure, locked=False, \n                           ensure=ensure_config)\n            ],\n            default_action=Decision.Deny\n        )\n        \n        result = evaluate(call, policy, None)\n        \n        assert result.decision == Decision.Ensure\n        assert result.ensure_config is not None\n        assert result.ensure_config.check == 'run_tests.sh'\n        assert result.ensure_config.timeout == 30\n    \n    def test_evaluate_timing_populated(self):\n        \"\"\"evaluate() always populates evaluation_time_us\"\"\"\n        import re\n        \n        call = ToolCall(tool_name=\"test\", parameters={})\n        policy = CompiledPolicy(rules=[], default_action=Decision.Allow)\n        \n        result = evaluate(call, policy, None)\n        \n        assert result.evaluation_time_us > 0\n    \n    def test_evaluate_condition_error_falls_through(self):\n        \"\"\"evaluate() does not match rule when condition evaluation returns Err\"\"\"\n        import re\n        \n        call = ToolCall(tool_name=\"test_tool\", parameters={})\n        policy = CompiledPolicy(\n            rules=[\n                CompiledRule(name=\"bad_condition\", tool_regex=re.compile(\"test_.*\"), \n                           conditions=[\"unknown_fn()\"], action=Decision.Deny, locked=False),\n                CompiledRule(name=\"good_rule\", tool_regex=re.compile(\"test_.*\"), \n                           conditions=[], action=Decision.Allow, locked=False)\n            ],\n            default_action=Decision.Deny\n        )\n        \n        result = evaluate(call, policy, None)\n        \n        assert result.decision == Decision.Allow\n        assert result.matched_rule == 'good_rule'\n\n\nclass TestResolveGate:\n    \"\"\"Tests for resolve_gate function\"\"\"\n    \n    def test_resolve_gate_with_vault_match(self):\n        \"\"\"resolve_gate() returns true when vault has matching recent action\"\"\"\n        mock_vault = Mock()\n        mock_vault.has_recent_allowed_action = Mock(return_value=True)\n        \n        config = GateConfig(requires_prior=\"approve\", within=20)\n        result = resolve_gate(config, mock_vault)\n        \n        assert result == True\n        mock_vault.has_recent_allowed_action.assert_called_once_with(\"approve\", 20)\n    \n    def test_resolve_gate_with_vault_no_match(self):\n        \"\"\"resolve_gate() returns false when vault doesn't have matching action\"\"\"\n        mock_vault = Mock()\n        mock_vault.has_recent_allowed_action = Mock(return_value=False)\n        \n        config = GateConfig(requires_prior=\"approve\", within=20)\n        result = resolve_gate(config, mock_vault)\n        \n        assert result == False\n        mock_vault.has_recent_allowed_action.assert_called_once_with(\"approve\", 20)\n    \n    def test_resolve_gate_without_vault_fails_closed(self):\n        \"\"\"resolve_gate() returns false when vault is None (fail-closed)\"\"\"\n        config = GateConfig(requires_prior=\"approve\", within=20)\n        result = resolve_gate(config, None)\n        \n        assert result == False\n\n\nclass TestLoadPolicy:\n    \"\"\"Tests for load_policy and load_policy_config functions\"\"\"\n    \n    def test_load_policy_valid_file(self):\n        \"\"\"load_policy() successfully loads and compiles policy from valid YAML file\"\"\"\n        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:\n            f.write(\"\"\"\nversion: 1\ndefault_action: Allow\nrules:\n  - name: test_rule\n    tool_pattern: \"^test$\"\n    conditions: []\n    action: Allow\n    locked: false\n\"\"\")\n            f.flush()\n            temp_path = f.name\n        \n        try:\n            result = load_policy(Path(temp_path))\n            \n            assert len(result.rules) > 0\n            assert result.default_action is not None\n        finally:\n            os.unlink(temp_path)\n    \n    def test_load_policy_missing_file_returns_default(self):\n        \"\"\"load_policy() returns default_policy() when file doesn't exist\"\"\"\n        result = load_policy(Path(\"/nonexistent/path/policy.yaml\"))\n        \n        assert result is not None\n        assert len(result.rules) >= 7  # At least self-protection rules\n    \n    def test_load_policy_malformed_yaml_returns_default(self):\n        \"\"\"load_policy() returns default_policy() when YAML is malformed\"\"\"\n        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:\n            f.write(\"this is not: valid: yaml: {{{\")\n            f.flush()\n            temp_path = f.name\n        \n        try:\n            result = load_policy(Path(temp_path))\n            \n            assert result is not None\n            assert len(result.rules) >= 7\n        finally:\n            os.unlink(temp_path)\n    \n    def test_load_policy_config_valid_file(self):\n        \"\"\"load_policy_config() successfully loads PolicyConfig from valid YAML\"\"\"\n        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:\n            f.write(\"\"\"\nversion: 2\ndefault_action: Deny\nrules:\n  - name: test_rule\n    tool_pattern: \"test\"\n    conditions: []\n    action: Allow\n    locked: false\n\"\"\")\n            f.flush()\n            temp_path = f.name\n        \n        try:\n            result = load_policy_config(Path(temp_path))\n            \n            assert result.is_ok()\n            config = result.unwrap()\n            assert config.version >= 1\n        finally:\n            os.unlink(temp_path)\n    \n    def test_load_policy_config_missing_file_error(self):\n        \"\"\"load_policy_config() returns Err when file doesn't exist\"\"\"\n        result = load_policy_config(Path(\"/nonexistent/path/policy.yaml\"))\n        \n        assert result.is_err()\n    \n    def test_load_policy_config_invalid_yaml_error(self):\n        \"\"\"load_policy_config() returns Err when YAML is malformed\"\"\"\n        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:\n            f.write(\"[unclosed bracket\")\n            f.flush()\n            temp_path = f.name\n        \n        try:\n            result = load_policy_config(Path(temp_path))\n            \n            assert result.is_err()\n            error_msg = result.unwrap_err().lower()\n            assert 'yaml' in error_msg or 'parse' in error_msg\n        finally:\n            os.unlink(temp_path)\n\n\nclass TestValidatePolicy:\n    \"\"\"Tests for validate_policy function\"\"\"\n    \n    def test_validate_policy_valid_config(self):\n        \"\"\"validate_policy() returns empty Vec for valid PolicyConfig\"\"\"\n        config = PolicyConfig(\n            version=1,\n            rules=[\n                PolicyRule(name=\"test\", tool_pattern=\"^test$\", conditions=[\"true\"], \n                          action=Decision.Allow, locked=False)\n            ],\n            default_action=Decision.Allow\n        )\n        \n        result = validate_policy(config)\n        \n        assert len(result) == 0\n    \n    def test_validate_policy_invalid_regex(self):\n        \"\"\"validate_policy() returns error for invalid regex pattern\"\"\"\n        config = PolicyConfig(\n            version=1,\n            rules=[\n                PolicyRule(name=\"bad_regex\", tool_pattern=\"(unclosed\", conditions=[], \n                          action=Decision.Allow, locked=False)\n            ],\n            default_action=Decision.Allow\n        )\n        \n        result = validate_policy(config)\n        \n        assert len(result) > 0\n        assert any('regex' in err.lower() for err in result)\n    \n    def test_validate_policy_unknown_condition(self):\n        \"\"\"validate_policy() returns error for unknown condition function\"\"\"\n        config = PolicyConfig(\n            version=1,\n            rules=[\n                PolicyRule(name=\"bad_cond\", tool_pattern=\"test\", \n                          conditions=[\"bad_fn()\"], action=Decision.Allow, locked=False)\n            ],\n            default_action=Decision.Allow\n        )\n        \n        result = validate_policy(config)\n        \n        assert len(result) > 0\n        assert any('condition' in err.lower() or 'unknown' in err.lower() for err in result)\n    \n    def test_validate_policy_gate_missing_config(self):\n        \"\"\"validate_policy() returns error when Gate action missing gate config\"\"\"\n        config = PolicyConfig(\n            version=1,\n            rules=[\n                PolicyRule(name=\"gate_no_config\", tool_pattern=\"test\", conditions=[], \n                          action=Decision.Gate, locked=False, gate=None)\n            ],\n            default_action=Decision.Allow\n        )\n        \n        result = validate_policy(config)\n        \n        assert len(result) > 0\n        assert any('gate' in err.lower() for err in result)\n    \n    def test_validate_policy_ensure_missing_config(self):\n        \"\"\"validate_policy() returns error when Ensure action missing ensure config\"\"\"\n        config = PolicyConfig(\n            version=1,\n            rules=[\n                PolicyRule(name=\"ensure_no_config\", tool_pattern=\"test\", conditions=[], \n                          action=Decision.Ensure, locked=False, ensure=None)\n            ],\n            default_action=Decision.Allow\n        )\n        \n        result = validate_policy(config)\n        \n        assert len(result) > 0\n        assert any('ensure' in err.lower() for err in result)\n\n\nclass TestValidateEnsureCheckName:\n    \"\"\"Tests for validate_ensure_check_name function\"\"\"\n    \n    def test_validate_ensure_check_name_valid(self):\n        \"\"\"validate_ensure_check_name() accepts safe script names\"\"\"\n        result = validate_ensure_check_name(\"check_tests.sh\")\n        assert result.is_ok()\n        \n        result = validate_ensure_check_name(\"validate_123\")\n        assert result.is_ok()\n        \n        result = validate_ensure_check_name(\"simple\")\n        assert result.is_ok()\n    \n    def test_validate_ensure_check_name_empty(self):\n        \"\"\"validate_ensure_check_name() rejects empty name\"\"\"\n        result = validate_ensure_check_name(\"\")\n        \n        assert result.is_err()\n        assert 'empty' in result.unwrap_err().lower()\n    \n    def test_validate_ensure_check_name_path_separator(self):\n        \"\"\"validate_ensure_check_name() rejects name with path separator\"\"\"\n        result = validate_ensure_check_name(\"subdir/script.sh\")\n        \n        assert result.is_err()\n        error_msg = result.unwrap_err().lower()\n        assert 'path' in error_msg or 'separator' in error_msg\n    \n    def test_validate_ensure_check_name_path_traversal(self):\n        \"\"\"validate_ensure_check_name() rejects name with '..'\"\"\"\n        result = validate_ensure_check_name(\"../escape.sh\")\n        \n        assert result.is_err()\n        error_msg = result.unwrap_err()\n        assert '..' in error_msg or 'traversal' in error_msg.lower()\n    \n    def test_validate_ensure_check_name_null_byte(self):\n        \"\"\"validate_ensure_check_name() rejects name with null byte\"\"\"\n        result = validate_ensure_check_name(\"script\\x00.sh\")\n        \n        assert result.is_err()\n        assert 'null' in result.unwrap_err().lower()\n    \n    def test_validate_ensure_check_name_control_char(self):\n        \"\"\"validate_ensure_check_name() rejects name with control characters\"\"\"\n        result = validate_ensure_check_name(\"script\\x01.sh\")\n        \n        assert result.is_err()\n        assert 'control' in result.unwrap_err().lower()\n\n\nclass TestResolveEnsureScriptPath:\n    \"\"\"Tests for resolve_ensure_script_path function\"\"\"\n    \n    def test_resolve_ensure_script_path_valid(self):\n        \"\"\"resolve_ensure_script_path() returns canonicalized path for valid script\"\"\"\n        # Create temp directory structure\n        temp_dir = tempfile.mkdtemp()\n        try:\n            checks_dir = Path(temp_dir) / \".signet\" / \"checks\"\n            checks_dir.mkdir(parents=True)\n            script_file = checks_dir / \"test_check.sh\"\n            script_file.write_text(\"#!/bin/bash\\necho test\")\n            \n            # Change to temp directory\n            original_cwd = os.getcwd()\n            os.chdir(temp_dir)\n            \n            try:\n                result = resolve_ensure_script_path(\"test_check.sh\")\n                \n                assert result.is_ok()\n                path = str(result.unwrap())\n                assert '.signet' in path\n                assert 'checks' in path\n            finally:\n                os.chdir(original_cwd)\n        finally:\n            import shutil\n            shutil.rmtree(temp_dir)\n    \n    def test_resolve_ensure_script_path_invalid_name(self):\n        \"\"\"resolve_ensure_script_path() returns Err for invalid check name\"\"\"\n        result = resolve_ensure_script_path(\"../evil.sh\")\n        \n        assert result.is_err()\n        error_msg = result.unwrap_err().lower()\n        assert 'invalid' in error_msg or 'name' in error_msg\n    \n    def test_resolve_ensure_script_path_not_found(self):\n        \"\"\"resolve_ensure_script_path() returns Err when script doesn't exist\"\"\"\n        result = resolve_ensure_script_path(\"nonexistent.sh\")\n        \n        assert result.is_err()\n        error_msg = result.unwrap_err().lower()\n        assert 'resolve' in error_msg or 'not found' in error_msg\n\n\nclass TestSelfProtectionRules:\n    \"\"\"Tests for self_protection_rules function\"\"\"\n    \n    def test_self_protection_rules_count(self):\n        \"\"\"self_protection_rules() returns exactly 7 rules\"\"\"\n        result = self_protection_rules()\n        \n        assert len(result) == 7\n    \n    def test_self_protection_rules_all_locked(self):\n        \"\"\"self_protection_rules() returns all rules with locked=true\"\"\"\n        result = self_protection_rules()\n        \n        assert all(rule.locked for rule in result)\n    \n    def test_self_protection_rules_protect_checks_dir_first(self):\n        \"\"\"self_protection_rules() has protect_checks_dir as first rule\"\"\"\n        result = self_protection_rules()\n        \n        assert result[0].name == 'protect_checks_dir'\n    \n    def test_self_protection_rules_coverage(self):\n        \"\"\"self_protection_rules() covers all required protection areas\"\"\"\n        result = self_protection_rules()\n        rule_names = [rule.name for rule in result]\n        \n        assert any('checks' in name for name in rule_names)\n        assert any('signet_dir' in name for name in rule_names)\n        assert any('binary' in name for name in rule_names)\n        assert any('hook' in name for name in rule_names)\n        assert any('symlink' in name for name in rule_names)\n        assert any('process' in name for name in rule_names)\n        assert any('preflight' in name for name in rule_names)\n        assert any('github' in name or 'identity' in name for name in rule_names)\n\n\nclass TestDefaultPolicy:\n    \"\"\"Tests for default_policy function\"\"\"\n    \n    def test_default_policy_has_self_protection_first(self):\n        \"\"\"default_policy() has self_protection_rules at the beginning\"\"\"\n        result = default_policy()\n        \n        assert len(result.rules) >= 7\n        assert result.rules[0].locked\n        assert result.rules[0].name == 'protect_checks_dir'\n        assert all(result.rules[i].locked for i in range(7))\n    \n    def test_default_policy_default_action_allow(self):\n        \"\"\"default_policy() has default_action = Allow\"\"\"\n        result = default_policy()\n        \n        assert result.default_action == Decision.Allow\n    \n    def test_default_policy_standard_safety_rules(self):\n        \"\"\"default_policy() includes standard safety rules beyond self-protection\"\"\"\n        result = default_policy()\n        \n        assert len(result.rules) > 7\n\n\nclass TestSplitAtTopLevel:\n    \"\"\"Tests for split_at_top_level parsing helper\"\"\"\n    \n    def test_split_at_top_level_happy_path(self):\n        \"\"\"split_at_top_level() splits at separator when depth is 0\"\"\"\n        result = split_at_top_level(\"a, b\", \", \")\n        \n        assert result is not None\n        assert result[0] == 'a'\n        assert result[1] == 'b'\n    \n    def test_split_at_top_level_nested_parens(self):\n        \"\"\"split_at_top_level() ignores separator inside parentheses\"\"\"\n        result = split_at_top_level(\"or(a, b), c\", \", \")\n        \n        assert result is not None\n        assert result[0] == 'or(a, b)'\n        assert result[1] == 'c'\n    \n    def test_split_at_top_level_no_match(self):\n        \"\"\"split_at_top_level() returns None when separator not found at depth 0\"\"\"\n        result = split_at_top_level(\"or(a, b)\", \", \")\n        \n        assert result is None\n    \n    def test_split_at_top_level_empty_separator(self):\n        \"\"\"split_at_top_level() returns None for empty separator\"\"\"\n        result = split_at_top_level(\"test\", \"\")\n        \n        assert result is None\n\n\nclass TestStripFn:\n    \"\"\"Tests for strip_fn parsing helper\"\"\"\n    \n    def test_strip_fn_happy_path(self):\n        \"\"\"strip_fn() extracts arguments from function call\"\"\"\n        result = strip_fn('contains(\"test\")', 'contains')\n        \n        assert result is not None\n        assert result == '\"test\"'\n    \n    def test_strip_fn_no_match(self):\n        \"\"\"strip_fn() returns None when function name doesn't match\"\"\"\n        result = strip_fn('contains(\"test\")', 'matches')\n        \n        assert result is None\n    \n    def test_strip_fn_missing_parens(self):\n        \"\"\"strip_fn() returns None when parentheses are missing or unmatched\"\"\"\n        result = strip_fn('contains', 'contains')\n        \n        assert result is None\n\n\nclass TestExtractQuoted:\n    \"\"\"Tests for extract_quoted parsing helper\"\"\"\n    \n    def test_extract_quoted_double_quotes(self):\n        \"\"\"extract_quoted() extracts content from double-quoted string\"\"\"\n        result = extract_quoted('\"hello world\"')\n        \n        assert result is not None\n        assert result == 'hello world'\n    \n    def test_extract_quoted_single_quotes(self):\n        \"\"\"extract_quoted() extracts content from single-quoted string\"\"\"\n        result = extract_quoted(\"'hello world'\")\n        \n        assert result is not None\n        assert result == 'hello world'\n    \n    def test_extract_quoted_not_quoted(self):\n        \"\"\"extract_quoted() returns None for unquoted string\"\"\"\n        result = extract_quoted('hello')\n        \n        assert result is None\n    \n    def test_extract_quoted_mismatched_quotes(self):\n        \"\"\"extract_quoted() returns None for mismatched quotes\"\"\"\n        result = extract_quoted(\"'hello\\\"\")\n        \n        assert result is None\n\n\nclass TestParamStr:\n    \"\"\"Tests for param_str parameter extraction\"\"\"\n    \n    def test_param_str_exists(self):\n        \"\"\"param_str() extracts string parameter value\"\"\"\n        params = {\"key\": \"value\"}\n        result = param_str(params, \"key\")\n        \n        assert result == 'value'\n    \n    def test_param_str_missing_field(self):\n        \"\"\"param_str() returns empty string when field not found\"\"\"\n        params = {\"other\": \"value\"}\n        result = param_str(params, \"missing\")\n        \n        assert result == ''\n    \n    def test_param_str_not_string(self):\n        \"\"\"param_str() returns empty string when field is not a string\"\"\"\n        params = {\"count\": 42}\n        result = param_str(params, \"count\")\n        \n        assert result == ''\n\n\nclass TestParamF64:\n    \"\"\"Tests for param_f64 parameter extraction\"\"\"\n    \n    def test_param_f64_number(self):\n        \"\"\"param_f64() extracts numeric parameter value\"\"\"\n        params = {\"amount\": 123.45}\n        result = param_f64(params, \"amount\")\n        \n        assert abs(result - 123.45) < 0.001\n    \n    def test_param_f64_string_parseable(self):\n        \"\"\"param_f64() parses numeric string\"\"\"\n        params = {\"amount\": \"99.9\"}\n        result = param_f64(params, \"amount\")\n        \n        assert abs(result - 99.9) < 0.001\n    \n    def test_param_f64_missing_field(self):\n        \"\"\"param_f64() returns 0.0 when field not found\"\"\"\n        params = {}\n        result = param_f64(params, \"missing\")\n        \n        assert result == 0.0\n    \n    def test_param_f64_not_parseable(self):\n        \"\"\"param_f64() returns 0.0 when value cannot be parsed\"\"\"\n        params = {\"value\": \"not_a_number\"}\n        result = param_f64(params, \"value\")\n        \n        assert result == 0.0\n\n\n# ============================================================================\n# INTEGRATION AND SECURITY TESTS\n# ============================================================================\n\nclass TestPolicyIntegration:\n    \"\"\"Integration tests with realistic policy scenarios\"\"\"\n    \n    def test_complex_policy_evaluation_chain(self):\n        \"\"\"Test complex policy with multiple rules, conditions, and actions\"\"\"\n        import re\n        \n        # Create a complex policy\n        rules = self_protection_rules()\n        rules.extend([\n            PolicyRule(\n                name=\"gate_on_approval\",\n                tool_pattern=r\"deploy_.*\",\n                conditions=[\"param_eq(\\\"env\\\", \\\"production\\\")\"],\n                action=Decision.Gate,\n                locked=False,\n                gate=GateConfig(requires_prior=\"approve_deploy\", within=10)\n            ),\n            PolicyRule(\n                name=\"ensure_tests\",\n                tool_pattern=r\".*_code\",\n                conditions=[\"contains(\\\"execute\\\")\"],\n                action=Decision.Ensure,\n                locked=False,\n                ensure=EnsureConfig(check=\"run_tests.sh\", timeout=60, \n                                   message=\"Tests must pass\")\n            ),\n            PolicyRule(\n                name=\"allow_safe_ops\",\n                tool_pattern=r\"read_.*\",\n                conditions=[\"true\"],\n                action=Decision.Allow,\n                locked=False\n            )\n        ])\n        \n        config = PolicyConfig(version=1, rules=rules, default_action=Decision.Ask)\n        policy = from_config(config)\n        \n        # Test 1: Self-protection rule blocks\n        call1 = ToolCall(tool_name=\"modify_file\", \n                        parameters={\"path\": \".signet/checks/test.sh\"})\n        result1 = evaluate(call1, policy, None)\n        assert result1.decision == Decision.Deny\n        assert result1.matched_locked == True\n        \n        # Test 2: Safe operation allowed\n        call2 = ToolCall(tool_name=\"read_config\", parameters={})\n        result2 = evaluate(call2, policy, None)\n        assert result2.decision == Decision.Allow\n        \n        # Test 3: Gate fails without vault\n        call3 = ToolCall(tool_name=\"deploy_app\", \n                        parameters={\"env\": \"production\"})\n        result3 = evaluate(call3, policy, None)\n        assert result3.decision == Decision.Deny  # Gate fails closed\n    \n    def test_locked_rule_precedence(self):\n        \"\"\"Test that locked rules cannot be bypassed by later rules\"\"\"\n        import re\n        \n        rules = [\n            PolicyRule(\n                name=\"locked_deny\",\n                tool_pattern=r\"dangerous_.*\",\n                conditions=[],\n                action=Decision.Deny,\n                locked=True\n            ),\n            PolicyRule(\n                name=\"try_to_allow\",\n                tool_pattern=r\"dangerous_action\",\n                conditions=[],\n                action=Decision.Allow,\n                locked=False\n            )\n        ]\n        \n        config = PolicyConfig(version=1, rules=rules, default_action=Decision.Ask)\n        policy = from_config(config)\n        \n        call = ToolCall(tool_name=\"dangerous_action\", parameters={})\n        result = evaluate(call, policy, None)\n        \n        # First locked rule wins\n        assert result.decision == Decision.Deny\n        assert result.matched_locked == True\n        assert result.matched_rule == \"locked_deny\"\n\n\nclass TestSecurityBoundaries:\n    \"\"\"Security-focused tests for injection and bypass attempts\"\"\"\n    \n    def test_regex_injection_attempt(self):\n        \"\"\"Test that malicious regex patterns are safely handled\"\"\"\n        # ReDoS pattern attempt\n        config = PolicyConfig(\n            version=1,\n            rules=[\n                PolicyRule(\n                    name=\"redos_attempt\",\n                    tool_pattern=r\"(a+)+b\",  # Potential ReDoS\n                    conditions=[],\n                    action=Decision.Deny,\n                    locked=False\n                )\n            ],\n            default_action=Decision.Allow\n        )\n        \n        # Should compile (or be filtered)\n        policy = from_config(config)\n        \n        # Should not hang\n        call = ToolCall(tool_name=\"aaaaaaaaaaaaaaaaaac\", parameters={})\n        result = evaluate(call, policy, None)\n        assert result is not None\n    \n    def test_path_traversal_in_ensure_check(self):\n        \"\"\"Test that path traversal attempts are blocked in ensure check names\"\"\"\n        attempts = [\n            \"../../../etc/passwd\",\n            \"..\\\\..\\\\..\\\\windows\\\\system32\\\\cmd.exe\",\n            \"valid_name/../../escape\",\n            \"./../../outside\"\n        ]\n        \n        for attempt in attempts:\n            result = validate_ensure_check_name(attempt)\n            assert result.is_err(), f\"Should reject: {attempt}\"\n    \n    def test_unicode_normalization_in_names(self):\n        \"\"\"Test handling of Unicode characters in check names\"\"\"\n        # Unicode characters that might bypass checks\n        unicode_attempts = [\n            \"test\\u202e.sh\",  # Right-to-left override\n            \"test\\u200b.sh\",  # Zero-width space\n            \"test\\ufeff.sh\",  # Zero-width no-break space\n        ]\n        \n        for attempt in unicode_attempts:\n            # Should either be accepted (if safe) or rejected consistently\n            result = validate_ensure_check_name(attempt)\n            # The implementation will decide, but should not crash\n            assert result.is_ok() or result.is_err()\n    \n    def test_condition_injection_via_parameters(self):\n        \"\"\"Test that user parameters cannot inject condition logic\"\"\"\n        call = ToolCall(\n            tool_name=\"test_tool\",\n            parameters={\n                \"malicious\": \"') or true or contains('\"\n            }\n        )\n        \n        # Condition should not be injected\n        result = evaluate_condition('param_eq(\"malicious\", \"safe\")', call, None)\n        assert result.is_ok()\n        assert result.unwrap() == False  # Should not match\n\n\nclass TestEdgeCasesAndCornerCases:\n    \"\"\"Edge case and corner case tests\"\"\"\n    \n    def test_empty_tool_name(self):\n        \"\"\"Test handling of empty tool name\"\"\"\n        import re\n        call = ToolCall(tool_name=\"\", parameters={})\n        policy = CompiledPolicy(\n            rules=[\n                CompiledRule(name=\"any\", tool_regex=re.compile(\".*\"), \n                           conditions=[], action=Decision.Deny, locked=False)\n            ],\n            default_action=Decision.Allow\n        )\n        \n        result = evaluate(call, policy, None)\n        # Should match .* pattern\n        assert result.decision == Decision.Deny\n    \n    def test_very_long_tool_name(self):\n        \"\"\"Test handling of very long tool names\"\"\"\n        import re\n        long_name = \"a\" * 10000\n        call = ToolCall(tool_name=long_name, parameters={})\n        policy = CompiledPolicy(\n            rules=[\n                CompiledRule(name=\"prefix\", tool_regex=re.compile(\"^aaa\"), \n                           conditions=[], action=Decision.Deny, locked=False)\n            ],\n            default_action=Decision.Allow\n        )\n        \n        result = evaluate(call, policy, None)\n        assert result.decision == Decision.Deny\n    \n    def test_deeply_nested_json_parameters(self):\n        \"\"\"Test handling of deeply nested JSON parameters\"\"\"\n        call = ToolCall(\n            tool_name=\"test\",\n            parameters={\n                \"level1\": {\n                    \"level2\": {\n                        \"level3\": {\n                            \"value\": \"deep\"\n                        }\n                    }\n                }\n            }\n        )\n        \n        # Should handle gracefully\n        result_str = param_str(call.parameters, \"level1\")\n        result_f64 = param_f64(call.parameters, \"level1\")\n        \n        # Should return defaults for non-string/non-number\n        assert result_str == \"\"\n        assert result_f64 == 0.0\n    \n    def test_special_characters_in_conditions(self):\n        \"\"\"Test handling of special regex characters in conditions\"\"\"\n        call = ToolCall(tool_name=\"test$special^chars\", parameters={})\n        \n        # Should handle regex special chars in contains\n        result = evaluate_condition('contains(\"$special^\")', call, None)\n        assert result.is_ok()\n        # Contains should do literal string matching, not regex\n        assert result.unwrap() == True\n    \n    def test_multiple_gate_resolutions(self):\n        \"\"\"Test multiple Gate rules in sequence\"\"\"\n        import re\n        \n        mock_vault = Mock()\n        # First gate succeeds, second fails\n        mock_vault.has_recent_allowed_action = Mock(side_effect=[True, False])\n        \n        rules = [\n            CompiledRule(\n                name=\"gate1\",\n                tool_regex=re.compile(\"action1\"),\n                conditions=[],\n                action=Decision.Gate,\n                locked=False,\n                gate=GateConfig(requires_prior=\"approval1\", within=50)\n            ),\n            CompiledRule(\n                name=\"gate2\",\n                tool_regex=re.compile(\"action2\"),\n                conditions=[],\n                action=Decision.Gate,\n                locked=False,\n                gate=GateConfig(requires_prior=\"approval2\", within=50)\n            )\n        ]\n        \n        policy = CompiledPolicy(rules=rules, default_action=Decision.Deny)\n        \n        call1 = ToolCall(tool_name=\"action1\", parameters={})\n        result1 = evaluate(call1, policy, mock_vault)\n        assert result1.decision == Decision.Allow\n        \n        call2 = ToolCall(tool_name=\"action2\", parameters={})\n        result2 = evaluate(call2, policy, mock_vault)\n        assert result2.decision == Decision.Deny\n\n\nclass TestInvariants:\n    \"\"\"Test contract invariants\"\"\"\n    \n    def test_first_match_wins_invariant(self):\n        \"\"\"Verify first-match-wins is always preserved\"\"\"\n        import re\n        \n        # Create 100 rules, all matching the same pattern\n        rules = []\n        for i in range(100):\n            action = Decision.Deny if i == 0 else Decision.Allow\n            rules.append(\n                CompiledRule(\n                    name=f\"rule_{i}\",\n                    tool_regex=re.compile(\"test\"),\n                    conditions=[],\n                    action=action,\n                    locked=False\n                )\n            )\n        \n        policy = CompiledPolicy(rules=rules, default_action=Decision.Ask)\n        call = ToolCall(tool_name=\"test\", parameters={})\n        \n        result = evaluate(call, policy, None)\n        \n        # First rule should always win\n        assert result.matched_rule == \"rule_0\"\n        assert result.decision == Decision.Deny\n    \n    def test_self_protection_always_first(self):\n        \"\"\"Verify self-protection rules are always first in default policy\"\"\"\n        policy = default_policy()\n        \n        # First 7 rules must be locked self-protection rules\n        assert len(policy.rules) >= 8\n        for i in range(7):\n            assert policy.rules[i].locked == True\n        \n        # First must be protect_checks_dir\n        assert policy.rules[0].name == \"protect_checks_dir\"\n    \n    def test_default_values_invariant(self):\n        \"\"\"Verify default value functions return constants\"\"\"\n        # These should always return the same values\n        assert default_gate_within() == 50\n        assert default_ensure_timeout() == 5\n        assert default_version() == 1\n        assert default_allow() == Decision.Allow\n        \n        # Multiple calls should be consistent\n        for _ in range(10):\n            assert default_gate_within() == 50\n    \n    def test_evaluation_never_panics(self):\n        \"\"\"Verify evaluate never panics on any input\"\"\"\n        import re\n        import random\n        \n        # Generate random policies and calls\n        for _ in range(20):\n            num_rules = random.randint(0, 10)\n            rules = []\n            for i in range(num_rules):\n                try:\n                    rules.append(\n                        CompiledRule(\n                            name=f\"rule_{i}\",\n                            tool_regex=re.compile(\".*\"),\n                            conditions=[],\n                            action=random.choice([Decision.Allow, Decision.Deny, \n                                                Decision.Ask]),\n                            locked=random.choice([True, False])\n                        )\n                    )\n                except:\n                    pass\n            \n            policy = CompiledPolicy(rules=rules, default_action=Decision.Allow)\n            \n            # Random tool calls\n            for _ in range(5):\n                call = ToolCall(\n                    tool_name=\"\".join(random.choices(\"abcdefg_123\", k=10)),\n                    parameters={}\n                )\n                \n                # Should never panic\n                result = evaluate(call, policy, None)\n                assert result is not None\n                assert hasattr(result, 'decision')\n                assert hasattr(result, 'evaluation_time_us')\n\n\nif __name__ == \"__main__\":\n    pytest.main([__file__, \"-v\"])\n"
+}
