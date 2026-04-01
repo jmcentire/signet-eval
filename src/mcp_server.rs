@@ -126,7 +126,12 @@ impl ServerHandler for SignetMcpServer {
                     "properties": {"name": {"type": "string", "description": "Credential name to delete"}},
                     "required": ["name"]
                 })),
-                make_tool("signet_validate", "Validate the current policy file for errors (bad regex, unknown functions).", serde_json::json!({"type": "object", "properties": {}})),
+                make_tool("signet_validate", "Validate the current policy file. Shows errors with actionable fix hints. Pass fix=true to auto-fix (removes broken rules, clamps out-of-range values). Locked rules are never modified.", serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "fix": {"type": "boolean", "description": "If true, auto-fix issues (removes broken unlocked rules, clamps out-of-range values). Default: false (dry-run)."}
+                    }
+                })),
                 make_tool("signet_test", "Test a tool call against the current policy without executing it.", serde_json::json!({
                     "type": "object",
                     "properties": {
@@ -242,7 +247,7 @@ impl ServerHandler for SignetMcpServer {
                 "signet_store_credential" => handle_store_credential(args),
                 "signet_list_credentials" => handle_list_credentials(),
                 "signet_delete_credential" => handle_delete_credential(args),
-                "signet_validate" => handle_validate(),
+                "signet_validate" => handle_validate(args),
                 "signet_test" => handle_test(args),
                 "signet_condition_help" => handle_condition_help(),
                 "signet_reorder_rule" => handle_reorder_rule(args),
@@ -516,17 +521,64 @@ fn handle_delete_credential(args: &serde_json::Map<String, Value>) -> String {
     }
 }
 
-fn handle_validate() -> String {
+fn handle_validate(args: &serde_json::Map<String, Value>) -> String {
+    let fix = args.get("fix").and_then(|v| v.as_bool()).unwrap_or(false);
     let path = policy_path();
     match crate::policy::load_policy_config(&path) {
-        Ok(config) => {
-            let errors = crate::policy::validate_policy(&config);
-            if errors.is_empty() {
-                format!("Policy valid: {} rules, no errors.", config.rules.len())
+        Ok(mut config) => {
+            if fix {
+                let result = crate::policy::fix_policy(&mut config);
+                if result.rules_removed.is_empty() && result.rules_modified.is_empty() {
+                    return format!("No auto-fixable issues. Policy has {} rules.", config.rules.len());
+                }
+                save_policy(&config);
+                auto_sign_policy();
+
+                let mut lines = vec![format!("Policy fixed: {}", result.description)];
+                // Re-validate after fix
+                let remaining = crate::policy::validate_policy(&config);
+                let remaining_errors: Vec<_> = remaining.iter()
+                    .filter(|d| d.severity == crate::policy::DiagnosticSeverity::Error)
+                    .collect();
+                if remaining_errors.is_empty() {
+                    lines.push(format!("Policy now valid: {} rules.", config.rules.len()));
+                } else {
+                    lines.push(format!("{} error(s) remain (manual fix needed):", remaining_errors.len()));
+                    for e in &remaining_errors {
+                        lines.push(format!("  - [{}] {}", e.rule_name, e.error));
+                        lines.push(format!("    Fix: {}", e.fix_hint));
+                    }
+                }
+                return lines.join("\n");
+            }
+
+            let diagnostics = crate::policy::validate_policy(&config);
+            if diagnostics.is_empty() {
+                format!("Policy valid: {} rules, no issues.", config.rules.len())
             } else {
-                let mut lines = vec![format!("Policy has {} error(s):", errors.len())];
-                for e in &errors {
-                    lines.push(format!("  - {e}"));
+                let errors: Vec<_> = diagnostics.iter()
+                    .filter(|d| d.severity == crate::policy::DiagnosticSeverity::Error)
+                    .collect();
+                let warnings: Vec<_> = diagnostics.iter()
+                    .filter(|d| d.severity == crate::policy::DiagnosticSeverity::Warning)
+                    .collect();
+                let mut lines = Vec::new();
+                if !errors.is_empty() {
+                    lines.push(format!("{} error(s):", errors.len()));
+                    for e in &errors {
+                        lines.push(format!("  - [{}] {}", e.rule_name, e.error));
+                        lines.push(format!("    Fix: {}", e.fix_hint));
+                        if e.auto_fixable {
+                            lines.push("    (auto-fixable: call signet_validate with fix=true)".into());
+                        }
+                    }
+                }
+                if !warnings.is_empty() {
+                    lines.push(format!("{} warning(s):", warnings.len()));
+                    for w in &warnings {
+                        lines.push(format!("  - [{}] {}", w.rule_name, w.error));
+                        lines.push(format!("    Fix: {}", w.fix_hint));
+                    }
                 }
                 lines.join("\n")
             }

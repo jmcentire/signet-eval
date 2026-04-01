@@ -301,14 +301,28 @@ fn emit_deny(reason: &str) {
 }
 
 /// Run an ensure check script and return (passed, stderr_output).
-fn resolve_ensure(config: &EnsureConfig) -> (bool, String) {
+/// For unlocked rules, missing scripts resolve gracefully (allow).
+/// For locked rules, missing scripts fail closed (deny).
+fn resolve_ensure(config: &EnsureConfig, locked: bool) -> (bool, String) {
     let script_path = match policy::resolve_ensure_script_path(&config.check) {
         Ok(p) => p,
-        Err(e) => return (false, e),
+        Err(e) => {
+            if locked {
+                return (false, e);
+            } else {
+                // Unlocked ensure: script not installed yet, allow gracefully
+                return (true, String::new());
+            }
+        }
     };
 
     if !script_path.exists() {
-        return (false, format!("Check script not found: {}", script_path.display()));
+        if locked {
+            return (false, format!("Check script not found: {}", script_path.display()));
+        } else {
+            // Unlocked ensure: script not installed yet, allow gracefully
+            return (true, String::new());
+        }
     }
 
     let timeout_secs = config.timeout.max(1).min(30) as u64;
@@ -352,7 +366,7 @@ fn resolve_ensure(config: &EnsureConfig) -> (bool, String) {
 /// Resolve an Ensure evaluation result by running the check script.
 fn resolve_ensure_result(result: EvaluationResult) -> EvaluationResult {
     if let Some(ref ensure_config) = result.ensure_config {
-        let (passed, stderr) = resolve_ensure(ensure_config);
+        let (passed, stderr) = resolve_ensure(ensure_config, result.matched_locked);
         if passed {
             EvaluationResult {
                 decision: Decision::Allow,

@@ -45,11 +45,18 @@ fn test_hook_denies_rm() {
 
 #[test]
 fn test_hook_asks_force_push() {
-    // github_identity_guard (locked ensure) fires first on "git push".
-    // With no checks dir, the ensure script is missing → deny.
+    // block_force_push (Ask) fires before github_identity_guard (unlocked, at end of rules).
     let (out, code) = run_hook(r#"{"tool_name":"Bash","tool_input":{"command":"git push --force origin main"}}"#);
     assert_eq!(code, 0);
-    assert_eq!(parse_decision(&out), "deny");
+    assert_eq!(parse_decision(&out), "ask");
+}
+
+#[test]
+fn test_hook_allows_git_push_no_script() {
+    // github_identity_guard is unlocked + ensure script is missing → allow gracefully.
+    let (out, code) = run_hook(r#"{"tool_name":"Bash","tool_input":{"command":"git push origin main"}}"#);
+    assert_eq!(code, 0);
+    assert_eq!(parse_decision(&out), "allow");
 }
 
 #[test]
@@ -326,6 +333,8 @@ rules:
 
 #[test]
 fn test_hook_ensure_missing_script() {
+    // Unlocked ensure rule with missing script → allow gracefully.
+    // (Locked ensure with missing script would deny — tested via self-protection.)
     let dir = tempfile::tempdir().unwrap();
     let checks_dir = dir.path().join("checks");
     std::fs::create_dir_all(&checks_dir).unwrap();
@@ -345,6 +354,38 @@ rules:
       check: nonexistent-script
       timeout: 5
       message: Script missing
+"#;
+
+    let (out, code) = run_hook_with_policy(
+        r#"{"tool_name":"Bash","tool_input":{"command":"deploy app"}}"#,
+        policy, dir.path(),
+    );
+    assert_eq!(code, 0);
+    assert_eq!(parse_decision(&out), "allow");
+}
+
+#[test]
+fn test_hook_ensure_missing_script_locked_denies() {
+    // Locked ensure rule with missing script → deny (fail-closed for self-protection).
+    let dir = tempfile::tempdir().unwrap();
+    let checks_dir = dir.path().join("checks");
+    std::fs::create_dir_all(&checks_dir).unwrap();
+
+    let policy = r#"
+version: 1
+default_action: ALLOW
+rules:
+  - name: locked_ensure
+    tool_pattern: ".*"
+    conditions:
+      - "contains(parameters, 'deploy')"
+    action: ENSURE
+    locked: true
+    reason: must pass check
+    ensure:
+      check: nonexistent-script
+      timeout: 5
+      message: Locked script missing
 "#;
 
     let (out, code) = run_hook_with_policy(

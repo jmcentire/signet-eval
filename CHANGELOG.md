@@ -1,5 +1,19 @@
 # Changelog
 
+## [3.6.0] - 2026-04-01
+
+### Changed
+- `github_identity_guard` moved from self-protection (locked) to default policy (unlocked) — no longer blocks git operations on fresh installs without the check script
+- `validate_policy()` returns structured `ValidationDiagnostic` with severity (Error/Warning), actionable `fix_hint`, and `auto_fixable` flag
+- MCP `signet_validate` tool shows actionable fix hints per diagnostic; accepts `fix=true` to auto-repair broken rules
+- CLI `signet-eval validate` displays ERROR/WARN with fix instructions
+
+### Added
+- `fix_policy()` function — auto-removes broken unlocked rules, clamps out-of-range gate.within and ensure.timeout; never touches locked rules
+- Ensure script existence and executable checks (Warning-level diagnostics)
+- `has_recent_action` added to KNOWN_CONDITION_FNS (was implemented but missing from validation whitelist)
+- Graceful ensure resolution for unlocked rules: missing script = allow (locked rules still fail-closed)
+
 ## [3.5.0] - 2026-03-28
 
 ### Added

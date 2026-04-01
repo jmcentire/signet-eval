@@ -83,6 +83,27 @@ pub struct PolicyConfig {
 fn default_version() -> u32 { 1 }
 fn default_allow() -> Decision { Decision::Allow }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DiagnosticSeverity {
+    Error,
+    Warning,
+}
+
+#[derive(Debug, Clone)]
+pub struct ValidationDiagnostic {
+    pub rule_name: String,
+    pub severity: DiagnosticSeverity,
+    pub error: String,
+    pub fix_hint: String,
+    pub auto_fixable: bool,
+}
+
+pub struct PolicyFix {
+    pub description: String,
+    pub rules_removed: Vec<String>,
+    pub rules_modified: Vec<String>,
+}
+
 #[derive(Debug)]
 pub struct CompiledRule {
     pub name: String,
@@ -487,24 +508,31 @@ const KNOWN_CONDITION_FNS: &[&str] = &[
     "spend_plus_amount_gt",
     "any_of",
     "has_credential",
+    "has_recent_action",
     "not",
     "or",
 ];
 
-/// Validate a policy config. Returns a list of errors (empty = valid).
-pub fn validate_policy(config: &PolicyConfig) -> Vec<String> {
-    let mut errors = Vec::new();
+/// Validate a policy config. Returns structured diagnostics with actionable fix hints.
+pub fn validate_policy(config: &PolicyConfig) -> Vec<ValidationDiagnostic> {
+    let mut diagnostics = Vec::new();
 
     for (i, rule) in config.rules.iter().enumerate() {
         let label = if rule.name.is_empty() {
             format!("rule[{i}]")
         } else {
-            format!("rule '{}'", rule.name)
+            rule.name.clone()
         };
 
         // Check regex compiles
         if Regex::new(&rule.tool_pattern).is_err() {
-            errors.push(format!("{label}: invalid regex '{}'", rule.tool_pattern));
+            diagnostics.push(ValidationDiagnostic {
+                rule_name: label.clone(),
+                severity: DiagnosticSeverity::Error,
+                error: format!("Invalid regex '{}'", rule.tool_pattern),
+                fix_hint: "Fix the regex syntax or remove this rule.".into(),
+                auto_fixable: true,
+            });
         }
 
         // Check condition function names
@@ -514,7 +542,16 @@ pub fn validate_policy(config: &PolicyConfig) -> Vec<String> {
             if let Some(paren) = trimmed.find('(') {
                 let fn_name = trimmed[..paren].trim();
                 if !KNOWN_CONDITION_FNS.contains(&fn_name) {
-                    errors.push(format!("{label}: unknown condition function '{fn_name}'"));
+                    diagnostics.push(ValidationDiagnostic {
+                        rule_name: label.clone(),
+                        severity: DiagnosticSeverity::Error,
+                        error: format!("Unknown condition function '{fn_name}'"),
+                        fix_hint: format!(
+                            "Known functions: {}. Remove or replace this condition.",
+                            KNOWN_CONDITION_FNS.join(", ")
+                        ),
+                        auto_fixable: false,
+                    });
                 }
             }
             // If no parens, it might be a raw quoted string (valid fallback)
@@ -523,13 +560,31 @@ pub fn validate_policy(config: &PolicyConfig) -> Vec<String> {
         // Validate Gate config
         if rule.action == Decision::Gate {
             match &rule.gate {
-                None => errors.push(format!("{label}: action GATE requires 'gate' config")),
+                None => diagnostics.push(ValidationDiagnostic {
+                    rule_name: label.clone(),
+                    severity: DiagnosticSeverity::Error,
+                    error: "Action GATE requires 'gate' config".into(),
+                    fix_hint: "Add gate: { requires_prior: '<tool_name>', within: 50 } to this rule, or remove it.".into(),
+                    auto_fixable: true,
+                }),
                 Some(gc) => {
                     if gc.requires_prior.is_empty() {
-                        errors.push(format!("{label}: gate.requires_prior cannot be empty"));
+                        diagnostics.push(ValidationDiagnostic {
+                            rule_name: label.clone(),
+                            severity: DiagnosticSeverity::Error,
+                            error: "gate.requires_prior cannot be empty".into(),
+                            fix_hint: "Set gate.requires_prior to the tool or action name that must precede this call.".into(),
+                            auto_fixable: true,
+                        });
                     }
                     if gc.within < 1 || gc.within > 500 {
-                        errors.push(format!("{label}: gate.within must be 1-500, got {}", gc.within));
+                        diagnostics.push(ValidationDiagnostic {
+                            rule_name: label.clone(),
+                            severity: DiagnosticSeverity::Error,
+                            error: format!("gate.within must be 1-500, got {}", gc.within),
+                            fix_hint: format!("Set gate.within to a value between 1 and 500 (default: 50). Will clamp to {} on auto-fix.", gc.within.max(1).min(500)),
+                            auto_fixable: true,
+                        });
                     }
                 }
             }
@@ -538,20 +593,146 @@ pub fn validate_policy(config: &PolicyConfig) -> Vec<String> {
         // Validate Ensure config
         if rule.action == Decision::Ensure {
             match &rule.ensure {
-                None => errors.push(format!("{label}: action ENSURE requires 'ensure' config")),
+                None => diagnostics.push(ValidationDiagnostic {
+                    rule_name: label.clone(),
+                    severity: DiagnosticSeverity::Error,
+                    error: "Action ENSURE requires 'ensure' config".into(),
+                    fix_hint: "Add ensure: { check: '<script_name>', timeout: 5 } to this rule, or remove it.".into(),
+                    auto_fixable: true,
+                }),
                 Some(ec) => {
                     if let Err(e) = validate_ensure_check_name(&ec.check) {
-                        errors.push(format!("{label}: {e}"));
+                        diagnostics.push(ValidationDiagnostic {
+                            rule_name: label.clone(),
+                            severity: DiagnosticSeverity::Error,
+                            error: e,
+                            fix_hint: "Check name must be a simple filename (no paths, no special chars).".into(),
+                            auto_fixable: true,
+                        });
                     }
                     if ec.timeout < 1 || ec.timeout > 30 {
-                        errors.push(format!("{label}: ensure.timeout must be 1-30, got {}", ec.timeout));
+                        diagnostics.push(ValidationDiagnostic {
+                            rule_name: label.clone(),
+                            severity: DiagnosticSeverity::Error,
+                            error: format!("ensure.timeout must be 1-30, got {}", ec.timeout),
+                            fix_hint: format!("Set ensure.timeout between 1 and 30 seconds. Will clamp to {} on auto-fix.", ec.timeout.max(1).min(30)),
+                            auto_fixable: true,
+                        });
+                    }
+
+                    // Check if ensure script exists (warning, not error)
+                    match resolve_ensure_script_path(&ec.check) {
+                        Ok(path) => {
+                            if !path.exists() {
+                                diagnostics.push(ValidationDiagnostic {
+                                    rule_name: label.clone(),
+                                    severity: DiagnosticSeverity::Warning,
+                                    error: format!("Ensure script not found: {}", path.display()),
+                                    fix_hint: format!("Install the script: touch {} && chmod +x {}", path.display(), path.display()),
+                                    auto_fixable: false,
+                                });
+                            } else {
+                                // Check if executable (unix only)
+                                #[cfg(unix)]
+                                {
+                                    use std::os::unix::fs::PermissionsExt;
+                                    if let Ok(meta) = std::fs::metadata(&path) {
+                                        if meta.permissions().mode() & 0o111 == 0 {
+                                            diagnostics.push(ValidationDiagnostic {
+                                                rule_name: label.clone(),
+                                                severity: DiagnosticSeverity::Warning,
+                                                error: format!("Ensure script not executable: {}", path.display()),
+                                                fix_hint: format!("Run: chmod +x {}", path.display()),
+                                                auto_fixable: false,
+                                            });
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        Err(_) => {
+                            // checks dir may not exist yet — just a warning
+                            diagnostics.push(ValidationDiagnostic {
+                                rule_name: label.clone(),
+                                severity: DiagnosticSeverity::Warning,
+                                error: format!("Cannot resolve ensure script '{}' (checks directory may not exist)", ec.check),
+                                fix_hint: "Create ~/.signet/checks/ directory and place your script there.".into(),
+                                auto_fixable: false,
+                            });
+                        }
                     }
                 }
             }
         }
     }
 
-    errors
+    diagnostics
+}
+
+/// Auto-fix common policy issues. Never modifies locked rules.
+/// Removes broken unlocked rules and clamps out-of-range values.
+pub fn fix_policy(config: &mut PolicyConfig) -> PolicyFix {
+    let diagnostics = validate_policy(config);
+    let mut removed = Vec::new();
+    let mut modified = Vec::new();
+    let mut rules_to_remove: Vec<String> = Vec::new();
+
+    for diag in &diagnostics {
+        if diag.severity != DiagnosticSeverity::Error || !diag.auto_fixable {
+            continue;
+        }
+
+        if let Some(rule) = config.rules.iter_mut().find(|r| r.name == diag.rule_name) {
+            if rule.locked {
+                continue; // Never auto-fix locked rules
+            }
+
+            // Try in-place fixes first
+            if diag.error.contains("gate.within must be") {
+                if let Some(ref mut gc) = rule.gate {
+                    let clamped = gc.within.max(1).min(500);
+                    modified.push(format!("{}: clamped gate.within {} -> {}", rule.name, gc.within, clamped));
+                    gc.within = clamped;
+                    continue;
+                }
+            }
+            if diag.error.contains("ensure.timeout must be") {
+                if let Some(ref mut ec) = rule.ensure {
+                    let clamped = ec.timeout.max(1).min(30);
+                    modified.push(format!("{}: clamped ensure.timeout {} -> {}", rule.name, ec.timeout, clamped));
+                    ec.timeout = clamped;
+                    continue;
+                }
+            }
+
+            // Can't fix in place — mark for removal
+            if !rules_to_remove.contains(&rule.name) {
+                rules_to_remove.push(rule.name.clone());
+            }
+        }
+    }
+
+    for name in &rules_to_remove {
+        config.rules.retain(|r| r.name != *name);
+        removed.push(name.clone());
+    }
+
+    let mut desc_parts = Vec::new();
+    if !removed.is_empty() {
+        desc_parts.push(format!("Removed {} broken rule(s): {}", removed.len(), removed.join(", ")));
+    }
+    if !modified.is_empty() {
+        desc_parts.push(format!("Fixed {} rule(s): {}", modified.len(), modified.join("; ")));
+    }
+    if desc_parts.is_empty() {
+        desc_parts.push("No auto-fixable issues found.".into());
+    }
+
+    PolicyFix {
+        description: desc_parts.join(". "),
+        rules_removed: removed,
+        rules_modified: modified,
+    }
 }
 
 /// Validate that a script name is safe for use with Ensure.
@@ -677,22 +858,6 @@ pub fn self_protection_rules() -> Vec<PolicyRule> {
             alternative: Some("Use signet_preflight_active or signet_preflight_violations to read your preflight data.".into()),
             gate: None, ensure: None,
         },
-        // Core identity enforcement: git remote operations must use the correct GitHub account.
-        PolicyRule {
-            name: "github_identity_guard".into(),
-            tool_pattern: "^Bash$".into(),
-            conditions: vec!["any_of(parameters, 'git push', 'git pull', 'git fetch', 'git clone')".into()],
-            action: Decision::Ensure,
-            locked: true,
-            reason: Some("Git remote operations must use the correct GitHub identity.".into()),
-            alternative: Some("Run 'gh auth switch --user <correct_user>' to match the remote's org.".into()),
-            gate: None,
-            ensure: Some(EnsureConfig {
-                check: "gh-identity-matches-remote".into(),
-                timeout: 15,
-                message: "GitHub identity mismatch. Run: gh auth switch --user <correct_user>".into(),
-            }),
-        },
     ]
 }
 
@@ -783,6 +948,24 @@ pub fn default_policy() -> CompiledPolicy {
             reason: Some("chmod 777 grants world-readable/writable/executable access.".into()),
             alternative: Some("Use minimum permissions: 'chmod 755' for executables, 'chmod 644' for files, 'chmod 600' for secrets.".into()),
             gate: None, ensure: None,
+        },
+        // Identity enforcement: git remote operations should use the correct GitHub account.
+        // Unlocked — requires user to install the check script at ~/.signet/checks/gh-identity-matches-remote.
+        // If the script is not installed, the ensure resolves gracefully (allow).
+        PolicyRule {
+            name: "github_identity_guard".into(),
+            tool_pattern: "^Bash$".into(),
+            conditions: vec!["any_of(parameters, 'git push', 'git pull', 'git fetch', 'git clone')".into()],
+            action: Decision::Ensure,
+            locked: false,
+            reason: Some("Git remote operations must use the correct GitHub identity.".into()),
+            alternative: Some("Run 'gh auth switch --user <correct_user>' to match the remote's org.".into()),
+            gate: None,
+            ensure: Some(EnsureConfig {
+                check: "gh-identity-matches-remote".into(),
+                timeout: 15,
+                message: "GitHub identity mismatch. Run: gh auth switch --user <correct_user>".into(),
+            }),
         },
     ]);
     let config = PolicyConfig {
@@ -880,10 +1063,9 @@ mod tests {
         let policy = default_policy();
         let call = make_call("Bash", serde_json::json!({"command": "git push --force origin main"}));
         let result = evaluate(&call, &policy, None);
-        // github_identity_guard (locked ensure) fires first on "git push"
-        // The force-push Ask rule would fire after identity check passes
-        assert_eq!(result.decision, Decision::Ensure);
-        assert_eq!(result.matched_rule.as_deref(), Some("github_identity_guard"));
+        // block_force_push (Ask) fires before github_identity_guard (now at end of rules)
+        assert_eq!(result.decision, Decision::Ask);
+        assert_eq!(result.matched_rule.as_deref(), Some("block_force_push"));
     }
 
     #[test]
@@ -1167,7 +1349,10 @@ mod tests {
         ]};
         let errors = validate_policy(&config);
         assert_eq!(errors.len(), 1);
-        assert!(errors[0].contains("invalid regex"));
+        assert!(errors[0].error.contains("Invalid regex"));
+        assert_eq!(errors[0].severity, DiagnosticSeverity::Error);
+        assert!(errors[0].auto_fixable);
+        assert!(!errors[0].fix_hint.is_empty());
     }
 
     #[test]
@@ -1178,7 +1363,8 @@ mod tests {
         ]};
         let errors = validate_policy(&config);
         assert_eq!(errors.len(), 1);
-        assert!(errors[0].contains("unknown condition function"));
+        assert!(errors[0].error.contains("Unknown condition function"));
+        assert!(!errors[0].auto_fixable);
     }
 
     #[test]
@@ -1312,8 +1498,10 @@ mod self_protection_tests {
     #[test]
     fn test_default_policy_has_locked_rules() {
         let rules = self_protection_rules();
-        assert_eq!(rules.len(), 8);
+        assert_eq!(rules.len(), 7);
         assert!(rules.iter().all(|r| r.locked));
+        // github_identity_guard should NOT be in self-protection rules
+        assert!(!rules.iter().any(|r| r.name == "github_identity_guard"));
     }
 
     #[test]
@@ -1951,7 +2139,7 @@ mod gate_ensure_tests {
             },
         ]};
         let errors = validate_policy(&config);
-        assert!(errors.iter().any(|e| e.contains("GATE requires 'gate' config")));
+        assert!(errors.iter().any(|e| e.error.contains("GATE requires 'gate' config")));
     }
 
     #[test]
@@ -1965,7 +2153,7 @@ mod gate_ensure_tests {
             },
         ]};
         let errors = validate_policy(&config);
-        assert!(errors.iter().any(|e| e.contains("ENSURE requires 'ensure' config")));
+        assert!(errors.iter().any(|e| e.error.contains("ENSURE requires 'ensure' config")));
     }
 
     #[test]
@@ -1980,7 +2168,7 @@ mod gate_ensure_tests {
             },
         ]};
         let errors = validate_policy(&config);
-        assert!(errors.iter().any(|e| e.contains("path separators")));
+        assert!(errors.iter().any(|e| e.error.contains("path separators")));
     }
 
     #[test]
@@ -1995,7 +2183,77 @@ mod gate_ensure_tests {
             },
         ]};
         let errors = validate_policy(&config);
-        assert!(errors.iter().any(|e| e.contains("ensure.timeout must be 1-30")));
+        assert!(errors.iter().any(|e| e.error.contains("ensure.timeout must be 1-30")));
+    }
+
+    #[test]
+    fn test_github_identity_guard_unlocked_in_default() {
+        let policy = default_policy();
+        let guard = policy.rules.iter().find(|r| r.name == "github_identity_guard");
+        assert!(guard.is_some(), "github_identity_guard should be in default_policy");
+        assert!(!guard.unwrap().locked, "github_identity_guard should be unlocked");
+    }
+
+    #[test]
+    fn test_validate_has_recent_action_accepted() {
+        let config = PolicyConfig { version: 1, default_action: Decision::Allow, rules: vec![
+            PolicyRule { name: "test".into(), tool_pattern: ".*".into(),
+                conditions: vec!["has_recent_action('EnterPlanMode', 50)".into()],
+                action: Decision::Ask, reason: None, alternative: None, locked: false, gate: None, ensure: None },
+        ]};
+        let errors = validate_policy(&config);
+        assert!(errors.iter().all(|e| e.severity != DiagnosticSeverity::Error),
+            "has_recent_action should be a known function");
+    }
+
+    #[test]
+    fn test_fix_removes_bad_regex_rule() {
+        let mut config = PolicyConfig { version: 1, default_action: Decision::Allow, rules: vec![
+            PolicyRule { name: "good".into(), tool_pattern: ".*".into(),
+                conditions: vec![], action: Decision::Deny, reason: None, alternative: None, locked: false, gate: None, ensure: None },
+            PolicyRule { name: "broken".into(), tool_pattern: "[invalid".into(),
+                conditions: vec![], action: Decision::Deny, reason: None, alternative: None, locked: false, gate: None, ensure: None },
+        ]};
+        let result = fix_policy(&mut config);
+        assert_eq!(config.rules.len(), 1);
+        assert_eq!(config.rules[0].name, "good");
+        assert!(result.rules_removed.contains(&"broken".to_string()));
+    }
+
+    #[test]
+    fn test_fix_clamps_timeout() {
+        let mut config = PolicyConfig { version: 1, default_action: Decision::Allow, rules: vec![
+            PolicyRule { name: "slow".into(), tool_pattern: ".*".into(),
+                conditions: vec![], action: Decision::Ensure, reason: None, alternative: None, locked: false, gate: None,
+                ensure: Some(EnsureConfig { check: "valid-script".into(), timeout: 60, message: String::new() }),
+            },
+        ]};
+        let result = fix_policy(&mut config);
+        assert_eq!(config.rules[0].ensure.as_ref().unwrap().timeout, 30);
+        assert!(!result.rules_modified.is_empty());
+    }
+
+    #[test]
+    fn test_fix_skips_locked_rules() {
+        let mut config = PolicyConfig { version: 1, default_action: Decision::Allow, rules: vec![
+            PolicyRule { name: "locked_bad".into(), tool_pattern: "[invalid".into(),
+                conditions: vec![], action: Decision::Deny, reason: None, alternative: None, locked: true, gate: None, ensure: None },
+        ]};
+        let result = fix_policy(&mut config);
+        assert_eq!(config.rules.len(), 1, "locked rules should not be removed");
+        assert!(result.rules_removed.is_empty());
+    }
+
+    #[test]
+    fn test_fix_no_changes_on_valid() {
+        let mut config = PolicyConfig { version: 1, default_action: Decision::Allow, rules: vec![
+            PolicyRule { name: "good".into(), tool_pattern: ".*".into(),
+                conditions: vec!["contains(parameters, 'x')".into()], action: Decision::Deny,
+                reason: None, alternative: None, locked: false, gate: None, ensure: None },
+        ]};
+        let result = fix_policy(&mut config);
+        assert!(result.rules_removed.is_empty());
+        assert!(result.rules_modified.is_empty());
     }
 
     // --- Self-protection tests ---

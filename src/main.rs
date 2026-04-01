@@ -127,6 +127,7 @@ fn run() -> i32 {
                 policy::PolicyRule { name: "block_piped_exec".into(), tool_pattern: "^Bash$".into(), conditions: vec!["any_of(parameters, 'curl', 'wget')".into(), "contains(parameters, '| sh')".into()], action: policy::Decision::Deny, locked: false, reason: Some("Piped remote execution blocked.".into()), alternative: Some("Download first: 'curl -o /tmp/script.sh <url>', then inspect with 'cat'. Let the user review.".into()), gate: None, ensure: None },
                 policy::PolicyRule { name: "block_credential_writes".into(), tool_pattern: "^(Write|Edit)$".into(), conditions: vec!["matches(file_path, '\\.(env|pem|key|secret|credentials)$')".into()], action: policy::Decision::Deny, locked: false, reason: Some("Writing to credential/secret files blocked.".into()), alternative: Some("Write to a '.example' file with placeholder values, then instruct the user to copy and fill in real credentials.".into()), gate: None, ensure: None },
                 policy::PolicyRule { name: "block_chmod_777".into(), tool_pattern: "^Bash$".into(), conditions: vec!["contains(parameters, 'chmod 777')".into()], action: policy::Decision::Ask, locked: false, reason: Some("chmod 777 grants world-readable/writable/executable access.".into()), alternative: Some("Use minimum permissions: 'chmod 755' for executables, 'chmod 644' for files, 'chmod 600' for secrets.".into()), gate: None, ensure: None },
+                policy::PolicyRule { name: "github_identity_guard".into(), tool_pattern: "^Bash$".into(), conditions: vec!["any_of(parameters, 'git push', 'git pull', 'git fetch', 'git clone')".into()], action: policy::Decision::Ensure, locked: false, reason: Some("Git remote operations must use the correct GitHub identity.".into()), alternative: Some("Run 'gh auth switch --user <correct_user>' to match the remote's org.".into()), gate: None, ensure: Some(policy::EnsureConfig { check: "gh-identity-matches-remote".into(), timeout: 15, message: "GitHub identity mismatch. Run: gh auth switch --user <correct_user>".into() }) },
             ]);
             let config = policy::PolicyConfig {
                 version: 1,
@@ -348,15 +349,27 @@ fn run() -> i32 {
         Some(Command::Validate) => {
             match policy::load_policy_config(&policy_path) {
                 Ok(config) => {
-                    let errors = policy::validate_policy(&config);
-                    if errors.is_empty() {
+                    let diagnostics = policy::validate_policy(&config);
+                    let errors: Vec<_> = diagnostics.iter()
+                        .filter(|d| d.severity == policy::DiagnosticSeverity::Error)
+                        .collect();
+                    let warnings: Vec<_> = diagnostics.iter()
+                        .filter(|d| d.severity == policy::DiagnosticSeverity::Warning)
+                        .collect();
+
+                    if errors.is_empty() && warnings.is_empty() {
                         println!("Policy valid: {} rules", config.rules.len());
                         0
                     } else {
                         for e in &errors {
-                            eprintln!("ERROR: {e}");
+                            eprintln!("ERROR [{}]: {}", e.rule_name, e.error);
+                            eprintln!("  Fix: {}", e.fix_hint);
                         }
-                        1
+                        for w in &warnings {
+                            eprintln!("WARN  [{}]: {}", w.rule_name, w.error);
+                            eprintln!("  Fix: {}", w.fix_hint);
+                        }
+                        if errors.is_empty() { 0 } else { 1 }
                     }
                 }
                 Err(e) => { eprintln!("ERROR: {e}"); 1 }
