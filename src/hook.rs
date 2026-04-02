@@ -95,8 +95,8 @@ pub fn run_hook(policy: &CompiledPolicy, vault: Option<&Vault>) -> i32 {
     };
 
     // Check if paused — if so, only enforce locked (self-protection) rules
-    // File-based: works without vault
-    if crate::vault::is_paused_file() {
+    // File-based global pause OR session-scoped global pause from pauses.json
+    if crate::vault::is_paused_file() || crate::vault::is_globally_paused_json() {
         let result = policy::evaluate(&call, policy, vault);
         if result.decision == Decision::Deny && result.matched_locked {
             // Self-protection: locked deny always enforced during pause
@@ -125,6 +125,15 @@ pub fn run_hook(policy: &CompiledPolicy, vault: Option<&Vault>) -> i32 {
     } else {
         result
     };
+
+    // Per-rule pause: if the matched (non-locked) rule is paused, allow silently
+    let result = if result.decision != Decision::Allow && !result.matched_locked {
+        if let Some(ref rule_name) = result.matched_rule {
+            if crate::vault::is_rule_paused(rule_name) {
+                EvaluationResult { decision: Decision::Allow, ..result }
+            } else { result }
+        } else { result }
+    } else { result };
 
     // Hard deny always wins — short-circuit
     let (final_decision, final_reason, final_context) = if result.decision == Decision::Deny {

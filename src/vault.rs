@@ -798,6 +798,96 @@ pub fn clear_disabled_file() {
     std::fs::remove_file(disabled_path()).ok();
 }
 
+// --- Per-rule and session-scoped pauses ---
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct PauseEntry {
+    /// Rule name to pause, or None for all non-locked rules.
+    pub rule: Option<String>,
+    /// Unix timestamp when the pause expires.
+    pub until: u64,
+    /// Session filter — only applies when SIGNET_SESSION env var matches.
+    /// None means applies to all sessions.
+    pub session: Option<String>,
+}
+
+fn pauses_path() -> PathBuf { signet_dir().join("pauses.json") }
+
+fn load_pauses() -> Vec<PauseEntry> {
+    std::fs::read_to_string(pauses_path())
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default()
+}
+
+fn save_pauses(pauses: &[PauseEntry]) {
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+    let active: Vec<_> = pauses.iter().filter(|p| p.until > now).cloned().collect();
+    let dir = signet_dir();
+    std::fs::create_dir_all(&dir).ok();
+    if active.is_empty() {
+        std::fs::remove_file(pauses_path()).ok();
+    } else {
+        std::fs::write(pauses_path(), serde_json::to_string_pretty(&active).unwrap()).ok();
+    }
+}
+
+fn session_matches(filter: &Option<String>, current: &Option<String>) -> bool {
+    match filter {
+        None => true,
+        Some(f) => current.as_deref() == Some(f.as_str()),
+    }
+}
+
+/// Add or replace a pause entry.
+pub fn add_pause(rule: Option<&str>, until: u64, session: Option<&str>) {
+    let mut pauses = load_pauses();
+    pauses.retain(|p| !(p.rule.as_deref() == rule && p.session.as_deref() == session));
+    pauses.push(PauseEntry {
+        rule: rule.map(|s| s.to_string()),
+        until,
+        session: session.map(|s| s.to_string()),
+    });
+    save_pauses(&pauses);
+}
+
+/// Remove a pause entry matching rule and session.
+pub fn remove_pause(rule: Option<&str>, session: Option<&str>) {
+    let mut pauses = load_pauses();
+    pauses.retain(|p| !(p.rule.as_deref() == rule && p.session.as_deref() == session));
+    save_pauses(&pauses);
+}
+
+/// Check if a specific rule is paused (rule-specific entry in pauses.json).
+/// Respects SIGNET_SESSION env var.
+pub fn is_rule_paused(rule_name: &str) -> bool {
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+    let current_session = std::env::var("SIGNET_SESSION").ok();
+    load_pauses().iter().any(|p| {
+        p.until > now
+            && p.rule.as_deref() == Some(rule_name)
+            && session_matches(&p.session, &current_session)
+    })
+}
+
+/// Check if there's a session-scoped global pause (rule=None in pauses.json).
+/// Respects SIGNET_SESSION env var.
+pub fn is_globally_paused_json() -> bool {
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+    let current_session = std::env::var("SIGNET_SESSION").ok();
+    load_pauses().iter().any(|p| {
+        p.until > now
+            && p.rule.is_none()
+            && session_matches(&p.session, &current_session)
+    })
+}
+
+/// List all active (non-expired) pause entries.
+pub fn list_pauses() -> Vec<PauseEntry> {
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+    load_pauses().into_iter().filter(|p| p.until > now).collect()
+}
+
 /// Derive a device-specific key for encrypting the session key file.
 /// Uses machine ID + username as entropy — not a passphrase, just prevents
 /// trivial copying of the session key to another machine.

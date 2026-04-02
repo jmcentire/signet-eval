@@ -79,9 +79,22 @@ enum Command {
         /// Duration in minutes (1-60)
         #[arg(default_value = "10")]
         minutes: u32,
+        /// Pause only this rule (by name). Without this, all non-locked rules are paused.
+        #[arg(long)]
+        rule: Option<String>,
+        /// Only pause for this session (requires SIGNET_SESSION env var in the target terminal)
+        #[arg(long)]
+        session: Option<String>,
     },
     /// Resume policy enforcement (end pause early)
-    Resume,
+    Resume {
+        /// Resume only this rule. Without this, resumes the global pause.
+        #[arg(long)]
+        rule: Option<String>,
+        /// Resume only for this session.
+        #[arg(long)]
+        session: Option<String>,
+    },
     /// Fully disable policy enforcement (bypasses everything including self-protection)
     Disable,
     /// Re-enable policy enforcement after disable
@@ -416,31 +429,84 @@ fn run() -> i32 {
                 None => { eprintln!("Vault not set up or locked."); 1 }
             }
         }
-        Some(Command::Pause { minutes }) => {
+        Some(Command::Pause { minutes, rule, session }) => {
             if minutes < 1 || minutes > 60 {
                 eprintln!("Pause duration must be 1-60 minutes.");
-                return 1;
-            }
-            if vault::is_paused_file() {
-                eprintln!("Already paused until timestamp {}.", vault::pause_until_file());
                 return 1;
             }
             let until = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH).unwrap().as_secs()
                 + (minutes as u64 * 60);
-            vault::set_pause_file(until);
-            println!("Policy enforcement paused for {minutes} minutes.");
-            println!("Self-protection rules remain active.");
-            println!("Run 'signet-eval resume' to end early.");
+
+            if rule.is_some() || session.is_some() {
+                // Per-rule and/or per-session pause via pauses.json
+                // Validate rule name exists if specified
+                if let Some(ref rule_name) = rule {
+                    if let Ok(config) = policy::load_policy_config(&policy_path) {
+                        if !config.rules.iter().any(|r| r.name == *rule_name) {
+                            eprintln!("No rule named '{rule_name}'. Run 'signet-eval rules' to list.");
+                            return 1;
+                        }
+                        if config.rules.iter().any(|r| r.name == *rule_name && r.locked) {
+                            eprintln!("Cannot pause locked rule '{rule_name}'.");
+                            return 1;
+                        }
+                    }
+                }
+                vault::add_pause(rule.as_deref(), until, session.as_deref());
+                match (&rule, &session) {
+                    (Some(r), Some(s)) => println!("Rule '{r}' paused for {minutes} min (session: {s})."),
+                    (Some(r), None) => println!("Rule '{r}' paused for {minutes} min."),
+                    (None, Some(s)) => println!("All non-locked rules paused for {minutes} min (session: {s})."),
+                    (None, None) => unreachable!(),
+                }
+                println!("Self-protection rules remain active.");
+                println!("Run 'signet-eval resume{}{}' to end early.",
+                    rule.as_ref().map(|r| format!(" --rule {r}")).unwrap_or_default(),
+                    session.as_ref().map(|s| format!(" --session {s}")).unwrap_or_default(),
+                );
+            } else {
+                // Global pause (existing behavior)
+                if vault::is_paused_file() {
+                    eprintln!("Already paused until timestamp {}.", vault::pause_until_file());
+                    return 1;
+                }
+                vault::set_pause_file(until);
+                println!("Policy enforcement paused for {minutes} minutes.");
+                println!("Self-protection rules remain active.");
+                println!("Run 'signet-eval resume' to end early.");
+            }
             0
         }
-        Some(Command::Resume) => {
-            if !vault::is_paused_file() {
-                eprintln!("Not currently paused.");
-                return 0;
+        Some(Command::Resume { rule, session }) => {
+            if rule.is_some() || session.is_some() {
+                // Per-rule/session resume
+                vault::remove_pause(rule.as_deref(), session.as_deref());
+                match (&rule, &session) {
+                    (Some(r), Some(s)) => println!("Rule '{r}' resumed (session: {s})."),
+                    (Some(r), None) => println!("Rule '{r}' resumed."),
+                    (None, Some(s)) => println!("Session '{s}' pauses cleared."),
+                    (None, None) => unreachable!(),
+                }
+            } else {
+                // Global resume (existing behavior)
+                if !vault::is_paused_file() {
+                    // Also check if there are any json-based pauses to clear
+                    let pauses = vault::list_pauses();
+                    if pauses.is_empty() {
+                        eprintln!("Not currently paused.");
+                        return 0;
+                    }
+                    // Clear all pauses
+                    for p in &pauses {
+                        vault::remove_pause(p.rule.as_deref(), p.session.as_deref());
+                    }
+                    println!("All pauses cleared ({} entries).", pauses.len());
+                    return 0;
+                }
+                vault::clear_pause_file();
+                println!("Policy enforcement resumed.");
             }
-            vault::clear_pause_file();
-            println!("Policy enforcement resumed.");
             0
         }
         Some(Command::Disable) => {
