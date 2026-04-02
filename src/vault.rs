@@ -798,6 +798,58 @@ pub fn clear_disabled_file() {
     std::fs::remove_file(disabled_path()).ok();
 }
 
+// --- Session-scoped disable ---
+
+fn disabled_sessions_path() -> PathBuf { signet_dir().join("disabled_sessions.json") }
+
+fn load_disabled_sessions() -> Vec<String> {
+    std::fs::read_to_string(disabled_sessions_path())
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default()
+}
+
+fn save_disabled_sessions(sessions: &[String]) {
+    let dir = signet_dir();
+    std::fs::create_dir_all(&dir).ok();
+    if sessions.is_empty() {
+        std::fs::remove_file(disabled_sessions_path()).ok();
+    } else {
+        std::fs::write(disabled_sessions_path(), serde_json::to_string_pretty(sessions).unwrap()).ok();
+    }
+}
+
+/// Disable enforcement for a specific session.
+pub fn add_disabled_session(session: &str) {
+    let mut sessions = load_disabled_sessions();
+    if !sessions.iter().any(|s| s == session) {
+        sessions.push(session.to_string());
+    }
+    save_disabled_sessions(&sessions);
+}
+
+/// Re-enable enforcement for a specific session.
+pub fn remove_disabled_session(session: &str) -> bool {
+    let mut sessions = load_disabled_sessions();
+    let before = sessions.len();
+    sessions.retain(|s| s != session);
+    save_disabled_sessions(&sessions);
+    sessions.len() < before
+}
+
+/// Check if the current SIGNET_SESSION is disabled.
+pub fn is_session_disabled() -> bool {
+    match std::env::var("SIGNET_SESSION") {
+        Ok(s) if !s.is_empty() => load_disabled_sessions().iter().any(|ds| ds == &s),
+        _ => false,
+    }
+}
+
+/// List disabled sessions.
+pub fn list_disabled_sessions() -> Vec<String> {
+    load_disabled_sessions()
+}
+
 // --- Per-rule and session-scoped pauses ---
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

@@ -69,8 +69,8 @@ fn evaluate_preflight_constraint(
 }
 
 pub fn run_hook(policy: &CompiledPolicy, vault: Option<&Vault>) -> i32 {
-    // Full disable — bypass everything silently
-    if crate::vault::is_disabled_file() {
+    // Full disable — bypass everything silently (global or session-scoped)
+    if crate::vault::is_disabled_file() || crate::vault::is_session_disabled() {
         emit_allow();
         return 0;
     }

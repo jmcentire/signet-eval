@@ -96,9 +96,17 @@ enum Command {
         session: Option<String>,
     },
     /// Fully disable policy enforcement (bypasses everything including self-protection)
-    Disable,
+    Disable {
+        /// Only disable for this session (requires SIGNET_SESSION env var in the target terminal)
+        #[arg(long)]
+        session: Option<String>,
+    },
     /// Re-enable policy enforcement after disable
-    Enable,
+    Enable {
+        /// Re-enable only for this session
+        #[arg(long)]
+        session: Option<String>,
+    },
 }
 
 fn expand_home(path: &str) -> PathBuf {
@@ -509,24 +517,49 @@ fn run() -> i32 {
             }
             0
         }
-        Some(Command::Disable) => {
-            if vault::is_disabled_file() {
-                eprintln!("Already disabled.");
-                return 0;
+        Some(Command::Disable { session }) => {
+            if let Some(ref s) = session {
+                vault::add_disabled_session(s);
+                println!("Policy enforcement FULLY disabled for session '{s}'.");
+                println!("ALL rules bypassed including self-protection for that session.");
+                println!("Run 'signet-eval enable --session {s}' to re-enable.");
+            } else {
+                if vault::is_disabled_file() {
+                    eprintln!("Already disabled.");
+                    return 0;
+                }
+                vault::set_disabled_file();
+                println!("Policy enforcement FULLY disabled.");
+                println!("ALL rules bypassed including self-protection.");
+                println!("Run 'signet-eval enable' to re-enable.");
             }
-            vault::set_disabled_file();
-            println!("Policy enforcement FULLY disabled.");
-            println!("ALL rules bypassed including self-protection.");
-            println!("Run 'signet-eval enable' to re-enable.");
             0
         }
-        Some(Command::Enable) => {
-            if !vault::is_disabled_file() {
-                eprintln!("Not currently disabled.");
-                return 0;
+        Some(Command::Enable { session }) => {
+            if let Some(ref s) = session {
+                if vault::remove_disabled_session(s) {
+                    println!("Policy enforcement re-enabled for session '{s}'.");
+                } else {
+                    eprintln!("Session '{s}' was not disabled.");
+                }
+            } else {
+                // Clear global disable
+                if vault::is_disabled_file() {
+                    vault::clear_disabled_file();
+                    println!("Policy enforcement re-enabled.");
+                } else {
+                    // Also check for any session disables
+                    let sessions = vault::list_disabled_sessions();
+                    if sessions.is_empty() {
+                        eprintln!("Not currently disabled.");
+                        return 0;
+                    }
+                    for s in &sessions {
+                        vault::remove_disabled_session(s);
+                    }
+                    println!("All session disables cleared ({} sessions).", sessions.len());
+                }
             }
-            vault::clear_disabled_file();
-            println!("Policy enforcement re-enabled.");
             0
         }
         Some(Command::PreflightOverride) => {
