@@ -76,7 +76,7 @@ enum Command {
     PreflightOverride,
     /// Pause policy enforcement for N minutes (self-protection still active)
     Pause {
-        /// Duration in minutes (1-60)
+        /// Duration in minutes (0 = indefinite, requires --session)
         #[arg(default_value = "10")]
         minutes: u32,
         /// Pause only this rule (by name). Without this, all non-locked rules are paused.
@@ -438,13 +438,22 @@ fn run() -> i32 {
             }
         }
         Some(Command::Pause { minutes, rule, session }) => {
-            if minutes < 1 || minutes > 60 {
-                eprintln!("Pause duration must be 1-60 minutes.");
+            // 0 = indefinite, only allowed with --session
+            if minutes == 0 && session.is_none() {
+                eprintln!("Indefinite pause (0) requires --session.");
                 return 1;
             }
-            let until = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH).unwrap().as_secs()
-                + (minutes as u64 * 60);
+            if minutes > 60 {
+                eprintln!("Pause duration must be 0-60 minutes (0 = indefinite with --session).");
+                return 1;
+            }
+            let until = if minutes == 0 {
+                u64::MAX
+            } else {
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH).unwrap().as_secs()
+                    + (minutes as u64 * 60)
+            };
 
             if rule.is_some() || session.is_some() {
                 // Per-rule and/or per-session pause via pauses.json
@@ -462,10 +471,11 @@ fn run() -> i32 {
                     }
                 }
                 vault::add_pause(rule.as_deref(), until, session.as_deref());
+                let duration = if minutes == 0 { "indefinitely".to_string() } else { format!("for {minutes} min") };
                 match (&rule, &session) {
-                    (Some(r), Some(s)) => println!("Rule '{r}' paused for {minutes} min (session: {s})."),
-                    (Some(r), None) => println!("Rule '{r}' paused for {minutes} min."),
-                    (None, Some(s)) => println!("All non-locked rules paused for {minutes} min (session: {s})."),
+                    (Some(r), Some(s)) => println!("Rule '{r}' paused {duration} (session: {s})."),
+                    (Some(r), None) => println!("Rule '{r}' paused {duration}."),
+                    (None, Some(s)) => println!("All non-locked rules paused {duration} (session: {s})."),
                     (None, None) => unreachable!(),
                 }
                 println!("Self-protection rules remain active.");
