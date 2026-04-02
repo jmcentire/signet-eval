@@ -1,5 +1,17 @@
 # Changelog
 
+## [3.8.0] - 2026-04-02
+
+### Added
+- `validate --fix` CLI flag — auto-fixes clampable issues (gate.within, ensure.timeout clamping) and removes broken unlocked rules; writes updated policy and re-signs if vault exists
+- `validate --fix --dry-run` — previews what --fix would change without writing to disk
+- `status` now shows complete enforcement state: global disable, disabled sessions, global pause with expiry, per-rule/per-session pauses with timestamps
+- `status` shows enforcement overrides even without a vault (file-based state is independent)
+
+### Fixed
+- `enable` (no flags) now clears both global disable AND all session disables in one invocation; previously required running twice if both existed
+- `status` no longer returns exit code 1 when vault is not set up — enforcement info is still useful without a vault
+
 ## [3.6.0] - 2026-04-01
 
 ### Changed

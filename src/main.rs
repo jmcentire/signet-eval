@@ -63,7 +63,14 @@ enum Command {
     /// Unlock vault and refresh session key
     Unlock,
     /// Validate the policy file
-    Validate,
+    Validate {
+        /// Auto-fix clampable issues (numeric ranges, locked:false removal)
+        #[arg(long)]
+        fix: bool,
+        /// Show what --fix would change without writing (requires --fix)
+        #[arg(long, requires = "fix")]
+        dry_run: bool,
+    },
     /// Run MCP management server (conversational policy editing)
     #[cfg(feature = "mcp")]
     Serve,
@@ -199,12 +206,43 @@ fn run() -> i32 {
             }
         }
         Some(Command::Status) => {
+            // Enforcement overrides (shown regardless of vault state)
+            let globally_disabled = vault::is_disabled_file();
+            let disabled_sessions = vault::list_disabled_sessions();
+            let globally_paused = vault::is_paused_file();
+            let pauses = vault::list_pauses();
+
+            if globally_disabled {
+                println!("Enforcement: DISABLED (global)");
+            } else if globally_paused {
+                let until = vault::pause_until_file();
+                println!("Enforcement: PAUSED (until ts {until})");
+            } else {
+                println!("Enforcement: active");
+            }
+
+            if !disabled_sessions.is_empty() {
+                println!("\nDisabled sessions:");
+                for s in &disabled_sessions {
+                    println!("  {s}");
+                }
+            }
+
+            if !pauses.is_empty() {
+                println!("\nActive pauses:");
+                for p in &pauses {
+                    let rule_label = p.rule.as_deref().unwrap_or("(all non-locked)");
+                    let session_label = p.session.as_deref().unwrap_or("(all sessions)");
+                    println!("  rule: {rule_label}  session: {session_label}  until: ts {}", p.until);
+                }
+            }
+
             match vault::try_load_vault() {
                 Some(v) => {
                     let spend = v.session_spend("");
                     let creds = v.list_credentials();
                     let actions = v.recent_actions(10);
-                    println!("Vault: unlocked");
+                    println!("\nVault: unlocked");
                     println!("Credentials: {}", creds.len());
                     if spend > 0.0 { println!("Session spend: ${spend:.2}"); }
                     if !actions.is_empty() {
@@ -223,7 +261,10 @@ fn run() -> i32 {
                     }
                     0
                 }
-                None => { eprintln!("Vault not set up or locked. Run: signet-eval setup"); 1 }
+                None => {
+                    println!("\nVault: not set up (run: signet-eval setup)");
+                    0
+                }
             }
         }
         Some(Command::Store { name, value }) => {
@@ -367,30 +408,61 @@ fn run() -> i32 {
                 }
             }
         }
-        Some(Command::Validate) => {
+        Some(Command::Validate { fix, dry_run }) => {
             match policy::load_policy_config(&policy_path) {
-                Ok(config) => {
-                    let diagnostics = policy::validate_policy(&config);
-                    let errors: Vec<_> = diagnostics.iter()
-                        .filter(|d| d.severity == policy::DiagnosticSeverity::Error)
-                        .collect();
-                    let warnings: Vec<_> = diagnostics.iter()
-                        .filter(|d| d.severity == policy::DiagnosticSeverity::Warning)
-                        .collect();
-
-                    if errors.is_empty() && warnings.is_empty() {
-                        println!("Policy valid: {} rules", config.rules.len());
-                        0
+                Ok(mut config) => {
+                    if fix {
+                        let result = policy::fix_policy(&mut config);
+                        if result.rules_removed.is_empty() && result.rules_modified.is_empty() {
+                            println!("No auto-fixable issues found.");
+                            0
+                        } else {
+                            println!("{}", result.description);
+                            if dry_run {
+                                println!("(dry-run: no changes written)");
+                            } else {
+                                let yaml = serde_yaml::to_string(&config).unwrap();
+                                match std::fs::write(&policy_path, &yaml) {
+                                    Ok(_) => {
+                                        println!("Policy written to {}", policy_path.display());
+                                        if let Some(v) = vault::try_load_vault() {
+                                            match vault::sign_policy(v.session_key(), &policy_path) {
+                                                Ok(_) => println!("Policy re-signed."),
+                                                Err(e) => eprintln!("Warning: could not re-sign: {e}"),
+                                            }
+                                        }
+                                    }
+                                    Err(e) => {
+                                        eprintln!("ERROR writing policy: {e}");
+                                        return 1;
+                                    }
+                                }
+                            }
+                            0
+                        }
                     } else {
-                        for e in &errors {
-                            eprintln!("ERROR [{}]: {}", e.rule_name, e.error);
-                            eprintln!("  Fix: {}", e.fix_hint);
+                        let diagnostics = policy::validate_policy(&config);
+                        let errors: Vec<_> = diagnostics.iter()
+                            .filter(|d| d.severity == policy::DiagnosticSeverity::Error)
+                            .collect();
+                        let warnings: Vec<_> = diagnostics.iter()
+                            .filter(|d| d.severity == policy::DiagnosticSeverity::Warning)
+                            .collect();
+
+                        if errors.is_empty() && warnings.is_empty() {
+                            println!("Policy valid: {} rules", config.rules.len());
+                            0
+                        } else {
+                            for e in &errors {
+                                eprintln!("ERROR [{}]: {}", e.rule_name, e.error);
+                                eprintln!("  Fix: {}", e.fix_hint);
+                            }
+                            for w in &warnings {
+                                eprintln!("WARN  [{}]: {}", w.rule_name, w.error);
+                                eprintln!("  Fix: {}", w.fix_hint);
+                            }
+                            if errors.is_empty() { 0 } else { 1 }
                         }
-                        for w in &warnings {
-                            eprintln!("WARN  [{}]: {}", w.rule_name, w.error);
-                            eprintln!("  Fix: {}", w.fix_hint);
-                        }
-                        if errors.is_empty() { 0 } else { 1 }
                     }
                 }
                 Err(e) => { eprintln!("ERROR: {e}"); 1 }
@@ -553,22 +625,26 @@ fn run() -> i32 {
                     eprintln!("Session '{s}' was not disabled.");
                 }
             } else {
-                // Clear global disable
-                if vault::is_disabled_file() {
+                // Clear all enforcement overrides in one shot
+                let had_global = vault::is_disabled_file();
+                let sessions = vault::list_disabled_sessions();
+
+                if !had_global && sessions.is_empty() {
+                    eprintln!("Not currently disabled.");
+                    return 0;
+                }
+
+                if had_global {
                     vault::clear_disabled_file();
-                    println!("Policy enforcement re-enabled.");
-                } else {
-                    // Also check for any session disables
-                    let sessions = vault::list_disabled_sessions();
-                    if sessions.is_empty() {
-                        eprintln!("Not currently disabled.");
-                        return 0;
-                    }
+                    println!("Global disable cleared.");
+                }
+                if !sessions.is_empty() {
                     for s in &sessions {
                         vault::remove_disabled_session(s);
                     }
-                    println!("All session disables cleared ({} sessions).", sessions.len());
+                    println!("{} session disable(s) cleared.", sessions.len());
                 }
+                println!("Policy enforcement re-enabled.");
             }
             0
         }

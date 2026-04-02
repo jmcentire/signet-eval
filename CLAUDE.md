@@ -16,10 +16,12 @@ echo '{"tool_name":"Bash","tool_input":{"command":"rm foo"}}' | signet-eval
 signet-eval init               # write default policy (with locked self-protection rules)
 signet-eval rules              # show rules (locked rules tagged)
 signet-eval validate           # check policy
+signet-eval validate --fix     # auto-fix clampable issues
+signet-eval validate --fix --dry-run  # preview fixes
 signet-eval test '<json>'      # test a tool call
 signet-eval setup              # create vault
 signet-eval unlock             # refresh session
-signet-eval status             # vault info
+signet-eval status             # vault info + enforcement state
 signet-eval store <n> <v>      # store credential
 signet-eval delete <n>         # delete credential
 signet-eval log                # action log
