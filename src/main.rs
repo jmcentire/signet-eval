@@ -491,6 +491,10 @@ fn run() -> i32 {
                         Some(pf) => {
                             println!("Active preflight: {}", pf.id);
                             println!("Task: {}", pf.task);
+                            match &pf.session_id {
+                                Some(sid) => println!("Session: {}", sid),
+                                None => println!("Session: global"),
+                            }
                             println!("Constraints: {}", pf.constraints.len());
                             println!("Violations: {}", pf.violation_count);
                             println!("Escalated: {}", pf.escalated);

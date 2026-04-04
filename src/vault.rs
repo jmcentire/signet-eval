@@ -38,6 +38,11 @@ fn now_epoch() -> f64 {
     SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs_f64()
 }
 
+/// Read SIGNET_SESSION env var. Returns None if unset or empty.
+pub fn current_session_id() -> Option<String> {
+    std::env::var("SIGNET_SESSION").ok().filter(|s| !s.is_empty())
+}
+
 pub(crate) fn random_hex_id() -> String {
     let mut bytes = [0u8; 16];
     rand::thread_rng().fill_bytes(&mut bytes);
@@ -169,6 +174,8 @@ pub struct Preflight {
     pub lockout_until: u64,
     pub violation_count: u32,
     pub escalated: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -274,6 +281,10 @@ impl Vault {
             CREATE INDEX IF NOT EXISTS idx_preflight_active ON preflights(active);
             CREATE INDEX IF NOT EXISTS idx_pv_preflight ON preflight_violations(preflight_id);
         ").expect("init db");
+
+        // Migration: add session_id column to preflights (idempotent)
+        let _ = conn.execute("ALTER TABLE preflights ADD COLUMN session_id TEXT", []);
+        let _ = conn.execute("CREATE INDEX IF NOT EXISTS idx_preflight_session ON preflights(session_id)", []);
     }
 
     fn load_or_create_session_start(&self) -> f64 {
@@ -564,28 +575,49 @@ impl Vault {
 
         let conn = Connection::open(&self.db_path)
             .map_err(|e| format!("open db: {e}"))?;
-        // Deactivate previous active preflight
-        conn.execute("UPDATE preflights SET active = 0 WHERE active = 1", [])
-            .map_err(|e| format!("deactivate: {e}"))?;
+        // Deactivate previous active preflight (scoped to session)
+        match &preflight.session_id {
+            Some(sid) => conn.execute(
+                "UPDATE preflights SET active = 0 WHERE active = 1 AND (session_id = ?1 OR session_id IS NULL)",
+                params![sid],
+            ),
+            None => conn.execute(
+                "UPDATE preflights SET active = 0 WHERE active = 1",
+                [],
+            ),
+        }.map_err(|e| format!("deactivate: {e}"))?;
         conn.execute(
-            "INSERT INTO preflights (id, task, payload, hmac, submitted_at, lockout_until, violation_count, escalated, active) VALUES (?1,?2,?3,?4,?5,?6,0,0,1)",
-            params![preflight.id, preflight.task, payload, hmac, preflight.submitted_at as i64, preflight.lockout_until as i64],
+            "INSERT INTO preflights (id, task, payload, hmac, submitted_at, lockout_until, violation_count, escalated, active, session_id) VALUES (?1,?2,?3,?4,?5,?6,0,0,1,?7)",
+            params![preflight.id, preflight.task, payload, hmac, preflight.submitted_at as i64, preflight.lockout_until as i64, preflight.session_id],
         ).map_err(|e| format!("insert: {e}"))?;
         Ok(())
     }
 
     /// Get the currently active preflight (if any, not expired, HMAC valid).
+    /// When SIGNET_SESSION is set, only returns preflights matching that session or global (NULL).
     pub fn active_preflight(&self) -> Option<Preflight> {
         let conn = Connection::open(&self.db_path).ok()?;
-        let (payload, stored_hmac, violation_count, escalated): (String, String, u32, bool) = conn.query_row(
-            "SELECT payload, hmac, violation_count, escalated FROM preflights WHERE active = 1",
-            [], |row| Ok((
-                row.get(0)?,
-                row.get(1)?,
-                row.get::<_, u32>(2)?,
-                row.get::<_, i32>(3)? != 0,
-            ))
-        ).ok()?;
+        let session = current_session_id();
+        let (payload, stored_hmac, violation_count, escalated): (String, String, u32, bool) = match &session {
+            Some(sid) => conn.query_row(
+                "SELECT payload, hmac, violation_count, escalated FROM preflights WHERE active = 1 AND (session_id = ?1 OR session_id IS NULL)",
+                params![sid], |row| Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get::<_, u32>(2)?,
+                    row.get::<_, i32>(3)? != 0,
+                ))
+            ),
+            None => conn.query_row(
+                "SELECT payload, hmac, violation_count, escalated FROM preflights WHERE active = 1",
+                [], |row| Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get::<_, u32>(2)?,
+                    row.get::<_, i32>(3)? != 0,
+                ))
+            ),
+        }.ok()?;
 
         // Verify HMAC
         let expected = self.preflight_hmac(&payload);
@@ -611,15 +643,23 @@ impl Vault {
     }
 
     /// Check if a preflight is currently locked (cannot be replaced).
+    /// Session-scoped: only checks preflights for the current session.
     pub fn is_preflight_locked(&self) -> bool {
         let conn = match Connection::open(&self.db_path) {
             Ok(c) => c,
             Err(_) => return false,
         };
-        let lockout_until: Option<i64> = conn.query_row(
-            "SELECT lockout_until FROM preflights WHERE active = 1",
-            [], |row| row.get(0),
-        ).ok();
+        let session = current_session_id();
+        let lockout_until: Option<i64> = match &session {
+            Some(sid) => conn.query_row(
+                "SELECT lockout_until FROM preflights WHERE active = 1 AND (session_id = ?1 OR session_id IS NULL)",
+                params![sid], |row| row.get(0),
+            ),
+            None => conn.query_row(
+                "SELECT lockout_until FROM preflights WHERE active = 1",
+                [], |row| row.get(0),
+            ),
+        }.ok();
         match lockout_until {
             Some(until) => (now_epoch() as i64) < until,
             None => false,
@@ -701,11 +741,21 @@ impl Vault {
     }
 
     /// Deactivate the active preflight (human override).
+    /// Session-scoped: only deactivates preflights for the current session.
     pub fn override_preflight(&self) -> Result<(), String> {
         let conn = Connection::open(&self.db_path)
             .map_err(|e| format!("open db: {e}"))?;
-        let rows = conn.execute("UPDATE preflights SET active = 0 WHERE active = 1", [])
-            .map_err(|e| format!("deactivate: {e}"))?;
+        let session = current_session_id();
+        let rows = match &session {
+            Some(sid) => conn.execute(
+                "UPDATE preflights SET active = 0 WHERE active = 1 AND (session_id = ?1 OR session_id IS NULL)",
+                params![sid],
+            ),
+            None => conn.execute(
+                "UPDATE preflights SET active = 0 WHERE active = 1",
+                [],
+            ),
+        }.map_err(|e| format!("deactivate: {e}"))?;
         if rows == 0 {
             return Err("No active preflight to override.".into());
         }

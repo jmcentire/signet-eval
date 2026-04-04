@@ -192,7 +192,8 @@ impl ServerHandler for SignetMcpServer {
                             },
                             "required": ["name", "tool_pattern", "conditions", "action", "reason", "alternative"]
                         }, "description": "Self-imposed soft constraints (max 20)"},
-                        "lockout_minutes": {"type": "integer", "description": "How long this preflight is locked (5-480 min)", "minimum": 5, "maximum": 480}
+                        "lockout_minutes": {"type": "integer", "description": "How long this preflight is locked (5-480 min)", "minimum": 5, "maximum": 480},
+                        "force": {"type": "boolean", "description": "Bypass overly-broad constraint check (default false)", "default": false}
                     },
                     "required": ["task", "risks", "constraints", "lockout_minutes"]
                 })),
@@ -841,6 +842,31 @@ fn handle_preflight_submit(args: &serde_json::Map<String, Value>) -> String {
         Err(e) => return format!("Validation error: {e}"),
     };
 
+    // Advisory: reject overly broad constraints unless force=true
+    let force = args.get("force").and_then(|v| v.as_bool()).unwrap_or(false);
+    if !force {
+        let broad: Vec<&str> = constraints.iter()
+            .filter(|c| {
+                let pat = c.tool_pattern.trim();
+                (pat == ".*" || pat == ".+" || pat == "^.*$" || pat == "^.+$") && c.conditions.is_empty()
+            })
+            .map(|c| c.name.as_str())
+            .collect();
+        if !broad.is_empty() {
+            return format!(
+                "REJECTED — overly broad constraint(s): {}\n\n\
+                 These constraints match ALL tool calls with no conditions, which will block \
+                 everything including your own MCP tools. You will lock yourself out.\n\n\
+                 Fix: narrow the tool_pattern (e.g. \"^Bash$\") or add conditions \
+                 (e.g. \"contains(parameters, 'rm ')\").\n\n\
+                 If you genuinely need a universal constraint, re-submit with force: true.",
+                broad.join(", ")
+            );
+        }
+    }
+
+    let session_id = vault::current_session_id();
+
     match vault::try_load_vault() {
         Some(v) => {
             if v.is_preflight_locked() {
@@ -858,9 +884,17 @@ fn handle_preflight_submit(args: &serde_json::Map<String, Value>) -> String {
                 lockout_until: now + lockout_minutes * 60,
                 violation_count: 0,
                 escalated: false,
+                session_id: session_id.clone(),
             };
             match v.store_preflight(&preflight) {
-                Ok(_) => format!("Preflight filed. ID: {}. Locked for {} minutes ({} constraints active).", preflight.id, lockout_minutes, preflight.constraints.len()),
+                Ok(_) => {
+                    let scope = match &preflight.session_id {
+                        Some(sid) => format!(" (session: {})", sid),
+                        None => " (global)".into(),
+                    };
+                    format!("Preflight filed. ID: {}.{} Locked for {} minutes ({} constraints active).",
+                        preflight.id, scope, lockout_minutes, preflight.constraints.len())
+                }
                 Err(e) => format!("Failed to store preflight: {e}"),
             }
         }
@@ -882,6 +916,10 @@ fn handle_preflight_active() -> String {
                         format!("Escalated: {}", pf.escalated),
                         format!("Lockout until: {}", pf.lockout_until),
                     ];
+                    match &pf.session_id {
+                        Some(sid) => lines.push(format!("Session: {}", sid)),
+                        None => lines.push("Session: global".into()),
+                    }
                     for (i, c) in pf.constraints.iter().enumerate() {
                         lines.push(format!("  {}. [{}] {} — {}", i + 1, c.action, c.name, c.reason));
                         lines.push(format!("     Plan B: {}", c.alternative));

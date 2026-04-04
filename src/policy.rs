@@ -800,6 +800,18 @@ pub fn self_protection_rules() -> Vec<PolicyRule> {
             gate: None, ensure: None,
         },
         PolicyRule {
+            name: "protect_vault_passphrase".into(),
+            tool_pattern: ".*".into(),
+            conditions: vec![
+                "any_of(parameters, 'signet-eval setup', 'signet-eval unlock', 'signet_eval setup', 'signet_eval unlock')".into(),
+            ],
+            action: Decision::Deny,
+            locked: true,
+            reason: Some("Self-protection: vault passphrase operations are reserved for humans only.".into()),
+            alternative: Some("Ask the user to run 'signet-eval setup' or 'signet-eval unlock' directly in their terminal.".into()),
+            gate: None, ensure: None,
+        },
+        PolicyRule {
             name: "protect_signet_binary".into(),
             tool_pattern: ".*".into(),
             conditions: vec!["any_of(parameters, 'signet-eval', 'signet_eval', 'Signet-Eval', 'SIGNET-EVAL', 'SIGNET_EVAL')".into()],
@@ -1498,7 +1510,7 @@ mod self_protection_tests {
     #[test]
     fn test_default_policy_has_locked_rules() {
         let rules = self_protection_rules();
-        assert_eq!(rules.len(), 7);
+        assert_eq!(rules.len(), 8);
         assert!(rules.iter().all(|r| r.locked));
         // github_identity_guard should NOT be in self-protection rules
         assert!(!rules.iter().any(|r| r.name == "github_identity_guard"));
@@ -1680,6 +1692,28 @@ mod self_protection_tests {
         assert!(yaml.contains("locked: true"));
         let parsed: PolicyRule = serde_yaml::from_str(&yaml).unwrap();
         assert!(parsed.locked);
+    }
+
+    #[test]
+    fn test_blocks_vault_setup() {
+        let policy = default_policy();
+        let call = make_call("Bash", serde_json::json!({
+            "command": "signet-eval setup"
+        }));
+        let result = evaluate(&call, &policy, None);
+        assert_eq!(result.decision, Decision::Deny);
+        assert_eq!(result.matched_rule.as_deref(), Some("protect_vault_passphrase"));
+    }
+
+    #[test]
+    fn test_blocks_vault_unlock() {
+        let policy = default_policy();
+        let call = make_call("Bash", serde_json::json!({
+            "command": "signet-eval unlock"
+        }));
+        let result = evaluate(&call, &policy, None);
+        assert_eq!(result.decision, Decision::Deny);
+        assert_eq!(result.matched_rule.as_deref(), Some("protect_vault_passphrase"));
     }
 
     #[test]
