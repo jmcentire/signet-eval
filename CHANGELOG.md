@@ -1,5 +1,21 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- **`INJECT` rule action** — 6th `Decision` variant alongside `ALLOW`/`DENY`/`ASK`/`GATE`/`ENSURE`. Inject rules emit advisory context strings into the agent's stream via the hook's existing `additionalContext` channel (Claude) or appended to the `message` field with a `[nudge]` delimiter (Codex `PermissionRequest`). Non-authoritative: the first-match-wins auth pass is unchanged; inject rules are evaluated in a separate post-auth pass that collects payloads from all matching rules.
+- Recency-weighted probability with four trigger modes: `constant`, `step` (alias for constant), `linear` (ramps from 0 to `peak` over `peak_after_seconds`), `exponential` (`peak * (1 - exp(-(t-cooldown)/peak_after_seconds))`). Per-rule state persisted in new `injection_state` SQLite table (`rule_name`, `last_fired_ts`, `session_fires`, `session_start`).
+- Four payload sources: `text:` (inline literal), `text_file:` (bare filename under `~/.signet/injections/`, no path separators or traversal), `from_command:` (entry name against HMAC-signed `~/.signet/inject_commands.yaml` allowlist, direct `execve` with no shell, env scrubbed to `PATH` only, 2s wall-clock timeout, 64KB stdout cap), plus optional template substitutions (`{tool_name}`, `{cwd}`, `{date}`, `{matched_param.X}`).
+- **Load-time fast path**: when the loaded policy contains zero `INJECT` rules, the inject pass is skipped entirely (no SQL queries, no allocations). Zero overhead for users who don't author inject rules.
+- HMAC integrity for the inject command allowlist: `signet-eval sign` extends to `~/.signet/inject_commands.yaml`; loading fails closed when a vault is set up but the allowlist HMAC sidecar is missing or invalid.
+- CLI: `signet-eval injections` shows recent inject fires (`rule`, `session#`, `last fired`). `signet-eval inject-test <rule>` force-fires a single inject rule for testing, ignoring probability and cooldown.
+- Validation: `signet-eval validate` rejects inject rules with `peak` outside `[0.0, 1.0]`, negative `cooldown_seconds`, non-positive `peak_after_seconds`, wrong number of payload sources, or unsafe `text_file` paths. `validate --fix` clamps the numeric ranges.
+- `examples/inject_examples.yaml` — generic schema templates demonstrating the four trigger modes, payload sources, and template substitutions. Tool ships with no locked or default inject rules; behavioral shaping is entirely user-configured.
+
+### Notes
+- The inject pass introduces signet-eval's first non-determinism — `rand::thread_rng` rolls for each matched rule. Strictly scoped to advisory output; the authorization pass remains fully deterministic and reproducible.
+- All 17 existing MCP tools (`signet_add_rule`, `signet_edit_rule`, …) accept the new `inject` block via the existing PolicyRule serde schema. Auto-sign continues to work after MCP mutations.
+
 ## [3.10.1] - 2026-05-08
 
 ### Fixed
