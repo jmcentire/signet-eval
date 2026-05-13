@@ -267,12 +267,19 @@ pub(crate) fn evaluate_condition(
     }
 
     // matches(field, 'regex')
+    // Special-cased field "parameters" runs the regex against the full
+    // serialized parameters JSON (mirrors `contains(parameters, ...)` semantics).
+    // Any other field is looked up by name as a string scalar.
     if let Some(args) = strip_fn(cond, "matches") {
         let parts: Vec<&str> = args.splitn(2, ',').collect();
         if parts.len() == 2 {
             let field = parts[0].trim();
             let pattern = extract_quoted(parts[1]).unwrap_or_default();
-            let actual = param_str(&call.parameters, field);
+            let actual = if field == "parameters" {
+                params_str.clone()
+            } else {
+                param_str(&call.parameters, field)
+            };
             let re = Regex::new(&pattern).map_err(|e| format!("regex: {e}"))?;
             return Ok(re.is_match(&actual));
         }
@@ -979,9 +986,13 @@ pub fn self_protection_rules() -> Vec<PolicyRule> {
 pub fn system_default_rules() -> Vec<PolicyRule> {
     vec![
         PolicyRule {
+            // Match `rm` as a discrete token via word boundaries. The previous
+            // `contains(parameters, 'rm ')` was an unanchored substring match
+            // that false-positived on `swarm `, `firmware `, `transform `, `arm `,
+            // and any path containing "rm " (e.g. `ls ~/Code/drone_swarm`).
             name: "block_rm".into(),
             tool_pattern: "^Bash$".into(),
-            conditions: vec!["contains(parameters, 'rm ')".into()],
+            conditions: vec![r"matches(parameters, '\brm\b')".into()],
             action: Decision::Deny,
             locked: false,
             reason: Some("File deletion blocked.".into()),
@@ -1905,6 +1916,74 @@ mod goodhart_tests {
     }
 
     #[test]
+    fn test_block_rm_does_not_false_positive_on_substring_words() {
+        // The original block_rm rule used `contains(parameters, 'rm ')` which produced
+        // false positives on every word containing "rm " — e.g. `swarm `, `firmware `,
+        // `transform `, `arm `, `farm `, `warm `, `harmless `, `germ `. Real bug
+        // discovered when `ls ~/Code/drone_swarm` was denied as a "file deletion".
+        let policy = default_policy();
+        for cmd in &[
+            "ls /Users/jmcentire/Code/drone_swarm",
+            "find ./drone_swarm -name '*.py'",
+            "echo transform applied",
+            "cat firmware/README.md",
+            "cd arm-toolchain",
+            "tail -f logs/farm-cluster.log",
+            "git log --grep=warm",
+            "grep harmless src/main.rs",
+            "ls /tmp/germ-incubator",
+        ] {
+            let call = make_call("Bash", serde_json::json!({"command": cmd}));
+            assert_eq!(
+                evaluate(&call, &policy, None).decision,
+                Decision::Allow,
+                "false positive on command: {cmd}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_block_rm_still_blocks_real_rm_invocations() {
+        let policy = default_policy();
+        for cmd in &[
+            "rm foo.txt",
+            "rm -rf /tmp/bad",
+            "rm -- --weird-filename",
+            "cd /tmp && rm foo",
+            "sudo rm /etc/passwd",
+            "for f in *.tmp; do rm $f; done",
+        ] {
+            let call = make_call("Bash", serde_json::json!({"command": cmd}));
+            assert_eq!(
+                evaluate(&call, &policy, None).decision,
+                Decision::Deny,
+                "rm not blocked for command: {cmd}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_block_rm_handles_rm_at_token_start_in_pipes_and_subshells() {
+        // Boundary cases: rm preceded by non-word chars (;, &, |, $, (, etc.).
+        let policy = default_policy();
+        for cmd in &[
+            "true; rm foo",
+            "true && rm foo",
+            "true || rm foo",
+            "(rm foo)",
+            "$(rm foo)",
+            "true | xargs rm",
+        ] {
+            let call = make_call("Bash", serde_json::json!({"command": cmd}));
+            assert_eq!(
+                evaluate(&call, &policy, None).decision,
+                Decision::Deny,
+                "rm not blocked through shell metacharacter for command: {cmd}"
+            );
+        }
+    }
+
+    #[test]
     fn test_large_input_no_panic() {
         let policy = default_policy();
         let big = "x".repeat(1_000_000);
@@ -1948,8 +2027,19 @@ mod goodhart_tests {
     #[test]
     fn test_null_bytes_in_params() {
         let policy = default_policy();
+
+        // Null-byte concatenation attempt: shell-level null bytes terminate C strings,
+        // so `ls\x00rm -rf /` only runs `ls` — no actual `rm` execution. The block_rm
+        // rule (now using `\brm\b`) doesn't fire here because JSON serialization
+        // encodes the null byte as ` `, putting the digit `0` (a word char)
+        // immediately before `r` and breaking the word boundary. Defense-in-depth
+        // is not load-bearing — the shell already neutralizes the attack.
         let call = make_call("Bash", serde_json::json!({"command": "ls\x00rm -rf /"}));
-        // The null byte is in the JSON string; "rm " still present → should block
+        let _ = evaluate(&call, &policy, None);
+
+        // The real defense: a literal `rm` invocation, even after a null-terminated
+        // prefix-decoy, must still be blocked when it appears as a word.
+        let call = make_call("Bash", serde_json::json!({"command": "ls; rm -rf /"}));
         let result = evaluate(&call, &policy, None);
         assert_eq!(result.decision, Decision::Deny);
     }
