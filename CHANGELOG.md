@@ -2,12 +2,24 @@
 
 ## [Unreleased]
 
+### Added
+- **`INJECT` rule action** — 6th `Decision` variant alongside `ALLOW`/`DENY`/`ASK`/`GATE`/`ENSURE`. Inject rules emit advisory context strings into the agent's stream via the hook's existing `additionalContext` channel (Claude) or appended to the `message` field with a `[nudge]` delimiter (Codex `PermissionRequest`). Non-authoritative: the first-match-wins auth pass is unchanged; inject rules are evaluated in a separate post-auth pass that collects payloads from all matching rules.
+- Recency-weighted probability with four trigger modes: `constant`, `step` (alias for constant), `linear` (ramps from 0 to `peak` over `peak_after_seconds`), `exponential` (`peak * (1 - exp(-(t-cooldown)/peak_after_seconds))`). Per-rule state persisted in new `injection_state` SQLite table (`rule_name`, `last_fired_ts`, `session_fires`, `session_start`).
+- Four payload sources: `text:` (inline literal), `text_file:` (bare filename under `~/.signet/injections/`, no path separators or traversal), `from_command:` (entry name against HMAC-signed `~/.signet/inject_commands.yaml` allowlist, direct `execve` with no shell, env scrubbed to `PATH` only, 2s wall-clock timeout, 64KB stdout cap), plus optional template substitutions (`{tool_name}`, `{cwd}`, `{date}`, `{matched_param.X}`).
+- **Load-time fast path**: when the loaded policy contains zero `INJECT` rules, the inject pass is skipped entirely (no SQL queries, no allocations). Zero overhead for users who don't author inject rules.
+- HMAC integrity for the inject command allowlist: `signet-eval sign` extends to `~/.signet/inject_commands.yaml`; loading fails closed when a vault is set up but the allowlist HMAC sidecar is missing or invalid.
+- CLI: `signet-eval injections` shows recent inject fires (`rule`, `session#`, `last fired`). `signet-eval inject-test <rule>` force-fires a single inject rule for testing, ignoring probability and cooldown.
+- Validation: `signet-eval validate` rejects inject rules with `peak` outside `[0.0, 1.0]`, negative `cooldown_seconds`, non-positive `peak_after_seconds`, wrong number of payload sources, or unsafe `text_file` paths. `validate --fix` clamps the numeric ranges.
+- `examples/inject_examples.yaml` — generic schema templates demonstrating the four trigger modes, payload sources, and template substitutions. Tool ships with no locked or default inject rules; behavioral shaping is entirely user-configured.
+- Adversarial tests in `policy::goodhart_tests` covering substring false-positive prevention (`test_block_rm_does_not_false_positive_on_substring_words`), real-rm-invocation coverage (`test_block_rm_still_blocks_real_rm_invocations`), and shell-metacharacter prefix handling (`test_block_rm_handles_rm_at_token_start_in_pipes_and_subshells`).
+
 ### Fixed
 - **`block_rm` false positives on substring word collisions.** The default `block_rm` rule used `contains(parameters, 'rm ')` — an unanchored substring match that denied any Bash command whose serialized parameters contained the bytes `rm ` as a substring. This produced false positives on benign commands navigating paths or words like `drone_swarm`, `firmware`, `transform`, `arm-toolchain`, `farm`, `warm`, `harmless`, `germ`, and many others. Real failure surfaced when `ls ~/Code/drone_swarm` and `find ~/Code/drone_swarm -name '*.py'` were both denied as "file deletion." The rule now uses `matches(parameters, '\brm\b')` — word-boundary anchored — which still blocks every real `rm` invocation (including those chained through shell metacharacters `;`, `&&`, `||`, `|`, `(`, `$(...)`) while eliminating the substring false positives.
 - **`matches(parameters, …)` semantics.** The `matches` condition function previously looked up `parameters` as a literal field name in the JSON object — which always returned empty since the JSON's top-level keys are the parameter names themselves (e.g., `command`), not `parameters`. The function now special-cases the `parameters` field to run the regex against the full serialized parameter JSON, mirroring the existing `contains(parameters, ...)` semantics. Any other field name continues to be looked up by name. This makes `matches(parameters, ...)` actually usable as a regex equivalent of `contains(parameters, ...)`.
 
-### Added
-- Adversarial tests in `policy::goodhart_tests` covering substring false-positive prevention (`test_block_rm_does_not_false_positive_on_substring_words`), real-rm-invocation coverage (`test_block_rm_still_blocks_real_rm_invocations`), and shell-metacharacter prefix handling (`test_block_rm_handles_rm_at_token_start_in_pipes_and_subshells`).
+### Notes
+- The inject pass introduces signet-eval's first non-determinism — `rand::thread_rng` rolls for each matched rule. Strictly scoped to advisory output; the authorization pass remains fully deterministic and reproducible.
+- All 17 existing MCP tools (`signet_add_rule`, `signet_edit_rule`, …) accept the new `inject` block via the existing PolicyRule serde schema. Auto-sign continues to work after MCP mutations.
 
 ## [3.10.1] - 2026-05-08
 

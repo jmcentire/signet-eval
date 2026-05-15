@@ -407,7 +407,8 @@ fn handle_add_rule(args: &serde_json::Map<String, Value>) -> String {
         conditions, action, reason: Some(reason.into()),
         alternative: None, locked: false,
         gate, ensure,
-    });
+    inject: None,
+});
     save_rules(&user_rules);
     auto_sign();
     format!("Added rule '{name}' ({action:?}) to user rules: {reason}")
@@ -459,7 +460,8 @@ fn handle_set_limit(args: &serde_json::Map<String, Value>) -> String {
         reason: Some(format!("Spending limit: ${max_amount:.0}/{per} on {category}")),
         alternative: None, locked: false,
         gate: None, ensure: None,
-    });
+    inject: None,
+});
     save_policy(&config);
     auto_sign();
     format!("Set ${max_amount:.0}/{per} limit on {category}.")

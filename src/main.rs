@@ -126,6 +126,17 @@ enum Command {
         #[arg(long)]
         session: Option<String>,
     },
+    /// Show recent inject rule fires
+    Injections {
+        /// Max entries to show
+        #[arg(long, default_value = "20")]
+        limit: u32,
+    },
+    /// Force-fire a single inject rule for testing (ignores probability/cooldown/cap)
+    InjectTest {
+        /// Inject rule name to fire
+        rule: String,
+    },
 }
 
 fn expand_home(path: &str) -> PathBuf {
@@ -441,6 +452,13 @@ fn run() -> i32 {
                         match vault::sign_policy(v.session_key(), &rules_path) {
                             Ok(_) => println!("Rules signed: {}", rules_path.with_extension("hmac").display()),
                             Err(e) => { eprintln!("Error signing rules: {e}"); ok = false; }
+                        }
+                    }
+                    let inject_path = policy::inject_commands_path();
+                    if inject_path.exists() {
+                        match vault::sign_policy(v.session_key(), &inject_path) {
+                            Ok(_) => println!("Inject allowlist signed: {}", inject_path.with_extension("hmac").display()),
+                            Err(e) => { eprintln!("Error signing inject allowlist: {e}"); ok = false; }
                         }
                     }
                     if ok { 0 } else { 1 }
@@ -764,6 +782,74 @@ fn run() -> i32 {
                     }
                 }
                 None => { eprintln!("Vault not set up or locked."); 1 }
+            }
+        }
+        Some(Command::Injections { limit }) => {
+            match vault::try_load_vault() {
+                Some(v) => {
+                    let fires = v.recent_inject_fires(limit as i64);
+                    if fires.is_empty() {
+                        println!("No inject rule fires recorded yet.");
+                        return 0;
+                    }
+                    let now = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_secs_f64())
+                        .unwrap_or(0.0);
+                    println!("{:<40} {:>10} {:>14}", "RULE", "SESSION#", "LAST FIRED");
+                    for (rule, ts, fires_count) in fires {
+                        let ago_s = (now - ts).max(0.0) as u64;
+                        let ago_str = if ago_s < 60 {
+                            format!("{ago_s}s ago")
+                        } else if ago_s < 3600 {
+                            format!("{}m ago", ago_s / 60)
+                        } else if ago_s < 86400 {
+                            format!("{}h ago", ago_s / 3600)
+                        } else {
+                            format!("{}d ago", ago_s / 86400)
+                        };
+                        println!("{:<40} {:>10} {:>14}", rule, fires_count, ago_str);
+                    }
+                    0
+                }
+                None => { eprintln!("Vault not set up or locked."); 1 }
+            }
+        }
+        Some(Command::InjectTest { rule }) => {
+            let v = vault::try_load_vault();
+            let compiled = policy::load_merged_policy(&policy_path, &rules_path);
+            let target = compiled.rules.iter().find(|r| r.name == rule && r.action == policy::Decision::Inject);
+            let target = match target {
+                Some(t) => t,
+                None => {
+                    eprintln!("No INJECT rule named '{}' found.", rule);
+                    return 1;
+                }
+            };
+            let inject_cfg = match target.inject.as_ref() {
+                Some(c) => c,
+                None => {
+                    eprintln!("Rule '{}' has action INJECT but no inject config.", rule);
+                    return 1;
+                }
+            };
+            let call = policy::ToolCall {
+                tool_name: "InjectTest".into(),
+                parameters: serde_json::json!({"_inject_test": rule}),
+            };
+            match policy::resolve_inject_payload(&inject_cfg.payload, &call, v.as_ref()) {
+                Ok(payload) => {
+                    println!("--- Inject test fired: {rule} ---");
+                    println!("{payload}");
+                    if let Some(ref vv) = v {
+                        vv.record_inject_fire(&rule, vv.session_start());
+                    }
+                    0
+                }
+                Err(e) => {
+                    eprintln!("Inject payload resolution failed: {e}");
+                    1
+                }
             }
         }
     }

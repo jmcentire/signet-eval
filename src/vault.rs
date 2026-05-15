@@ -230,6 +230,10 @@ impl Vault {
         &self.session_key
     }
 
+    pub fn session_start(&self) -> f64 {
+        self.session_start
+    }
+
     fn init_db(&self) {
         let conn = Connection::open(&self.db_path).expect("open db");
         conn.execute_batch("
@@ -280,6 +284,12 @@ impl Vault {
             );
             CREATE INDEX IF NOT EXISTS idx_preflight_active ON preflights(active);
             CREATE INDEX IF NOT EXISTS idx_pv_preflight ON preflight_violations(preflight_id);
+            CREATE TABLE IF NOT EXISTS injection_state (
+                rule_name TEXT PRIMARY KEY,
+                last_fired_ts REAL NOT NULL DEFAULT 0,
+                session_fires INTEGER NOT NULL DEFAULT 0,
+                session_start REAL NOT NULL DEFAULT 0
+            );
         ").expect("init db");
 
         // Migration: add session_id column to preflights (idempotent)
@@ -316,6 +326,11 @@ impl Vault {
                 "INSERT OR REPLACE INTO session_state (key, value, updated_at) VALUES ('_session_start', ?1, ?2)",
                 params![now.to_string(), now],
             );
+            // Reset per-session inject counters atomically with session_start.
+            let _ = conn.execute(
+                "UPDATE injection_state SET session_fires = 0, session_start = ?1",
+                params![now],
+            );
         }
     }
 
@@ -327,6 +342,91 @@ impl Vault {
                 "INSERT INTO ledger (timestamp, tool, category, amount, decision, detail) VALUES (?1,?2,?3,?4,?5,?6)",
                 params![now_epoch(), tool, category, amount, decision, detail],
             );
+        }
+    }
+
+    // --- Inject state ---
+
+    /// Returns (last_fired_ts, session_fires, session_start) for a rule.
+    /// last_fired_ts is None if the rule has never fired. session_fires resets when
+    /// the row's session_start is older than the current vault session_start.
+    pub fn get_inject_state(&self, rule_name: &str) -> (Option<f64>, i64, f64) {
+        let session_start = self.session_start;
+        let conn = match Connection::open(&self.db_path) {
+            Ok(c) => c,
+            Err(_) => return (None, 0, session_start),
+        };
+        let row: Option<(f64, i64, f64)> = conn.query_row(
+            "SELECT last_fired_ts, session_fires, session_start FROM injection_state WHERE rule_name = ?1",
+            params![rule_name],
+            |r| Ok((r.get::<_, f64>(0)?, r.get::<_, i64>(1)?, r.get::<_, f64>(2)?)),
+        ).ok();
+        match row {
+            Some((last, fires, row_session)) => {
+                let last_opt = if last > 0.0 { Some(last) } else { None };
+                let effective_fires = if (row_session - session_start).abs() < 0.5 {
+                    fires
+                } else {
+                    0
+                };
+                (last_opt, effective_fires, session_start)
+            }
+            None => (None, 0, session_start),
+        }
+    }
+
+    /// Record that an inject rule has fired now. Increments session_fires when the
+    /// row's session_start matches the vault session; otherwise resets to 1.
+    pub fn record_inject_fire(&self, rule_name: &str, session_start: f64) {
+        let conn = match Connection::open(&self.db_path) {
+            Ok(c) => c,
+            Err(_) => return,
+        };
+        let now = now_epoch();
+        // Upsert: increment fires if same session, else reset to 1.
+        let _ = conn.execute(
+            "INSERT INTO injection_state (rule_name, last_fired_ts, session_fires, session_start) \
+             VALUES (?1, ?2, 1, ?3) \
+             ON CONFLICT(rule_name) DO UPDATE SET \
+                last_fired_ts = excluded.last_fired_ts, \
+                session_fires = CASE WHEN ABS(injection_state.session_start - excluded.session_start) < 0.5 \
+                                     THEN injection_state.session_fires + 1 ELSE 1 END, \
+                session_start = excluded.session_start",
+            params![rule_name, now, session_start],
+        );
+    }
+
+    /// Reset per-session inject counters. Currently redundant with reset_session's inline
+    /// update; retained as a public API hook for future external callers (e.g. MCP).
+    #[allow(dead_code)]
+    pub fn reset_inject_session(&self) {
+        if let Ok(conn) = Connection::open(&self.db_path) {
+            let _ = conn.execute(
+                "UPDATE injection_state SET session_fires = 0, session_start = ?1",
+                params![self.session_start],
+            );
+        }
+    }
+
+    /// Recent inject fires (rule_name, last_fired_ts, session_fires), ordered by recency.
+    pub fn recent_inject_fires(&self, limit: i64) -> Vec<(String, f64, i64)> {
+        let conn = match Connection::open(&self.db_path) {
+            Ok(c) => c,
+            Err(_) => return vec![],
+        };
+        let mut stmt = match conn.prepare(
+            "SELECT rule_name, last_fired_ts, session_fires FROM injection_state \
+             WHERE last_fired_ts > 0 ORDER BY last_fired_ts DESC LIMIT ?1"
+        ) {
+            Ok(s) => s,
+            Err(_) => return vec![],
+        };
+        let rows = stmt.query_map(params![limit], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, f64>(1)?, r.get::<_, i64>(2)?))
+        });
+        match rows {
+            Ok(it) => it.filter_map(Result::ok).collect(),
+            Err(_) => vec![],
         }
     }
 

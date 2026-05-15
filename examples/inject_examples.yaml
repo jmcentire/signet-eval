@@ -1,0 +1,110 @@
+version: 1
+default_action: ALLOW
+
+# INJECT rule examples — generic templates only. signet-eval does NOT ship any
+# locked or default inject rules; behavioral nudges are entirely user-configured.
+#
+# An INJECT rule emits advisory context text into the agent's stream via the
+# hook's `additionalContext` channel (or Codex PermissionRequest message field).
+# It is non-authoritative: it does not allow, deny, or ask. The first-match-wins
+# auth pass runs independently.
+#
+# Trigger modes:
+#   constant  — fires at flat probability `peak` once cooldown elapses
+#   step      — alias for constant
+#   linear    — probability ramps 0 → peak over peak_after_seconds (after cooldown)
+#   exponential — P = peak * (1 - exp(-(t-cooldown)/peak_after_seconds))
+#
+# Payload sources (exactly one):
+#   text         — inline literal
+#   text_file    — bare filename under ~/.signet/injections/ (no slashes, no '..')
+#   from_command — entry name in ~/.signet/inject_commands.yaml allowlist
+#                  (HMAC-signed; verify with `signet-eval sign`)
+#
+# Template substitutions (when `substitutions: true`):
+#   {tool_name}        — the tool being called
+#   {cwd}              — current working directory of the hook subprocess
+#   {date}             — YYYY-MM-DD
+#   {matched_param.X}  — value of parameter X from the tool call
+
+rules:
+
+  # Example 1: gentle nudge to verify tests pass after edits.
+  # Fires probabilistically — peaks at 25% probability after 10 minutes since last fire,
+  # capped at 5 fires per session.
+  - name: nudge_run_tests_after_edits
+    tool_pattern: "Edit|Write|MultiEdit"
+    conditions: []
+    action: INJECT
+    inject:
+      trigger:
+        mode: linear
+        peak: 0.25
+        peak_after_seconds: 600
+        cooldown_seconds: 60
+        max_per_session: 5
+      payload:
+        text: |
+          Reminder: after this edit, consider running the test suite to catch regressions early.
+          The cost of catching a break now is far lower than after a chain of edits.
+        substitutions: false
+
+  # Example 2: nudge to check linter output before committing.
+  # Constant 30% probability per match, 2-minute cooldown.
+  - name: nudge_lint_before_commit
+    tool_pattern: "Bash"
+    conditions:
+      - "contains(parameters, 'git commit')"
+    action: INJECT
+    inject:
+      trigger:
+        mode: constant
+        peak: 0.3
+        cooldown_seconds: 120
+        max_per_session: 3
+      payload:
+        text: "Reminder: run the project's linter before committing. Catch issues now, not in CI."
+
+  # Example 3: with template substitutions.
+  # Surfaces the matched tool name and cwd in the payload.
+  - name: nudge_with_substitutions
+    tool_pattern: "Write"
+    conditions:
+      - "param_contains(file_path, '/src/')"
+    action: INJECT
+    inject:
+      trigger:
+        mode: exponential
+        peak: 0.4
+        peak_after_seconds: 900
+        cooldown_seconds: 30
+        max_per_session: 10
+      payload:
+        text: "Edit detected via {tool_name} in {cwd} on {date}. Document the change rationale."
+        substitutions: true
+
+  # Example 4 (commented): from_command.
+  # Requires an entry in ~/.signet/inject_commands.yaml signed via `signet-eval sign`:
+  #
+  #   commands:
+  #     - name: project_status
+  #       program: /usr/bin/git    # USE ABSOLUTE PATHS — relative names are PATH-dependent
+  #       fixed_args: ["status", "--short"]
+  #
+  # The agent receives the command's stdout (capped at 64KB, 2s timeout) as the payload.
+  # Sandbox: direct execve (no shell), env scrubbed to PATH only, CWD=~/.signet/.
+  #
+  # - name: nudge_show_git_status
+  #   tool_pattern: "Bash"
+  #   conditions:
+  #     - "contains(parameters, 'git commit')"
+  #   action: INJECT
+  #   inject:
+  #     trigger:
+  #       mode: step
+  #       peak: 0.5
+  #       cooldown_seconds: 300
+  #       max_per_session: 2
+  #     payload:
+  #       from_command:
+  #         name: project_status

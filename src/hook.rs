@@ -199,7 +199,11 @@ pub fn run_hook_with_adapter(
         } else { result }
     } else { result };
 
-    // Hard deny always wins — short-circuit
+    // Capture any inject-pass payload before consuming `result` in subsequent branches.
+    let inject_context = result.injected_context.clone();
+
+    // Hard deny always wins — short-circuit. Inject payloads still flow on deny so
+    // the agent gets the nudge alongside the denial reason.
     let (final_decision, final_reason, final_context) = if result.decision == Decision::Deny {
         (result.decision, result.reason, None)
     } else {
@@ -345,12 +349,21 @@ pub fn run_hook_with_adapter(
         v.log_action(&call.tool_name, final_decision.as_lowercase(), category, amt, &detail[..detail.len().min(500)]);
     }
 
+    // Combine preflight-derived context with any inject-pass payload. Inject context
+    // appends after preflight context (preflight is higher-priority, more urgent).
+    let combined_context = match (final_context, inject_context) {
+        (Some(p), Some(i)) => Some(format!("{p}\n\n---\n\n{i}")),
+        (Some(p), None) => Some(p),
+        (None, Some(i)) => Some(i),
+        (None, None) => None,
+    };
+
     emit_decision(
         adapter,
         event,
         final_decision.as_lowercase(),
         if final_decision != Decision::Allow { final_reason } else { None },
-        final_context,
+        combined_context,
     );
     0
 }
@@ -369,27 +382,38 @@ fn emit_decision(
         (HookAdapter::Codex | HookAdapter::CodexPermission, HookEvent::PreToolUse) => {
             // Codex PreToolUse currently only supports deny as an enforcing decision.
             // Allow/ask fail open in Codex, so emit no output for allow and turn ask into deny.
+            // additional_context is preserved on deny so inject nudges still reach the agent.
             match decision {
-                "deny" => emit_pre_tool_use_decision("PreToolUse", "deny", reason, None),
+                "deny" => emit_pre_tool_use_decision("PreToolUse", "deny", reason, additional_context),
                 "ask" => emit_pre_tool_use_decision(
                     "PreToolUse",
                     "deny",
                     Some(reason.unwrap_or_else(|| {
                         "Signet policy requires approval; Codex PreToolUse cannot ask yet.".into()
                     })),
-                    None,
+                    additional_context,
                 ),
                 _ => {}
             }
         }
         (HookAdapter::Codex | HookAdapter::CodexPermission, HookEvent::PermissionRequest) => {
             // PermissionRequest can explicitly allow/deny. For ASK, decline to decide so
-            // Codex shows its normal approval prompt.
+            // Codex shows its normal approval prompt. Codex PermissionRequest has no separate
+            // additionalContext channel, so inject payloads append to the `message` field with
+            // a delimiter (defensible: message is freeform explanatory text).
+            let codex_message = |base: Option<String>| -> Option<String> {
+                match (base, additional_context.clone()) {
+                    (Some(b), Some(ctx)) => Some(format!("{b}\n\n[nudge]\n{ctx}")),
+                    (Some(b), None) => Some(b),
+                    (None, Some(ctx)) => Some(format!("[nudge]\n{ctx}")),
+                    (None, None) => None,
+                }
+            };
             match decision {
-                "allow" => emit_permission_request_decision("allow", None),
+                "allow" => emit_permission_request_decision("allow", codex_message(None)),
                 "deny" => emit_permission_request_decision(
                     "deny",
-                    Some(reason.unwrap_or_else(|| "Blocked by Signet policy.".into())),
+                    codex_message(Some(reason.unwrap_or_else(|| "Blocked by Signet policy.".into()))),
                 ),
                 "ask" => {}
                 _ => {}

@@ -144,6 +144,27 @@ impl ServerHandler for ProxyServer {
                     let reason = result.reason.unwrap_or_else(|| "Ensure checks cannot run in proxy mode".into());
                     Ok(CallToolResult::error(vec![Content::text(format!("DENIED by Signet: {reason}"))]))
                 }
+                Decision::Inject => {
+                    // Inject rules are non-authoritative and skipped in the auth pass.
+                    // Reaching this arm means the default action was Inject, which is misconfigured.
+                    // Fall through to Allow semantics to avoid blocking on misconfiguration.
+                    let upstreams = self.upstreams.lock().await;
+                    let upstream = upstreams.iter().find(|u| u.name == server_name);
+                    match upstream {
+                        Some(u) => {
+                            let mut fwd = CallToolRequestParams::default();
+                            fwd.name = Cow::Owned(original_name.clone());
+                            fwd.arguments = request.arguments.clone();
+                            match u.client.peer().call_tool(fwd).await {
+                                Ok(r) => Ok(r),
+                                Err(e) => Ok(CallToolResult::error(vec![
+                                    Content::text(format!("Upstream error: {e}"))
+                                ])),
+                            }
+                        }
+                        None => Ok(CallToolResult::error(vec![Content::text(format!("Unknown upstream: {server_name}"))])),
+                    }
+                }
                 Decision::Allow => {
                     let upstreams = self.upstreams.lock().await;
                     let upstream = upstreams.iter().find(|u| u.name == server_name);

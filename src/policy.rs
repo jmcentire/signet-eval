@@ -2,6 +2,7 @@
 //!
 //! No NLP. No network. Regex + structured conditions only.
 
+use rand::Rng;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -17,6 +18,7 @@ pub enum Decision {
     Ask,
     Gate,
     Ensure,
+    Inject,
 }
 
 impl Decision {
@@ -27,9 +29,88 @@ impl Decision {
             Decision::Ask => "ask",
             Decision::Gate => "gate",
             Decision::Ensure => "ensure",
+            Decision::Inject => "inject",
         }
     }
 }
+
+// === Inject Config ===
+//
+// INJECT rules emit advisory context strings into the agent's stream via the
+// hook's `additionalContext` channel. They DO NOT authorize anything; the auth
+// pass (first-match-wins Allow/Deny/Ask/Gate/Ensure) is unchanged.
+//
+// Triggers fire probabilistically with recency-weighted probability. This is
+// the only non-determinism in signet-eval, scoped strictly to advisory output.
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum InjectMode {
+    #[default]
+    Constant,
+    Step,
+    Linear,
+    Exponential,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InjectTrigger {
+    #[serde(default)]
+    pub mode: InjectMode,
+    /// Maximum probability (0.0 - 1.0).
+    pub peak: f64,
+    /// Seconds (after cooldown) to reach peak for linear/exponential modes. Ignored for constant/step.
+    #[serde(default = "default_peak_after")]
+    pub peak_after_seconds: f64,
+    /// Minimum seconds between fires. Probability is 0 before cooldown elapses.
+    #[serde(default)]
+    pub cooldown_seconds: f64,
+    /// Hard cap on fires per session for this rule. 0 means unlimited.
+    #[serde(default)]
+    pub max_per_session: u32,
+}
+
+fn default_peak_after() -> f64 { 600.0 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct FromCommandSpec {
+    pub name: String,
+    #[serde(default)]
+    pub args: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InjectPayload {
+    /// Inline literal text payload.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+    /// Filename under ~/.signet/injections/ (no path separators, no '..').
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text_file: Option<String>,
+    /// Allowlisted command. Name resolves against ~/.signet/inject_commands.yaml.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from_command: Option<FromCommandSpec>,
+    /// Apply template substitutions ({tool_name}, {cwd}, {date}, {matched_param.X}).
+    #[serde(default = "default_true")]
+    pub substitutions: bool,
+}
+
+fn default_true() -> bool { true }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InjectConfig {
+    pub trigger: InjectTrigger,
+    pub payload: InjectPayload,
+}
+
+/// Maximum total bytes of injected context emitted in one evaluation.
+pub const INJECT_TOTAL_CAP_BYTES: usize = 4096;
+/// Maximum bytes captured from `from_command` stdout.
+pub const INJECT_COMMAND_OUTPUT_CAP_BYTES: usize = 65_536;
+/// Wall-clock timeout for `from_command` execution.
+pub const INJECT_COMMAND_TIMEOUT_SECS: u64 = 2;
+/// Separator between concatenated inject payloads.
+pub const INJECT_SEPARATOR: &str = "\n\n---\n\n";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GateConfig {
@@ -68,6 +149,8 @@ pub struct PolicyRule {
     pub gate: Option<GateConfig>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ensure: Option<EnsureConfig>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inject: Option<InjectConfig>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -115,12 +198,15 @@ pub struct CompiledRule {
     pub locked: bool,
     pub gate: Option<GateConfig>,
     pub ensure: Option<EnsureConfig>,
+    pub inject: Option<InjectConfig>,
 }
 
 #[derive(Debug)]
 pub struct CompiledPolicy {
     pub rules: Vec<CompiledRule>,
     pub default_action: Decision,
+    /// True iff any rule has action == Inject. When false, the inject pass is a no-op.
+    pub has_inject_rules: bool,
 }
 
 pub struct EvaluationResult {
@@ -130,6 +216,8 @@ pub struct EvaluationResult {
     pub reason: Option<String>,
     pub evaluation_time_us: u64,
     pub ensure_config: Option<EnsureConfig>,
+    /// Concatenated advisory text from inject rules that fired. None if no inject rules fired.
+    pub injected_context: Option<String>,
 }
 
 /// Tool call being evaluated.
@@ -140,7 +228,7 @@ pub struct ToolCall {
 
 impl CompiledPolicy {
     pub fn from_config(config: &PolicyConfig) -> Self {
-        let rules = config.rules.iter().filter_map(|r| {
+        let rules: Vec<CompiledRule> = config.rules.iter().filter_map(|r| {
             let regex = Regex::new(&r.tool_pattern).ok()?;
             Some(CompiledRule {
                 name: r.name.clone(),
@@ -152,12 +240,16 @@ impl CompiledPolicy {
                 locked: r.locked,
                 gate: r.gate.clone(),
                 ensure: r.ensure.clone(),
+                inject: r.inject.clone(),
             })
         }).collect();
+
+        let has_inject_rules = rules.iter().any(|r| r.action == Decision::Inject);
 
         CompiledPolicy {
             rules,
             default_action: config.default_action,
+            has_inject_rules,
         }
     }
 }
@@ -377,14 +469,25 @@ pub(crate) fn evaluate_condition(
 }
 
 /// Evaluate a tool call against a compiled policy.
+///
+/// Two passes: (1) auth — first-match-wins over Allow/Deny/Ask/Gate/Ensure,
+/// (2) inject — collects advisory payloads from all matching INJECT rules.
+/// The inject pass is skipped entirely when the policy contains no INJECT rules
+/// (zero-cost for users who don't use the feature).
 pub fn evaluate(
     call: &ToolCall,
     policy: &CompiledPolicy,
     vault: Option<&Vault>,
 ) -> EvaluationResult {
     let start = Instant::now();
+    let mut auth_result: Option<EvaluationResult> = None;
 
     for rule in &policy.rules {
+        // Auth pass skips INJECT rules — they are non-authoritative and evaluated separately.
+        if rule.action == Decision::Inject {
+            continue;
+        }
+
         // Check tool name regex
         if !rule.tool_regex.is_match(&call.tool_name) {
             continue;
@@ -422,23 +525,27 @@ pub fn evaluate(
                             reason.as_deref().unwrap_or("")
                         )))
                     };
-                    return EvaluationResult {
+                    auth_result = Some(EvaluationResult {
                         decision,
                         matched_rule: Some(rule.name.clone()),
                         matched_locked: rule.locked,
                         reason: gate_reason,
                         evaluation_time_us: elapsed,
                         ensure_config: None,
-                    };
+                        injected_context: None,
+                    });
+                    break;
                 } else {
-                    return EvaluationResult {
+                    auth_result = Some(EvaluationResult {
                         decision: Decision::Deny,
                         matched_rule: Some(rule.name.clone()),
                         matched_locked: rule.locked,
                         reason: Some("Gate rule missing gate config".into()),
                         evaluation_time_us: elapsed,
                         ensure_config: None,
-                    };
+                        injected_context: None,
+                    });
+                    break;
                 }
             }
 
@@ -449,26 +556,363 @@ pub fn evaluate(
                 None
             };
 
-            return EvaluationResult {
+            auth_result = Some(EvaluationResult {
                 decision: rule.action,
                 matched_rule: Some(rule.name.clone()),
                 matched_locked: rule.locked,
                 reason,
                 evaluation_time_us: elapsed,
                 ensure_config: ensure_cfg,
-            };
+                injected_context: None,
+            });
+            break;
         }
     }
 
-    let elapsed = start.elapsed().as_micros() as u64;
-    EvaluationResult {
-        decision: policy.default_action,
-        matched_rule: None,
-        matched_locked: false,
-        reason: Some("No matching rules, using default action".into()),
-        evaluation_time_us: elapsed,
-        ensure_config: None,
+    let mut result = auth_result.unwrap_or_else(|| {
+        let elapsed = start.elapsed().as_micros() as u64;
+        EvaluationResult {
+            decision: policy.default_action,
+            matched_rule: None,
+            matched_locked: false,
+            reason: Some("No matching rules, using default action".into()),
+            evaluation_time_us: elapsed,
+            ensure_config: None,
+            injected_context: None,
+        }
+    });
+
+    // Inject pass — load-time fast path: skipped entirely when no INJECT rules exist.
+    if policy.has_inject_rules {
+        result.injected_context = evaluate_inject_pass(call, policy, vault);
+        result.evaluation_time_us = start.elapsed().as_micros() as u64;
     }
+
+    result
+}
+
+/// Walk all INJECT rules independently of the auth pass. For each rule whose
+/// tool_pattern + conditions match, compute the recency-weighted probability,
+/// roll, and on success resolve the payload and record the fire. Returns the
+/// concatenated payloads (capped at INJECT_TOTAL_CAP_BYTES) or None if nothing fired.
+pub fn evaluate_inject_pass(
+    call: &ToolCall,
+    policy: &CompiledPolicy,
+    vault: Option<&Vault>,
+) -> Option<String> {
+    let mut payloads: Vec<String> = Vec::new();
+    let mut total_bytes: usize = 0;
+    let now = now_epoch();
+
+    for rule in &policy.rules {
+        if rule.action != Decision::Inject {
+            continue;
+        }
+        let inject = match rule.inject.as_ref() {
+            Some(i) => i,
+            None => continue,
+        };
+
+        // Match tool pattern + conditions (AND).
+        if !rule.tool_regex.is_match(&call.tool_name) {
+            continue;
+        }
+        let mut all_match = true;
+        for cond in &rule.conditions {
+            match evaluate_condition(cond, call, vault) {
+                Ok(true) => {},
+                _ => { all_match = false; break; },
+            }
+        }
+        if !all_match {
+            continue;
+        }
+
+        // Pull persisted state. If no vault is available, treat as "never fired" and
+        // skip cooldown/cap enforcement (probability still rolls).
+        let (last_fired, session_fires, session_start) = vault
+            .map(|v| v.get_inject_state(&rule.name))
+            .unwrap_or((None, 0, now));
+
+        // Hard cap on fires per session.
+        if inject.trigger.max_per_session > 0 && session_fires >= inject.trigger.max_per_session as i64 {
+            continue;
+        }
+
+        let t_since = match last_fired {
+            Some(ts) => (now - ts).max(0.0),
+            None => f64::INFINITY,
+        };
+
+        let p = compute_inject_probability(&inject.trigger, t_since);
+        if p <= 0.0 {
+            continue;
+        }
+        let roll: f64 = rand::thread_rng().gen();
+        if roll >= p {
+            continue;
+        }
+
+        // Resolve payload — failures skip this rule rather than abort the whole pass.
+        let resolved = match resolve_inject_payload(&inject.payload, call, vault) {
+            Ok(s) => s,
+            Err(_) => continue,
+        };
+        if resolved.is_empty() {
+            continue;
+        }
+
+        // Record the fire. Best-effort: if the DB write fails (e.g. lock contention),
+        // the in-process payload still emits but state isn't updated, which may allow
+        // a re-fire on the next call. Acceptable for advisory output.
+        if let Some(v) = vault {
+            v.record_inject_fire(&rule.name, session_start);
+        }
+
+        // Apply cap. Stop adding new payloads when total exceeds INJECT_TOTAL_CAP_BYTES.
+        let sep_len = if payloads.is_empty() { 0 } else { INJECT_SEPARATOR.len() };
+        let added = sep_len + resolved.len();
+        if total_bytes + added > INJECT_TOTAL_CAP_BYTES {
+            let remaining = INJECT_TOTAL_CAP_BYTES.saturating_sub(total_bytes + sep_len);
+            if remaining == 0 {
+                break;
+            }
+            // Truncate this payload safely on a char boundary.
+            let truncated = truncate_on_char_boundary(&resolved, remaining);
+            payloads.push(truncated.to_string());
+            break;
+        }
+        payloads.push(resolved);
+        total_bytes += added;
+    }
+
+    if payloads.is_empty() {
+        None
+    } else {
+        Some(payloads.join(INJECT_SEPARATOR))
+    }
+}
+
+fn truncate_on_char_boundary(s: &str, max_len: usize) -> &str {
+    if s.len() <= max_len {
+        return s;
+    }
+    let mut end = max_len;
+    while end > 0 && !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    &s[..end]
+}
+
+/// Compute recency-weighted probability for an inject trigger.
+/// Returns 0 below cooldown. Above cooldown:
+/// - constant/step: peak (flat)
+/// - linear: ramps from 0 to peak over peak_after_seconds
+/// - exponential: peak * (1 - exp(-(t-c)/peak_after_seconds))
+pub fn compute_inject_probability(trigger: &InjectTrigger, t_since: f64) -> f64 {
+    let peak = trigger.peak.clamp(0.0, 1.0);
+    if peak <= 0.0 {
+        return 0.0;
+    }
+    if t_since < trigger.cooldown_seconds {
+        return 0.0;
+    }
+    let t = t_since - trigger.cooldown_seconds;
+    let tau = trigger.peak_after_seconds.max(1e-9);
+    match trigger.mode {
+        InjectMode::Constant | InjectMode::Step => peak,
+        InjectMode::Linear => {
+            if t.is_infinite() {
+                peak
+            } else {
+                (peak * (t / tau)).min(peak)
+            }
+        }
+        InjectMode::Exponential => {
+            if t.is_infinite() {
+                peak
+            } else {
+                peak * (1.0 - (-t / tau).exp())
+            }
+        }
+    }
+}
+
+/// Resolve an inject payload to its final string form.
+/// Applies template substitutions when payload.substitutions is true.
+pub fn resolve_inject_payload(
+    payload: &InjectPayload,
+    call: &ToolCall,
+    vault: Option<&Vault>,
+) -> Result<String, String> {
+    let sources_count = [
+        payload.text.is_some(),
+        payload.text_file.is_some(),
+        payload.from_command.is_some(),
+    ].iter().filter(|x| **x).count();
+    if sources_count != 1 {
+        return Err(format!(
+            "inject payload must have exactly one of text/text_file/from_command (found {sources_count})"
+        ));
+    }
+
+    let raw = if let Some(t) = payload.text.as_ref() {
+        t.clone()
+    } else if let Some(f) = payload.text_file.as_ref() {
+        read_inject_text_file(f)?
+    } else if let Some(cmd) = payload.from_command.as_ref() {
+        run_inject_command(cmd, vault)?
+    } else {
+        return Err("no payload source".into());
+    };
+
+    if payload.substitutions {
+        Ok(apply_inject_substitutions(&raw, call))
+    } else {
+        Ok(raw)
+    }
+}
+
+/// Read a file under ~/.signet/injections/. Rejects path separators and parent traversal.
+fn read_inject_text_file(name: &str) -> Result<String, String> {
+    if name.is_empty() {
+        return Err("text_file name is empty".into());
+    }
+    if name.contains('/') || name.contains('\\') || name.contains("..") {
+        return Err(format!("text_file must be a simple filename under ~/.signet/injections/: '{name}'"));
+    }
+    let root = crate::vault::signet_dir().join("injections");
+    let path = root.join(name);
+    // Defense in depth: verify the resolved path stays under the root.
+    let canon_root = std::fs::canonicalize(&root).unwrap_or(root.clone());
+    let canon_path = std::fs::canonicalize(&path).unwrap_or(path.clone());
+    if !canon_path.starts_with(&canon_root) {
+        return Err(format!("text_file resolved outside injections root: '{name}'"));
+    }
+    std::fs::read_to_string(&path).map_err(|e| format!("read text_file {}: {e}", path.display()))
+}
+
+/// Resolve a `from_command` spec against the HMAC-signed allowlist and execute it.
+/// Direct execve, no shell expansion. 2s wall-clock timeout. 64KB stdout cap.
+fn run_inject_command(spec: &FromCommandSpec, vault: Option<&Vault>) -> Result<String, String> {
+    let allowlist = load_inject_command_allowlist(vault)?;
+    let entry = allowlist.commands.iter().find(|c| c.name == spec.name)
+        .ok_or_else(|| format!("command '{}' not in inject_commands.yaml allowlist", spec.name))?;
+
+    let mut cmd = std::process::Command::new(&entry.program);
+    cmd.args(&entry.fixed_args);
+    // Caller-supplied args follow fixed args. Pass literally — no shell interpolation.
+    cmd.args(&spec.args);
+    cmd.env_clear();
+    cmd.env("PATH", std::env::var("PATH").unwrap_or_else(|_| "/usr/bin:/bin".to_string()));
+    cmd.current_dir(crate::vault::signet_dir());
+    cmd.stdin(std::process::Stdio::null());
+    cmd.stdout(std::process::Stdio::piped());
+    cmd.stderr(std::process::Stdio::null());
+
+    let mut child = cmd.spawn().map_err(|e| format!("spawn {}: {e}", entry.program))?;
+    let timeout = std::time::Duration::from_secs(INJECT_COMMAND_TIMEOUT_SECS);
+    let status = match wait_timeout::ChildExt::wait_timeout(&mut child, timeout) {
+        Ok(Some(s)) => s,
+        Ok(None) => {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(format!("from_command '{}' timed out after {}s", spec.name, INJECT_COMMAND_TIMEOUT_SECS));
+        }
+        Err(e) => return Err(format!("wait error: {e}")),
+    };
+
+    // Read stdout up to cap.
+    use std::io::Read;
+    let mut buf = Vec::with_capacity(4096);
+    if let Some(mut out) = child.stdout.take() {
+        let mut limited = (&mut out).take(INJECT_COMMAND_OUTPUT_CAP_BYTES as u64);
+        let _ = limited.read_to_end(&mut buf);
+    }
+
+    if !status.success() {
+        return Err(format!("from_command '{}' exited with status {:?}", spec.name, status.code()));
+    }
+    Ok(String::from_utf8_lossy(&buf).into_owned())
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct InjectCommandAllowlist {
+    #[serde(default)]
+    pub commands: Vec<InjectCommandEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InjectCommandEntry {
+    pub name: String,
+    pub program: String,
+    #[serde(default)]
+    pub fixed_args: Vec<String>,
+}
+
+/// Load the HMAC-signed inject command allowlist from ~/.signet/inject_commands.yaml.
+/// Returns an empty allowlist if the file does not exist. When the caller has an
+/// unlocked vault, the allowlist HMAC sidecar MUST validate (fail closed).
+pub fn load_inject_command_allowlist(vault: Option<&Vault>) -> Result<InjectCommandAllowlist, String> {
+    let path = inject_commands_path();
+    if !path.exists() {
+        return Ok(InjectCommandAllowlist::default());
+    }
+    let content = std::fs::read_to_string(&path).map_err(|e| format!("read allowlist: {e}"))?;
+
+    // HMAC verification: when an unlocked vault is available, the allowlist must be signed.
+    // When the vault is absent (no session key), the file is read as-is — same trust model
+    // as policy.yaml/rules.yaml.
+    if let Some(v) = vault {
+        if !crate::vault::verify_policy_integrity(v.session_key(), &path) {
+            return Err(format!(
+                "inject_commands.yaml HMAC verification failed at {}. Run: signet-eval sign",
+                path.display()
+            ));
+        }
+    }
+
+    serde_yaml::from_str::<InjectCommandAllowlist>(&content)
+        .map_err(|e| format!("parse allowlist: {e}"))
+}
+
+pub fn inject_commands_path() -> std::path::PathBuf {
+    crate::vault::signet_dir().join("inject_commands.yaml")
+}
+
+/// Apply template substitutions: {tool_name}, {cwd}, {date}, {matched_param.X}.
+/// Unknown placeholders pass through unchanged.
+pub fn apply_inject_substitutions(text: &str, call: &ToolCall) -> String {
+    let mut out = text.to_string();
+    out = out.replace("{tool_name}", &call.tool_name);
+    let cwd = std::env::current_dir().map(|p| p.display().to_string()).unwrap_or_default();
+    out = out.replace("{cwd}", &cwd);
+    let date = chrono::Local::now().format("%Y-%m-%d").to_string();
+    out = out.replace("{date}", &date);
+
+    // {matched_param.X} — pull from call.parameters
+    if out.contains("{matched_param.") {
+        if let Some(obj) = call.parameters.as_object() {
+            let re = Regex::new(r"\{matched_param\.([A-Za-z0-9_]+)\}").unwrap();
+            out = re.replace_all(&out, |caps: &regex::Captures| {
+                let key = &caps[1];
+                obj.get(key)
+                    .map(|v| match v {
+                        serde_json::Value::String(s) => s.clone(),
+                        other => other.to_string(),
+                    })
+                    .unwrap_or_default()
+            }).into_owned();
+        }
+    }
+    out
+}
+
+fn now_epoch() -> f64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs_f64())
+        .unwrap_or(0.0)
 }
 
 /// Resolve a Gate action by checking the vault's action log.
@@ -675,6 +1119,96 @@ pub fn validate_policy(config: &PolicyConfig) -> Vec<ValidationDiagnostic> {
             }
         }
 
+        // Validate Inject config
+        if rule.action == Decision::Inject {
+            match &rule.inject {
+                None => diagnostics.push(ValidationDiagnostic {
+                    rule_name: label.clone(),
+                    severity: DiagnosticSeverity::Error,
+                    error: "Action INJECT requires 'inject' config".into(),
+                    fix_hint: "Add inject: { trigger: { peak: 0.2 }, payload: { text: '...' } } to this rule, or remove it.".into(),
+                    auto_fixable: false,
+                }),
+                Some(ic) => {
+                    // Trigger peak in [0, 1]
+                    if !(0.0..=1.0).contains(&ic.trigger.peak) {
+                        diagnostics.push(ValidationDiagnostic {
+                            rule_name: label.clone(),
+                            severity: DiagnosticSeverity::Error,
+                            error: format!("inject.trigger.peak must be in [0.0, 1.0], got {}", ic.trigger.peak),
+                            fix_hint: format!(
+                                "Set peak between 0.0 and 1.0. Will clamp to {} on auto-fix.",
+                                ic.trigger.peak.clamp(0.0, 1.0)
+                            ),
+                            auto_fixable: true,
+                        });
+                    }
+                    if ic.trigger.cooldown_seconds < 0.0 {
+                        diagnostics.push(ValidationDiagnostic {
+                            rule_name: label.clone(),
+                            severity: DiagnosticSeverity::Error,
+                            error: format!("inject.trigger.cooldown_seconds must be >= 0, got {}", ic.trigger.cooldown_seconds),
+                            fix_hint: "Set cooldown_seconds to 0 or a positive value.".into(),
+                            auto_fixable: true,
+                        });
+                    }
+                    if ic.trigger.peak_after_seconds <= 0.0 {
+                        diagnostics.push(ValidationDiagnostic {
+                            rule_name: label.clone(),
+                            severity: DiagnosticSeverity::Error,
+                            error: format!("inject.trigger.peak_after_seconds must be > 0, got {}", ic.trigger.peak_after_seconds),
+                            fix_hint: "Set peak_after_seconds to a positive value (default: 600).".into(),
+                            auto_fixable: true,
+                        });
+                    }
+
+                    // Payload: exactly one source.
+                    let sources = [
+                        ic.payload.text.is_some(),
+                        ic.payload.text_file.is_some(),
+                        ic.payload.from_command.is_some(),
+                    ].iter().filter(|x| **x).count();
+                    if sources != 1 {
+                        diagnostics.push(ValidationDiagnostic {
+                            rule_name: label.clone(),
+                            severity: DiagnosticSeverity::Error,
+                            error: format!(
+                                "inject.payload must specify exactly one of text/text_file/from_command (found {sources})"
+                            ),
+                            fix_hint: "Choose one payload source.".into(),
+                            auto_fixable: false,
+                        });
+                    }
+
+                    // text_file: name must be a simple filename.
+                    if let Some(ref tf) = ic.payload.text_file {
+                        if tf.is_empty() || tf.contains('/') || tf.contains('\\') || tf.contains("..") {
+                            diagnostics.push(ValidationDiagnostic {
+                                rule_name: label.clone(),
+                                severity: DiagnosticSeverity::Error,
+                                error: format!("inject.payload.text_file must be a simple filename under ~/.signet/injections/, got '{tf}'"),
+                                fix_hint: "Use a bare filename (no slashes, no parent traversal).".into(),
+                                auto_fixable: false,
+                            });
+                        }
+                    }
+
+                    // from_command: name must be non-empty.
+                    if let Some(ref fc) = ic.payload.from_command {
+                        if fc.name.is_empty() {
+                            diagnostics.push(ValidationDiagnostic {
+                                rule_name: label.clone(),
+                                severity: DiagnosticSeverity::Error,
+                                error: "inject.payload.from_command.name cannot be empty".into(),
+                                fix_hint: "Set name to an entry from ~/.signet/inject_commands.yaml.".into(),
+                                auto_fixable: false,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
         // Validate Ensure config
         if rule.action == Decision::Ensure {
             match &rule.ensure {
@@ -789,6 +1323,30 @@ pub fn fix_policy(config: &mut PolicyConfig) -> PolicyFix {
                     continue;
                 }
             }
+            if diag.error.contains("inject.trigger.peak must be in") {
+                if let Some(ref mut ic) = rule.inject {
+                    let clamped = ic.trigger.peak.clamp(0.0, 1.0);
+                    modified.push(format!("{}: clamped inject.trigger.peak {} -> {}", rule.name, ic.trigger.peak, clamped));
+                    ic.trigger.peak = clamped;
+                    continue;
+                }
+            }
+            if diag.error.contains("inject.trigger.cooldown_seconds must be") {
+                if let Some(ref mut ic) = rule.inject {
+                    let clamped = ic.trigger.cooldown_seconds.max(0.0);
+                    modified.push(format!("{}: clamped inject.trigger.cooldown_seconds {} -> {}", rule.name, ic.trigger.cooldown_seconds, clamped));
+                    ic.trigger.cooldown_seconds = clamped;
+                    continue;
+                }
+            }
+            if diag.error.contains("inject.trigger.peak_after_seconds must be") {
+                if let Some(ref mut ic) = rule.inject {
+                    let new_v = if ic.trigger.peak_after_seconds <= 0.0 { 600.0 } else { ic.trigger.peak_after_seconds };
+                    modified.push(format!("{}: clamped inject.trigger.peak_after_seconds {} -> {}", rule.name, ic.trigger.peak_after_seconds, new_v));
+                    ic.trigger.peak_after_seconds = new_v;
+                    continue;
+                }
+            }
 
             // Can't fix in place — mark for removal
             if !rules_to_remove.contains(&rule.name) {
@@ -873,7 +1431,8 @@ pub fn self_protection_rules() -> Vec<PolicyRule> {
             alternative: Some("Check scripts must be installed manually by the user, not by AI agents. Ask the user to place scripts in the checks directory.".into()),
             gate: None,
             ensure: None,
-        },
+        inject: None,
+    },
         PolicyRule {
             name: "protect_signet_dir".into(),
             tool_pattern: ".*".into(),
@@ -883,7 +1442,8 @@ pub fn self_protection_rules() -> Vec<PolicyRule> {
             reason: Some("Self-protection: the policy directory is protected.".into()),
             alternative: Some("Refer to it as 'the policy directory'. To check policy status, use signet_status via MCP.".into()),
             gate: None, ensure: None,
-        },
+        inject: None,
+    },
         PolicyRule {
             name: "protect_vault_passphrase".into(),
             tool_pattern: ".*".into(),
@@ -895,7 +1455,8 @@ pub fn self_protection_rules() -> Vec<PolicyRule> {
             reason: Some("Self-protection: vault passphrase operations are reserved for humans only.".into()),
             alternative: Some("Ask the user to run 'signet-eval setup' or 'signet-eval unlock' directly in their terminal.".into()),
             gate: None, ensure: None,
-        },
+        inject: None,
+    },
         PolicyRule {
             name: "protect_signet_binary".into(),
             tool_pattern: ".*".into(),
@@ -905,7 +1466,8 @@ pub fn self_protection_rules() -> Vec<PolicyRule> {
             reason: Some("Self-protection: the permissions tool binary is protected.".into()),
             alternative: Some("Refer to it as 'the permissions tool'. To inspect rules, use signet_list_rules via MCP.".into()),
             gate: None, ensure: None,
-        },
+        inject: None,
+    },
         PolicyRule {
             name: "protect_hook_config".into(),
             tool_pattern: ".*".into(),
@@ -915,7 +1477,8 @@ pub fn self_protection_rules() -> Vec<PolicyRule> {
             reason: Some("Self-protection: hook config changes require user confirmation.".into()),
             alternative: Some("Describe the settings change you need and ask the user to apply it, or use the /update-config skill.".into()),
             gate: None, ensure: None,
-        },
+        inject: None,
+    },
         PolicyRule {
             name: "protect_signet_symlink".into(),
             tool_pattern: ".*".into(),
@@ -928,7 +1491,8 @@ pub fn self_protection_rules() -> Vec<PolicyRule> {
             reason: Some("Self-protection: symlink creation targeting the permissions tool is blocked.".into()),
             alternative: Some("Use absolute paths in code or configuration rather than symlinks.".into()),
             gate: None, ensure: None,
-        },
+        inject: None,
+    },
         PolicyRule {
             name: "protect_signet_process".into(),
             tool_pattern: ".*".into(),
@@ -941,7 +1505,8 @@ pub fn self_protection_rules() -> Vec<PolicyRule> {
             reason: Some("Self-protection: cannot terminate processes for the permissions tool.".into()),
             alternative: Some("If the permissions tool appears hung, ask the user to restart it.".into()),
             gate: None, ensure: None,
-        },
+        inject: None,
+    },
         PolicyRule {
             name: "protect_preflight_storage".into(),
             tool_pattern: ".*".into(),
@@ -954,7 +1519,8 @@ pub fn self_protection_rules() -> Vec<PolicyRule> {
             reason: Some("Self-protection: preflight records are tamper-protected.".into()),
             alternative: Some("Use signet_preflight_active or signet_preflight_violations to read your preflight data.".into()),
             gate: None, ensure: None,
-        },
+        inject: None,
+    },
         // Routes Anthropic's session-local Task* tool family to a persistent task store.
         // Locked because the user has elected to enforce this universally — the agent
         // should not silently fall back to ephemeral Anthropic task tracking.
@@ -978,7 +1544,8 @@ pub fn self_protection_rules() -> Vec<PolicyRule> {
                     .into(),
             ),
             gate: None, ensure: None,
-        },
+        inject: None,
+    },
     ]
 }
 
@@ -998,7 +1565,8 @@ pub fn system_default_rules() -> Vec<PolicyRule> {
             reason: Some("File deletion blocked.".into()),
             alternative: Some("Use 'trash <file>' (recoverable) or 'mv <file> /tmp/'.".into()),
             gate: None, ensure: None,
-        },
+        inject: None,
+    },
         PolicyRule {
             name: "block_force_push".into(),
             tool_pattern: "^Bash$".into(),
@@ -1008,7 +1576,8 @@ pub fn system_default_rules() -> Vec<PolicyRule> {
             reason: Some("Force push can overwrite others' work.".into()),
             alternative: Some("Use 'git push --force-with-lease' or push to a new branch.".into()),
             gate: None, ensure: None,
-        },
+        inject: None,
+    },
         PolicyRule {
             name: "block_destructive_disk".into(),
             tool_pattern: "^Bash$".into(),
@@ -1018,7 +1587,8 @@ pub fn system_default_rules() -> Vec<PolicyRule> {
             reason: Some("Destructive disk operations blocked.".into()),
             alternative: Some("Write to a temp file first: 'dd if=<src> of=/tmp/staging.img'. Ask the user to execute disk operations directly.".into()),
             gate: None, ensure: None,
-        },
+        inject: None,
+    },
         PolicyRule {
             name: "block_piped_exec".into(),
             tool_pattern: "^Bash$".into(),
@@ -1028,7 +1598,8 @@ pub fn system_default_rules() -> Vec<PolicyRule> {
             reason: Some("Piped remote execution blocked.".into()),
             alternative: Some("Download first: 'curl -o /tmp/script.sh <url>', then inspect with 'cat'. Let the user review.".into()),
             gate: None, ensure: None,
-        },
+        inject: None,
+    },
         PolicyRule {
             name: "block_credential_writes".into(),
             tool_pattern: "^(Write|Edit)$".into(),
@@ -1038,7 +1609,8 @@ pub fn system_default_rules() -> Vec<PolicyRule> {
             reason: Some("Writing to credential/secret files blocked.".into()),
             alternative: Some("Write to a '.example' file with placeholder values, then instruct the user to copy and fill in real credentials.".into()),
             gate: None, ensure: None,
-        },
+        inject: None,
+    },
         PolicyRule {
             name: "block_chmod_777".into(),
             tool_pattern: "^Bash$".into(),
@@ -1048,7 +1620,8 @@ pub fn system_default_rules() -> Vec<PolicyRule> {
             reason: Some("chmod 777 grants world-readable/writable/executable access.".into()),
             alternative: Some("Use minimum permissions: 'chmod 755' for executables, 'chmod 644' for files, 'chmod 600' for secrets.".into()),
             gate: None, ensure: None,
-        },
+        inject: None,
+    },
     ]
 }
 
@@ -1234,7 +1807,8 @@ mod tests {
                     reason: Some("First rule".into()),
                 alternative: None, locked: false,
                 gate: None, ensure: None,
-                },
+                inject: None,
+            },
                 PolicyRule {
                     name: "deny_bash".into(),
                     tool_pattern: "Bash".into(),
@@ -1243,7 +1817,8 @@ mod tests {
                     reason: Some("Second rule".into()),
                 alternative: None, locked: false,
                 gate: None, ensure: None,
-                },
+                inject: None,
+            },
             ],
         };
         let policy = CompiledPolicy::from_config(&config);
@@ -1267,7 +1842,8 @@ mod tests {
                     reason: Some("Books blocked".into()),
                     alternative: None, locked: false,
                     gate: None, ensure: None,
-                },
+                inject: None,
+            },
             ],
         };
         let policy = CompiledPolicy::from_config(&config);
@@ -1293,7 +1869,8 @@ mod tests {
                     reason: Some("Large purchase".into()),
                     alternative: None, locked: false,
                     gate: None, ensure: None,
-                },
+                inject: None,
+            },
             ],
         };
         let policy = CompiledPolicy::from_config(&config);
@@ -1321,7 +1898,9 @@ mod tests {
         let config = PolicyConfig { version: 1, default_action: Decision::Allow, rules: vec![
             PolicyRule { name: "cheap_only".into(), tool_pattern: ".*".into(),
                 conditions: vec!["not(param_lt(amount, 50))".into()], action: Decision::Deny,
-                reason: Some("Over budget".into()), alternative: None, locked: false, gate: None, ensure: None },
+                reason: Some("Over budget".into()), alternative: None, locked: false, gate: None, ensure: None,
+                inject: None,
+            },
         ]};
         let policy = CompiledPolicy::from_config(&config);
         assert_eq!(evaluate(&make_call("shop", serde_json::json!({"amount": "30"})), &policy, None).decision, Decision::Allow);
@@ -1333,7 +1912,9 @@ mod tests {
         let config = PolicyConfig { version: 1, default_action: Decision::Allow, rules: vec![
             PolicyRule { name: "not_admin".into(), tool_pattern: ".*".into(),
                 conditions: vec!["param_ne(role, 'admin')".into()], action: Decision::Deny,
-                reason: Some("Non-admin denied".into()), alternative: None, locked: false, gate: None, ensure: None },
+                reason: Some("Non-admin denied".into()), alternative: None, locked: false, gate: None, ensure: None,
+                inject: None,
+            },
         ]};
         let policy = CompiledPolicy::from_config(&config);
         assert_eq!(evaluate(&make_call("api", serde_json::json!({"role": "admin"})), &policy, None).decision, Decision::Allow);
@@ -1345,7 +1926,9 @@ mod tests {
         let config = PolicyConfig { version: 1, default_action: Decision::Allow, rules: vec![
             PolicyRule { name: "block_sudo".into(), tool_pattern: ".*".into(),
                 conditions: vec!["param_contains(command, 'sudo')".into()], action: Decision::Deny,
-                reason: Some("sudo blocked".into()), alternative: None, locked: false, gate: None, ensure: None },
+                reason: Some("sudo blocked".into()), alternative: None, locked: false, gate: None, ensure: None,
+                inject: None,
+            },
         ]};
         let policy = CompiledPolicy::from_config(&config);
         assert_eq!(evaluate(&make_call("Bash", serde_json::json!({"command": "sudo apt install"})), &policy, None).decision, Decision::Deny);
@@ -1357,7 +1940,9 @@ mod tests {
         let config = PolicyConfig { version: 1, default_action: Decision::Allow, rules: vec![
             PolicyRule { name: "block_ip".into(), tool_pattern: ".*".into(),
                 conditions: vec!["matches(host, '^\\d+\\.\\d+\\.\\d+\\.\\d+$')".into()], action: Decision::Deny,
-                reason: Some("Direct IP access blocked".into()), alternative: None, locked: false, gate: None, ensure: None },
+                reason: Some("Direct IP access blocked".into()), alternative: None, locked: false, gate: None, ensure: None,
+                inject: None,
+            },
         ]};
         let policy = CompiledPolicy::from_config(&config);
         assert_eq!(evaluate(&make_call("fetch", serde_json::json!({"host": "192.168.1.1"})), &policy, None).decision, Decision::Deny);
@@ -1369,7 +1954,9 @@ mod tests {
         let config = PolicyConfig { version: 1, default_action: Decision::Allow, rules: vec![
             PolicyRule { name: "deny_non_json".into(), tool_pattern: ".*".into(),
                 conditions: vec!["not(param_eq(format, 'json'))".into()], action: Decision::Deny,
-                reason: Some("Only JSON allowed".into()), alternative: None, locked: false, gate: None, ensure: None },
+                reason: Some("Only JSON allowed".into()), alternative: None, locked: false, gate: None, ensure: None,
+                inject: None,
+            },
         ]};
         let policy = CompiledPolicy::from_config(&config);
         assert_eq!(evaluate(&make_call("api", serde_json::json!({"format": "json"})), &policy, None).decision, Decision::Allow);
@@ -1415,7 +2002,9 @@ mod tests {
     fn test_empty_conditions_matches_any() {
         let config = PolicyConfig { version: 1, default_action: Decision::Allow, rules: vec![
             PolicyRule { name: "deny_all_bash".into(), tool_pattern: "^Bash$".into(),
-                conditions: vec![], action: Decision::Deny, reason: None, alternative: None, locked: false, gate: None, ensure: None },
+                conditions: vec![], action: Decision::Deny, reason: None, alternative: None, locked: false, gate: None, ensure: None,
+                inject: None,
+            },
         ]};
         let policy = CompiledPolicy::from_config(&config);
         assert_eq!(evaluate(&make_call("Bash", serde_json::json!({})), &policy, None).decision, Decision::Deny);
@@ -1426,9 +2015,13 @@ mod tests {
     fn test_invalid_regex_skipped() {
         let config = PolicyConfig { version: 1, default_action: Decision::Allow, rules: vec![
             PolicyRule { name: "bad_regex".into(), tool_pattern: "[invalid".into(),
-                conditions: vec![], action: Decision::Deny, reason: None, alternative: None, locked: false, gate: None, ensure: None },
+                conditions: vec![], action: Decision::Deny, reason: None, alternative: None, locked: false, gate: None, ensure: None,
+                inject: None,
+            },
             PolicyRule { name: "good_rule".into(), tool_pattern: ".*".into(),
-                conditions: vec!["contains(parameters, 'test')".into()], action: Decision::Deny, reason: None, alternative: None, locked: false, gate: None, ensure: None },
+                conditions: vec!["contains(parameters, 'test')".into()], action: Decision::Deny, reason: None, alternative: None, locked: false, gate: None, ensure: None,
+                inject: None,
+            },
         ]};
         let policy = CompiledPolicy::from_config(&config);
         // Bad regex rule is silently skipped; good rule still works
@@ -1472,7 +2065,9 @@ mod tests {
     fn test_validate_policy_valid() {
         let config = PolicyConfig { version: 1, default_action: Decision::Allow, rules: vec![
             PolicyRule { name: "test".into(), tool_pattern: ".*".into(),
-                conditions: vec!["contains(parameters, 'x')".into()], action: Decision::Deny, reason: None, alternative: None, locked: false, gate: None, ensure: None },
+                conditions: vec!["contains(parameters, 'x')".into()], action: Decision::Deny, reason: None, alternative: None, locked: false, gate: None, ensure: None,
+                inject: None,
+            },
         ]};
         assert!(validate_policy(&config).is_empty());
     }
@@ -1481,7 +2076,9 @@ mod tests {
     fn test_validate_policy_bad_regex() {
         let config = PolicyConfig { version: 1, default_action: Decision::Allow, rules: vec![
             PolicyRule { name: "bad".into(), tool_pattern: "[invalid".into(),
-                conditions: vec![], action: Decision::Deny, reason: None, alternative: None, locked: false, gate: None, ensure: None },
+                conditions: vec![], action: Decision::Deny, reason: None, alternative: None, locked: false, gate: None, ensure: None,
+                inject: None,
+            },
         ]};
         let errors = validate_policy(&config);
         assert_eq!(errors.len(), 1);
@@ -1495,7 +2092,9 @@ mod tests {
     fn test_validate_policy_unknown_fn() {
         let config = PolicyConfig { version: 1, default_action: Decision::Allow, rules: vec![
             PolicyRule { name: "bad".into(), tool_pattern: ".*".into(),
-                conditions: vec!["bogus_fn(x)".into()], action: Decision::Deny, reason: None, alternative: None, locked: false, gate: None, ensure: None },
+                conditions: vec!["bogus_fn(x)".into()], action: Decision::Deny, reason: None, alternative: None, locked: false, gate: None, ensure: None,
+                inject: None,
+            },
         ]};
         let errors = validate_policy(&config);
         assert_eq!(errors.len(), 1);
@@ -1810,7 +2409,8 @@ mod self_protection_tests {
             reason: None,
             alternative: None, locked: true,
             gate: None, ensure: None,
-        };
+        inject: None,
+    };
         let yaml = serde_yaml::to_string(&rule).unwrap();
         assert!(yaml.contains("locked: true"));
         let parsed: PolicyRule = serde_yaml::from_str(&yaml).unwrap();
@@ -1856,7 +2456,8 @@ mod self_protection_tests {
             reason: None,
             alternative: None, locked: false,
             gate: None, ensure: None,
-        };
+        inject: None,
+    };
         let yaml = serde_yaml::to_string(&rule).unwrap();
         assert!(!yaml.contains("locked"), "locked: false should be skipped in serialization");
     }
@@ -1893,10 +2494,14 @@ mod goodhart_tests {
         let config = PolicyConfig { version: 1, default_action: Decision::Allow, rules: vec![
             PolicyRule { name: "block_rm".into(), tool_pattern: ".*".into(),
                 conditions: vec!["contains(parameters, 'rm ')".into()], action: Decision::Deny,
-                reason: Some("blocked".into()), alternative: None, locked: false, gate: None, ensure: None },
+                reason: Some("blocked".into()), alternative: None, locked: false, gate: None, ensure: None,
+                inject: None,
+            },
             PolicyRule { name: "allow_rm".into(), tool_pattern: ".*".into(),
                 conditions: vec!["contains(parameters, 'rm ')".into()], action: Decision::Allow,
-                reason: Some("allowed".into()), alternative: None, locked: false, gate: None, ensure: None },
+                reason: Some("allowed".into()), alternative: None, locked: false, gate: None, ensure: None,
+                inject: None,
+            },
         ]};
         let policy = CompiledPolicy::from_config(&config);
         let call = make_call("Bash", serde_json::json!({"command": "rm foo"}));
@@ -2015,7 +2620,8 @@ mod goodhart_tests {
         let rules: Vec<PolicyRule> = (0..1000).map(|i| PolicyRule {
             name: format!("rule_{i}"), tool_pattern: format!("tool_{i}"),
             conditions: vec![], action: Decision::Deny, reason: None, alternative: None, locked: false, gate: None, ensure: None,
-        }).collect();
+        inject: None,
+    }).collect();
         let config = PolicyConfig { version: 1, default_action: Decision::Allow, rules };
         let policy = CompiledPolicy::from_config(&config);
         let call = make_call("no_match", serde_json::json!({}));
@@ -2059,7 +2665,9 @@ mod goodhart_tests {
         // falling through to default — NOT crash
         let config = PolicyConfig { version: 1, default_action: Decision::Allow, rules: vec![
             PolicyRule { name: "bad_cond".into(), tool_pattern: ".*".into(),
-                conditions: vec!["matches(x, '[invalid')".into()], action: Decision::Deny, reason: None, alternative: None, locked: false, gate: None, ensure: None },
+                conditions: vec!["matches(x, '[invalid')".into()], action: Decision::Deny, reason: None, alternative: None, locked: false, gate: None, ensure: None,
+                inject: None,
+            },
         ]};
         let policy = CompiledPolicy::from_config(&config);
         let call = make_call("Bash", serde_json::json!({"x": "test"}));
@@ -2088,7 +2696,8 @@ mod gate_ensure_tests {
                 reason: Some("test gate".into()), alternative: None, locked: false,
                 gate: Some(GateConfig { requires_prior: "authorize".into(), within: 50 }),
                 ensure: None,
-            },
+            inject: None,
+        },
         ]};
         let policy = CompiledPolicy::from_config(&config);
         let call = make_call("Bash", serde_json::json!({"command": "do something"}));
@@ -2110,7 +2719,8 @@ mod gate_ensure_tests {
                 reason: Some("test gate".into()), alternative: None, locked: false,
                 gate: Some(GateConfig { requires_prior: "gh auth switch --user jmcentire".into(), within: 50 }),
                 ensure: None,
-            },
+            inject: None,
+        },
         ]};
         let policy = CompiledPolicy::from_config(&config);
         let call = make_call("Bash", serde_json::json!({"command": "git push"}));
@@ -2138,7 +2748,8 @@ mod gate_ensure_tests {
                 conditions: vec![], action: Decision::Gate,
                 reason: Some("bad".into()), alternative: None, locked: false,
                 gate: None, ensure: None,
-            },
+            inject: None,
+        },
         ]};
         let policy = CompiledPolicy::from_config(&config);
         let call = make_call("Bash", serde_json::json!({"command": "test"}));
@@ -2161,7 +2772,8 @@ mod gate_ensure_tests {
                 reason: Some("need plan first".into()), alternative: None, locked: false,
                 gate: Some(GateConfig { requires_prior: "EnterPlanMode".into(), within: 50 }),
                 ensure: None,
-            },
+            inject: None,
+        },
         ]};
         let policy = CompiledPolicy::from_config(&config);
         let call = make_call("Edit", serde_json::json!({"file_path": "/tmp/test.rs", "old_string": "a", "new_string": "b"}));
@@ -2190,7 +2802,8 @@ mod gate_ensure_tests {
                 reason: Some("need plan".into()), alternative: None, locked: false,
                 gate: Some(GateConfig { requires_prior: "EnterPlanMode|TaskCreate".into(), within: 50 }),
                 ensure: None,
-            },
+            inject: None,
+        },
         ]};
         let policy = CompiledPolicy::from_config(&config);
         let call = make_call("Write", serde_json::json!({"file_path": "/tmp/new.rs", "content": "fn main() {}"}));
@@ -2230,7 +2843,8 @@ mod gate_ensure_tests {
                 action: Decision::Ask,
                 reason: Some("Plan first".into()), alternative: None, locked: false,
                 gate: None, ensure: None,
-            },
+            inject: None,
+        },
         ]};
         let policy = CompiledPolicy::from_config(&config);
         let call = make_call("Edit", serde_json::json!({"file_path": "/tmp/x.rs", "old_string": "a", "new_string": "b"}));
@@ -2261,14 +2875,16 @@ mod gate_ensure_tests {
                 action: Decision::Ask,
                 reason: Some("Plan first".into()), alternative: None, locked: false,
                 gate: None, ensure: None,
-            },
+            inject: None,
+        },
             PolicyRule {
                 name: "protect_core".into(), tool_pattern: "^Edit$".into(),
                 conditions: vec!["matches(file_path, '/(core|dsl)/')".into()],
                 action: Decision::Ask,
                 reason: Some("Core file".into()), alternative: None, locked: false,
                 gate: None, ensure: None,
-            },
+            inject: None,
+        },
         ]};
         let policy = CompiledPolicy::from_config(&config);
 
@@ -2303,7 +2919,8 @@ mod gate_ensure_tests {
                 reason: Some("test ensure".into()), alternative: None, locked: false,
                 gate: None,
                 ensure: Some(EnsureConfig { check: "test-script".into(), timeout: 5, message: "run test first".into() }),
-            },
+            inject: None,
+        },
         ]};
         let policy = CompiledPolicy::from_config(&config);
         let call = make_call("Bash", serde_json::json!({"command": "test"}));
@@ -2321,7 +2938,8 @@ mod gate_ensure_tests {
                 conditions: vec![], action: Decision::Ensure,
                 reason: None, alternative: None, locked: false,
                 gate: None, ensure: None,
-            },
+            inject: None,
+        },
         ]};
         let policy = CompiledPolicy::from_config(&config);
         let call = make_call("Bash", serde_json::json!({"command": "test"}));
@@ -2372,7 +2990,8 @@ mod gate_ensure_tests {
                 conditions: vec![], action: Decision::Gate,
                 reason: None, alternative: None, locked: false,
                 gate: None, ensure: None,
-            },
+            inject: None,
+        },
         ]};
         let errors = validate_policy(&config);
         assert!(errors.iter().any(|e| e.error.contains("GATE requires 'gate' config")));
@@ -2386,7 +3005,8 @@ mod gate_ensure_tests {
                 conditions: vec![], action: Decision::Ensure,
                 reason: None, alternative: None, locked: false,
                 gate: None, ensure: None,
-            },
+            inject: None,
+        },
         ]};
         let errors = validate_policy(&config);
         assert!(errors.iter().any(|e| e.error.contains("ENSURE requires 'ensure' config")));
@@ -2401,7 +3021,8 @@ mod gate_ensure_tests {
                 reason: None, alternative: None, locked: false,
                 gate: None,
                 ensure: Some(EnsureConfig { check: "../evil".into(), timeout: 5, message: String::new() }),
-            },
+            inject: None,
+        },
         ]};
         let errors = validate_policy(&config);
         assert!(errors.iter().any(|e| e.error.contains("path separators")));
@@ -2416,7 +3037,8 @@ mod gate_ensure_tests {
                 reason: None, alternative: None, locked: false,
                 gate: None,
                 ensure: Some(EnsureConfig { check: "valid-script".into(), timeout: 60, message: String::new() }),
-            },
+            inject: None,
+        },
         ]};
         let errors = validate_policy(&config);
         assert!(errors.iter().any(|e| e.error.contains("ensure.timeout must be 1-30")));
@@ -2435,7 +3057,9 @@ mod gate_ensure_tests {
         let config = PolicyConfig { version: 1, default_action: Decision::Allow, rules: vec![
             PolicyRule { name: "test".into(), tool_pattern: ".*".into(),
                 conditions: vec!["has_recent_action('EnterPlanMode', 50)".into()],
-                action: Decision::Ask, reason: None, alternative: None, locked: false, gate: None, ensure: None },
+                action: Decision::Ask, reason: None, alternative: None, locked: false, gate: None, ensure: None,
+                inject: None,
+            },
         ]};
         let errors = validate_policy(&config);
         assert!(errors.iter().all(|e| e.severity != DiagnosticSeverity::Error),
@@ -2446,9 +3070,13 @@ mod gate_ensure_tests {
     fn test_fix_removes_bad_regex_rule() {
         let mut config = PolicyConfig { version: 1, default_action: Decision::Allow, rules: vec![
             PolicyRule { name: "good".into(), tool_pattern: ".*".into(),
-                conditions: vec![], action: Decision::Deny, reason: None, alternative: None, locked: false, gate: None, ensure: None },
+                conditions: vec![], action: Decision::Deny, reason: None, alternative: None, locked: false, gate: None, ensure: None,
+                inject: None,
+            },
             PolicyRule { name: "broken".into(), tool_pattern: "[invalid".into(),
-                conditions: vec![], action: Decision::Deny, reason: None, alternative: None, locked: false, gate: None, ensure: None },
+                conditions: vec![], action: Decision::Deny, reason: None, alternative: None, locked: false, gate: None, ensure: None,
+                inject: None,
+            },
         ]};
         let result = fix_policy(&mut config);
         assert_eq!(config.rules.len(), 1);
@@ -2462,7 +3090,8 @@ mod gate_ensure_tests {
             PolicyRule { name: "slow".into(), tool_pattern: ".*".into(),
                 conditions: vec![], action: Decision::Ensure, reason: None, alternative: None, locked: false, gate: None,
                 ensure: Some(EnsureConfig { check: "valid-script".into(), timeout: 60, message: String::new() }),
-            },
+            inject: None,
+        },
         ]};
         let result = fix_policy(&mut config);
         assert_eq!(config.rules[0].ensure.as_ref().unwrap().timeout, 30);
@@ -2473,7 +3102,9 @@ mod gate_ensure_tests {
     fn test_fix_skips_locked_rules() {
         let mut config = PolicyConfig { version: 1, default_action: Decision::Allow, rules: vec![
             PolicyRule { name: "locked_bad".into(), tool_pattern: "[invalid".into(),
-                conditions: vec![], action: Decision::Deny, reason: None, alternative: None, locked: true, gate: None, ensure: None },
+                conditions: vec![], action: Decision::Deny, reason: None, alternative: None, locked: true, gate: None, ensure: None,
+                inject: None,
+            },
         ]};
         let result = fix_policy(&mut config);
         assert_eq!(config.rules.len(), 1, "locked rules should not be removed");
@@ -2485,7 +3116,9 @@ mod gate_ensure_tests {
         let mut config = PolicyConfig { version: 1, default_action: Decision::Allow, rules: vec![
             PolicyRule { name: "good".into(), tool_pattern: ".*".into(),
                 conditions: vec!["contains(parameters, 'x')".into()], action: Decision::Deny,
-                reason: None, alternative: None, locked: false, gate: None, ensure: None },
+                reason: None, alternative: None, locked: false, gate: None, ensure: None,
+                inject: None,
+            },
         ]};
         let result = fix_policy(&mut config);
         assert!(result.rules_removed.is_empty());
@@ -2591,11 +3224,17 @@ rules:
     #[test]
     fn test_merge_rules_order() {
         let system = vec![
-            PolicyRule { name: "locked1".into(), tool_pattern: ".*".into(), conditions: vec![], action: Decision::Deny, reason: None, alternative: None, locked: true, gate: None, ensure: None },
-            PolicyRule { name: "sys_default".into(), tool_pattern: "^Bash$".into(), conditions: vec!["contains(parameters, 'rm ')".into()], action: Decision::Deny, reason: None, alternative: None, locked: false, gate: None, ensure: None },
+            PolicyRule { name: "locked1".into(), tool_pattern: ".*".into(), conditions: vec![], action: Decision::Deny, reason: None, alternative: None, locked: true, gate: None, ensure: None,
+inject: None,
+},
+            PolicyRule { name: "sys_default".into(), tool_pattern: "^Bash$".into(), conditions: vec!["contains(parameters, 'rm ')".into()], action: Decision::Deny, reason: None, alternative: None, locked: false, gate: None, ensure: None,
+inject: None,
+},
         ];
         let user = vec![
-            PolicyRule { name: "user_rule".into(), tool_pattern: ".*".into(), conditions: vec![], action: Decision::Ask, reason: None, alternative: None, locked: false, gate: None, ensure: None },
+            PolicyRule { name: "user_rule".into(), tool_pattern: ".*".into(), conditions: vec![], action: Decision::Ask, reason: None, alternative: None, locked: false, gate: None, ensure: None,
+inject: None,
+},
         ];
         let merged = merge_rules(&system, &user);
         assert_eq!(merged.len(), 3);
@@ -2608,11 +3247,17 @@ rules:
     fn test_user_rule_overrides_system_default() {
         // User rule for block_rm as ASK should match before system block_rm as DENY
         let system = vec![
-            PolicyRule { name: "protect".into(), tool_pattern: ".*".into(), conditions: vec!["contains(parameters, '.signet/')".into()], action: Decision::Deny, reason: None, alternative: None, locked: true, gate: None, ensure: None },
-            PolicyRule { name: "block_rm".into(), tool_pattern: "^Bash$".into(), conditions: vec!["contains(parameters, 'rm ')".into()], action: Decision::Deny, reason: Some("System default".into()), alternative: None, locked: false, gate: None, ensure: None },
+            PolicyRule { name: "protect".into(), tool_pattern: ".*".into(), conditions: vec!["contains(parameters, '.signet/')".into()], action: Decision::Deny, reason: None, alternative: None, locked: true, gate: None, ensure: None,
+inject: None,
+},
+            PolicyRule { name: "block_rm".into(), tool_pattern: "^Bash$".into(), conditions: vec!["contains(parameters, 'rm ')".into()], action: Decision::Deny, reason: Some("System default".into()), alternative: None, locked: false, gate: None, ensure: None,
+inject: None,
+},
         ];
         let user = vec![
-            PolicyRule { name: "block_rm_override".into(), tool_pattern: "^Bash$".into(), conditions: vec!["contains(parameters, 'rm ')".into()], action: Decision::Ask, reason: Some("User override".into()), alternative: None, locked: false, gate: None, ensure: None },
+            PolicyRule { name: "block_rm_override".into(), tool_pattern: "^Bash$".into(), conditions: vec!["contains(parameters, 'rm ')".into()], action: Decision::Ask, reason: Some("User override".into()), alternative: None, locked: false, gate: None, ensure: None,
+inject: None,
+},
         ];
         let merged = merge_rules(&system, &user);
         let policy = CompiledPolicy::from_config(&PolicyConfig { version: 1, default_action: Decision::Allow, rules: merged });
@@ -2630,7 +3275,9 @@ rules:
         let rules_path = dir.path().join("rules.yaml");
         let config = PolicyConfig {
             version: 1, default_action: Decision::Allow,
-            rules: vec![PolicyRule { name: "test".into(), tool_pattern: ".*".into(), conditions: vec![], action: Decision::Deny, reason: None, alternative: None, locked: false, gate: None, ensure: None }],
+            rules: vec![PolicyRule { name: "test".into(), tool_pattern: ".*".into(), conditions: vec![], action: Decision::Deny, reason: None, alternative: None, locked: false, gate: None, ensure: None,
+inject: None,
+}],
         };
         std::fs::write(&policy_path, serde_yaml::to_string(&config).unwrap()).unwrap();
         let merged = load_merged_policy(&policy_path, &rules_path);
@@ -2648,15 +3295,21 @@ rules:
         let config = PolicyConfig {
             version: 1, default_action: Decision::Allow,
             rules: vec![
-                PolicyRule { name: "locked".into(), tool_pattern: ".*".into(), conditions: vec![], action: Decision::Deny, reason: None, alternative: None, locked: true, gate: None, ensure: None },
-                PolicyRule { name: "sys".into(), tool_pattern: ".*".into(), conditions: vec![], action: Decision::Allow, reason: None, alternative: None, locked: false, gate: None, ensure: None },
+                PolicyRule { name: "locked".into(), tool_pattern: ".*".into(), conditions: vec![], action: Decision::Deny, reason: None, alternative: None, locked: true, gate: None, ensure: None,
+inject: None,
+},
+                PolicyRule { name: "sys".into(), tool_pattern: ".*".into(), conditions: vec![], action: Decision::Allow, reason: None, alternative: None, locked: false, gate: None, ensure: None,
+inject: None,
+},
             ],
         };
         std::fs::write(&policy_path, serde_yaml::to_string(&config).unwrap()).unwrap();
 
         // User rules as bare list
         let user_rules = vec![
-            PolicyRule { name: "my_rule".into(), tool_pattern: "^Bash$".into(), conditions: vec![], action: Decision::Ask, reason: None, alternative: None, locked: false, gate: None, ensure: None },
+            PolicyRule { name: "my_rule".into(), tool_pattern: "^Bash$".into(), conditions: vec![], action: Decision::Ask, reason: None, alternative: None, locked: false, gate: None, ensure: None,
+inject: None,
+},
         ];
         std::fs::write(&rules_path, serde_yaml::to_string(&user_rules).unwrap()).unwrap();
 
@@ -2691,7 +3344,8 @@ rules:
                 locked: false,
                 gate: None,
                 ensure: None,
-            },
+            inject: None,
+        },
         ];
         std::fs::write(&rules_path, serde_yaml::to_string(&user_rules).unwrap()).unwrap();
 
@@ -2784,7 +3438,8 @@ rules:
                 locked: false,
                 gate: None,
                 ensure: None,
-            },
+            inject: None,
+        },
         ];
         std::fs::write(&rules_path, serde_yaml::to_string(&user_rules).unwrap()).unwrap();
 
@@ -2818,5 +3473,477 @@ rules:
         assert_eq!(rules[0].name, "require_plan_before_code");
         assert_eq!(rules[1].name, "protect_core_files");
         assert_eq!(rules[2].name, "github_identity_guard");
+    }
+}
+
+#[cfg(test)]
+mod inject_tests {
+    use super::*;
+    use serde_json::json;
+
+    fn inject_rule(name: &str, tool_pattern: &str, peak: f64, mode: InjectMode, text: &str) -> PolicyRule {
+        PolicyRule {
+            name: name.into(),
+            tool_pattern: tool_pattern.into(),
+            conditions: vec![],
+            action: Decision::Inject,
+            reason: None,
+            alternative: None,
+            locked: false,
+            gate: None,
+            ensure: None,
+            inject: Some(InjectConfig {
+                trigger: InjectTrigger {
+                    mode,
+                    peak,
+                    peak_after_seconds: 60.0,
+                    cooldown_seconds: 0.0,
+                    max_per_session: 0,
+                },
+                payload: InjectPayload {
+                    text: Some(text.into()),
+                    text_file: None,
+                    from_command: None,
+                    substitutions: false,
+                },
+            }),
+        }
+    }
+
+    fn call(tool: &str) -> ToolCall {
+        ToolCall { tool_name: tool.into(), parameters: json!({}) }
+    }
+
+    // ===== Probability math =====
+
+    #[test]
+    fn test_probability_constant() {
+        let t = InjectTrigger {
+            mode: InjectMode::Constant,
+            peak: 0.5,
+            peak_after_seconds: 100.0,
+            cooldown_seconds: 10.0,
+            max_per_session: 0,
+        };
+        assert_eq!(compute_inject_probability(&t, 0.0), 0.0);     // below cooldown
+        assert_eq!(compute_inject_probability(&t, 9.9), 0.0);     // below cooldown
+        assert_eq!(compute_inject_probability(&t, 10.0), 0.5);    // at cooldown
+        assert_eq!(compute_inject_probability(&t, 1000.0), 0.5);  // far past — still flat
+    }
+
+    #[test]
+    fn test_probability_step_alias_for_constant() {
+        let t = InjectTrigger {
+            mode: InjectMode::Step,
+            peak: 0.3,
+            peak_after_seconds: 60.0,
+            cooldown_seconds: 5.0,
+            max_per_session: 0,
+        };
+        assert_eq!(compute_inject_probability(&t, 4.9), 0.0);
+        assert_eq!(compute_inject_probability(&t, 5.0), 0.3);
+        assert_eq!(compute_inject_probability(&t, 9999.0), 0.3);
+    }
+
+    #[test]
+    fn test_probability_linear() {
+        let t = InjectTrigger {
+            mode: InjectMode::Linear,
+            peak: 1.0,
+            peak_after_seconds: 100.0,
+            cooldown_seconds: 0.0,
+            max_per_session: 0,
+        };
+        assert_eq!(compute_inject_probability(&t, 0.0), 0.0);   // ramp starts at 0
+        assert!((compute_inject_probability(&t, 50.0) - 0.5).abs() < 1e-9);
+        assert!((compute_inject_probability(&t, 100.0) - 1.0).abs() < 1e-9);
+        assert!((compute_inject_probability(&t, 200.0) - 1.0).abs() < 1e-9); // capped at peak
+    }
+
+    #[test]
+    fn test_probability_linear_with_cooldown() {
+        let t = InjectTrigger {
+            mode: InjectMode::Linear,
+            peak: 0.8,
+            peak_after_seconds: 100.0,
+            cooldown_seconds: 50.0,
+            max_per_session: 0,
+        };
+        assert_eq!(compute_inject_probability(&t, 49.0), 0.0);
+        assert_eq!(compute_inject_probability(&t, 50.0), 0.0);
+        assert!((compute_inject_probability(&t, 100.0) - 0.4).abs() < 1e-9);
+        assert!((compute_inject_probability(&t, 150.0) - 0.8).abs() < 1e-9);
+    }
+
+    #[test]
+    fn test_probability_exponential() {
+        let t = InjectTrigger {
+            mode: InjectMode::Exponential,
+            peak: 1.0,
+            peak_after_seconds: 100.0,
+            cooldown_seconds: 0.0,
+            max_per_session: 0,
+        };
+        let p = compute_inject_probability(&t, 100.0);
+        assert!(p > 0.6 && p < 0.7); // 1 - 1/e ≈ 0.632
+        let p2 = compute_inject_probability(&t, 1000.0);
+        assert!(p2 > 0.999); // asymptotes to peak
+    }
+
+    #[test]
+    fn test_probability_peak_clamped() {
+        let t = InjectTrigger {
+            mode: InjectMode::Constant,
+            peak: 1.5, // out-of-range
+            peak_after_seconds: 100.0,
+            cooldown_seconds: 0.0,
+            max_per_session: 0,
+        };
+        assert_eq!(compute_inject_probability(&t, 100.0), 1.0); // clamped
+    }
+
+    #[test]
+    fn test_probability_peak_zero_never_fires() {
+        let t = InjectTrigger {
+            mode: InjectMode::Linear,
+            peak: 0.0,
+            peak_after_seconds: 100.0,
+            cooldown_seconds: 0.0,
+            max_per_session: 0,
+        };
+        assert_eq!(compute_inject_probability(&t, 1.0), 0.0);
+        assert_eq!(compute_inject_probability(&t, 1_000_000.0), 0.0);
+    }
+
+    // ===== Two-pass evaluate =====
+
+    #[test]
+    fn test_inject_rule_skipped_in_auth_pass() {
+        // Auth pass should not return Decision::Inject as the decision.
+        let config = PolicyConfig {
+            version: 1,
+            default_action: Decision::Allow,
+            rules: vec![
+                inject_rule("nudge", ".*", 1.0, InjectMode::Constant, "hello"),
+                PolicyRule {
+                    name: "block".into(),
+                    tool_pattern: "Bash".into(),
+                    conditions: vec!["contains(parameters, 'rm')".into()],
+                    action: Decision::Deny,
+                    reason: Some("rm blocked".into()),
+                    alternative: None,
+                    locked: false,
+                    gate: None,
+                    ensure: None,
+                    inject: None,
+                },
+            ],
+        };
+        let policy = CompiledPolicy::from_config(&config);
+        // Inject rule matches everything but should not authorize.
+        let res = evaluate(&ToolCall { tool_name: "Bash".into(), parameters: json!({"command": "rm foo"}) }, &policy, None);
+        assert_eq!(res.decision, Decision::Deny);
+        assert_eq!(res.matched_rule.as_deref(), Some("block"));
+    }
+
+    #[test]
+    fn test_has_inject_rules_flag() {
+        let no_inject = PolicyConfig {
+            version: 1, default_action: Decision::Allow,
+            rules: vec![PolicyRule {
+                name: "x".into(), tool_pattern: ".*".into(), conditions: vec![],
+                action: Decision::Allow, reason: None, alternative: None,
+                locked: false, gate: None, ensure: None, inject: None,
+            }],
+        };
+        assert!(!CompiledPolicy::from_config(&no_inject).has_inject_rules);
+
+        let with_inject = PolicyConfig {
+            version: 1, default_action: Decision::Allow,
+            rules: vec![inject_rule("n", ".*", 0.5, InjectMode::Constant, "x")],
+        };
+        assert!(CompiledPolicy::from_config(&with_inject).has_inject_rules);
+    }
+
+    #[test]
+    fn test_inject_pass_fires_with_full_probability() {
+        // peak=1.0 + no cooldown + no last_fired → guaranteed fire when no vault is present.
+        let config = PolicyConfig {
+            version: 1, default_action: Decision::Allow,
+            rules: vec![inject_rule("n1", "Edit", 1.0, InjectMode::Constant, "USE KINDEX")],
+        };
+        let policy = CompiledPolicy::from_config(&config);
+        let res = evaluate(&call("Edit"), &policy, None);
+        assert_eq!(res.decision, Decision::Allow);
+        assert_eq!(res.injected_context.as_deref(), Some("USE KINDEX"));
+    }
+
+    #[test]
+    fn test_inject_pass_does_not_fire_when_tool_pattern_misses() {
+        let config = PolicyConfig {
+            version: 1, default_action: Decision::Allow,
+            rules: vec![inject_rule("n1", "Edit", 1.0, InjectMode::Constant, "USE KINDEX")],
+        };
+        let policy = CompiledPolicy::from_config(&config);
+        let res = evaluate(&call("Read"), &policy, None);
+        assert!(res.injected_context.is_none());
+    }
+
+    #[test]
+    fn test_inject_pass_concatenates_multiple_payloads_with_separator() {
+        let config = PolicyConfig {
+            version: 1, default_action: Decision::Allow,
+            rules: vec![
+                inject_rule("a", "Bash", 1.0, InjectMode::Constant, "first"),
+                inject_rule("b", "Bash", 1.0, InjectMode::Constant, "second"),
+            ],
+        };
+        let policy = CompiledPolicy::from_config(&config);
+        let res = evaluate(&call("Bash"), &policy, None);
+        let ctx = res.injected_context.unwrap();
+        assert!(ctx.starts_with("first"));
+        assert!(ctx.contains(INJECT_SEPARATOR));
+        assert!(ctx.ends_with("second"));
+    }
+
+    #[test]
+    fn test_inject_total_cap_truncation() {
+        // Build a payload longer than the cap.
+        let huge = "X".repeat(INJECT_TOTAL_CAP_BYTES + 1000);
+        let config = PolicyConfig {
+            version: 1, default_action: Decision::Allow,
+            rules: vec![inject_rule("big", ".*", 1.0, InjectMode::Constant, &huge)],
+        };
+        let policy = CompiledPolicy::from_config(&config);
+        let res = evaluate(&call("Bash"), &policy, None);
+        let ctx = res.injected_context.unwrap();
+        assert!(ctx.len() <= INJECT_TOTAL_CAP_BYTES);
+    }
+
+    #[test]
+    fn test_inject_pass_with_failing_condition_skipped() {
+        let mut rule = inject_rule("n1", "Bash", 1.0, InjectMode::Constant, "x");
+        rule.conditions = vec!["contains(parameters, 'NOPE')".into()];
+        let config = PolicyConfig {
+            version: 1, default_action: Decision::Allow, rules: vec![rule],
+        };
+        let policy = CompiledPolicy::from_config(&config);
+        let res = evaluate(&call("Bash"), &policy, None);
+        assert!(res.injected_context.is_none());
+    }
+
+    // ===== Payload sources =====
+
+    #[test]
+    fn test_payload_validates_exactly_one_source() {
+        let payload = InjectPayload {
+            text: Some("a".into()),
+            text_file: Some("b".into()),
+            from_command: None,
+            substitutions: false,
+        };
+        let res = resolve_inject_payload(&payload, &call("Bash"), None);
+        assert!(res.is_err());
+
+        let payload = InjectPayload {
+            text: None, text_file: None, from_command: None, substitutions: false,
+        };
+        let res = resolve_inject_payload(&payload, &call("Bash"), None);
+        assert!(res.is_err());
+    }
+
+    #[test]
+    fn test_text_file_path_traversal_blocked() {
+        let payload = InjectPayload {
+            text: None,
+            text_file: Some("../etc/passwd".into()),
+            from_command: None,
+            substitutions: false,
+        };
+        let res = resolve_inject_payload(&payload, &call("Bash"), None);
+        assert!(res.is_err());
+        assert!(res.unwrap_err().contains("text_file"));
+    }
+
+    #[test]
+    fn test_text_file_with_slash_blocked() {
+        let payload = InjectPayload {
+            text: None,
+            text_file: Some("subdir/file.md".into()),
+            from_command: None,
+            substitutions: false,
+        };
+        assert!(resolve_inject_payload(&payload, &call("Bash"), None).is_err());
+    }
+
+    #[test]
+    fn test_text_file_with_backslash_blocked() {
+        let payload = InjectPayload {
+            text: None,
+            text_file: Some("a\\b".into()),
+            from_command: None,
+            substitutions: false,
+        };
+        assert!(resolve_inject_payload(&payload, &call("Bash"), None).is_err());
+    }
+
+    #[test]
+    fn test_from_command_not_in_allowlist() {
+        let payload = InjectPayload {
+            text: None,
+            text_file: None,
+            from_command: Some(FromCommandSpec { name: "_not_in_allowlist_".into(), args: vec![] }),
+            substitutions: false,
+        };
+        // Without an allowlist file, this should error with "not in allowlist".
+        // With one, the absent name still errors.
+        let res = resolve_inject_payload(&payload, &call("Bash"), None);
+        assert!(res.is_err());
+    }
+
+    // ===== Substitutions =====
+
+    #[test]
+    fn test_substitutions_tool_name() {
+        let out = apply_inject_substitutions("called {tool_name}", &call("Bash"));
+        assert_eq!(out, "called Bash");
+    }
+
+    #[test]
+    fn test_substitutions_date_is_today() {
+        let out = apply_inject_substitutions("{date}", &call("Bash"));
+        // Format YYYY-MM-DD, length 10.
+        assert_eq!(out.len(), 10);
+        assert!(out.chars().nth(4) == Some('-') && out.chars().nth(7) == Some('-'));
+    }
+
+    #[test]
+    fn test_substitutions_matched_param() {
+        let mut c = call("Bash");
+        c.parameters = json!({"command": "ls -la", "category": "books"});
+        let out = apply_inject_substitutions("{matched_param.command} / {matched_param.category}", &c);
+        assert_eq!(out, "ls -la / books");
+    }
+
+    #[test]
+    fn test_substitutions_unknown_placeholder_passthrough() {
+        let out = apply_inject_substitutions("{unknown}", &call("Bash"));
+        assert_eq!(out, "{unknown}"); // unchanged
+    }
+
+    #[test]
+    fn test_substitutions_disabled_via_payload_flag() {
+        let payload = InjectPayload {
+            text: Some("called {tool_name}".into()),
+            text_file: None, from_command: None,
+            substitutions: false,
+        };
+        let res = resolve_inject_payload(&payload, &call("Edit"), None).unwrap();
+        assert_eq!(res, "called {tool_name}"); // not substituted
+    }
+
+    // ===== Validation =====
+
+    #[test]
+    fn test_validate_rejects_missing_inject_config() {
+        let config = PolicyConfig {
+            version: 1, default_action: Decision::Allow,
+            rules: vec![PolicyRule {
+                name: "broken".into(), tool_pattern: ".*".into(), conditions: vec![],
+                action: Decision::Inject, reason: None, alternative: None,
+                locked: false, gate: None, ensure: None, inject: None,
+            }],
+        };
+        let diagnostics = validate_policy(&config);
+        assert!(diagnostics.iter().any(|d| d.error.contains("INJECT requires 'inject' config")));
+    }
+
+    #[test]
+    fn test_validate_rejects_peak_out_of_range() {
+        let mut rule = inject_rule("r", ".*", 2.5, InjectMode::Constant, "x");
+        if let Some(ref mut ic) = rule.inject { ic.trigger.peak = 2.5; }
+        let config = PolicyConfig {
+            version: 1, default_action: Decision::Allow, rules: vec![rule],
+        };
+        let diagnostics = validate_policy(&config);
+        assert!(diagnostics.iter().any(|d| d.error.contains("peak must be in")));
+    }
+
+    #[test]
+    fn test_validate_rejects_text_file_with_separator() {
+        let mut rule = inject_rule("r", ".*", 0.5, InjectMode::Constant, "x");
+        if let Some(ref mut ic) = rule.inject {
+            ic.payload.text = None;
+            ic.payload.text_file = Some("../escape".into());
+        }
+        let config = PolicyConfig {
+            version: 1, default_action: Decision::Allow, rules: vec![rule],
+        };
+        let diagnostics = validate_policy(&config);
+        assert!(diagnostics.iter().any(|d| d.error.contains("text_file must be a simple filename")));
+    }
+
+    #[test]
+    fn test_validate_rejects_zero_payload_sources() {
+        let mut rule = inject_rule("r", ".*", 0.5, InjectMode::Constant, "x");
+        if let Some(ref mut ic) = rule.inject {
+            ic.payload.text = None;
+        }
+        let config = PolicyConfig {
+            version: 1, default_action: Decision::Allow, rules: vec![rule],
+        };
+        let diagnostics = validate_policy(&config);
+        assert!(diagnostics.iter().any(|d| d.error.contains("must specify exactly one")));
+    }
+
+    #[test]
+    fn test_validate_fix_clamps_peak() {
+        let mut rule = inject_rule("r", ".*", 1.5, InjectMode::Constant, "x");
+        if let Some(ref mut ic) = rule.inject { ic.trigger.peak = 1.5; }
+        let mut config = PolicyConfig {
+            version: 1, default_action: Decision::Allow, rules: vec![rule],
+        };
+        fix_policy(&mut config);
+        let clamped = config.rules[0].inject.as_ref().unwrap().trigger.peak;
+        assert_eq!(clamped, 1.0);
+    }
+
+    // ===== YAML round-trip =====
+
+    #[test]
+    fn test_inject_rule_yaml_round_trip() {
+        let yaml = r#"
+- name: "nudge"
+  tool_pattern: "Edit"
+  conditions: []
+  action: INJECT
+  inject:
+    trigger:
+      mode: linear
+      peak: 0.25
+      peak_after_seconds: 600
+      cooldown_seconds: 60
+      max_per_session: 5
+    payload:
+      text: "reminder"
+      substitutions: false
+"#;
+        let rules: Vec<PolicyRule> = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(rules.len(), 1);
+        assert_eq!(rules[0].action, Decision::Inject);
+        let ic = rules[0].inject.as_ref().unwrap();
+        assert!(matches!(ic.trigger.mode, InjectMode::Linear));
+        assert_eq!(ic.trigger.peak, 0.25);
+        assert_eq!(ic.payload.text.as_deref(), Some("reminder"));
+    }
+
+    #[test]
+    fn test_inject_examples_yaml_parseable() {
+        let yaml = std::fs::read_to_string("examples/inject_examples.yaml").unwrap();
+        let config: PolicyConfig = serde_yaml::from_str(&yaml).unwrap();
+        let diagnostics = validate_policy(&config);
+        let errors: Vec<_> = diagnostics.iter().filter(|d| d.severity == DiagnosticSeverity::Error).collect();
+        assert!(errors.is_empty(), "Validation errors in inject_examples.yaml: {:?}",
+            errors.iter().map(|d| &d.error).collect::<Vec<_>>());
     }
 }

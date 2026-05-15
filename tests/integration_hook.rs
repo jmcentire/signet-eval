@@ -518,3 +518,226 @@ fn test_hook_protect_checks_dir() {
     assert_eq!(code, 0);
     assert_eq!(parse_decision(&out), "deny");
 }
+
+// ===== Inject action tests =====
+
+#[test]
+fn test_hook_inject_emits_additional_context_on_claude() {
+    let dir = tempfile::tempdir().unwrap();
+    let policy = r#"
+version: 1
+default_action: ALLOW
+rules:
+  - name: nudge_always
+    tool_pattern: "Edit"
+    action: INJECT
+    inject:
+      trigger:
+        mode: constant
+        peak: 1.0
+        cooldown_seconds: 0
+      payload:
+        text: "USE KINDEX REMINDER"
+        substitutions: false
+"#;
+    let (out, code) = run_hook_with_policy(
+        r#"{"tool_name":"Edit","tool_input":{"file_path":"/tmp/x"}}"#,
+        policy, dir.path(),
+    );
+    assert_eq!(code, 0);
+    let v: serde_json::Value = serde_json::from_str(out.trim()).unwrap();
+    let hso = &v["hookSpecificOutput"];
+    assert_eq!(hso["permissionDecision"], "allow");
+    let ctx = hso["additionalContext"].as_str().unwrap_or("");
+    assert!(ctx.contains("USE KINDEX REMINDER"), "additionalContext was: {}", ctx);
+}
+
+#[test]
+fn test_hook_inject_does_not_fire_when_tool_pattern_misses() {
+    let dir = tempfile::tempdir().unwrap();
+    let policy = r#"
+version: 1
+default_action: ALLOW
+rules:
+  - name: nudge_on_edit
+    tool_pattern: "Edit"
+    action: INJECT
+    inject:
+      trigger:
+        mode: constant
+        peak: 1.0
+        cooldown_seconds: 0
+      payload:
+        text: "SHOULD NOT APPEAR"
+"#;
+    let (out, code) = run_hook_with_policy(
+        r#"{"tool_name":"Read","tool_input":{"file_path":"/tmp/x"}}"#,
+        policy, dir.path(),
+    );
+    assert_eq!(code, 0);
+    let v: serde_json::Value = serde_json::from_str(out.trim()).unwrap();
+    let hso = &v["hookSpecificOutput"];
+    assert_eq!(hso["permissionDecision"], "allow");
+    assert!(hso["additionalContext"].is_null() || hso["additionalContext"].as_str() == Some(""));
+}
+
+#[test]
+fn test_hook_inject_runs_alongside_authoritative_allow() {
+    // INJECT must not affect the auth decision.
+    let dir = tempfile::tempdir().unwrap();
+    let policy = r#"
+version: 1
+default_action: ALLOW
+rules:
+  - name: nudge
+    tool_pattern: ".*"
+    action: INJECT
+    inject:
+      trigger: { mode: constant, peak: 1.0, cooldown_seconds: 0 }
+      payload: { text: "nudge text" }
+"#;
+    let (out, code) = run_hook_with_policy(
+        r#"{"tool_name":"Bash","tool_input":{"command":"ls"}}"#,
+        policy, dir.path(),
+    );
+    assert_eq!(code, 0);
+    let v: serde_json::Value = serde_json::from_str(out.trim()).unwrap();
+    assert_eq!(v["hookSpecificOutput"]["permissionDecision"], "allow");
+    assert!(v["hookSpecificOutput"]["additionalContext"].as_str().unwrap_or("").contains("nudge text"));
+}
+
+#[test]
+fn test_hook_inject_does_not_override_deny() {
+    // INJECT rule is non-authoritative; deny rule still denies.
+    let dir = tempfile::tempdir().unwrap();
+    let policy = r#"
+version: 1
+default_action: ALLOW
+rules:
+  - name: block_rm
+    tool_pattern: "Bash"
+    conditions:
+      - "contains(parameters, 'rm ')"
+    action: DENY
+    reason: "blocked"
+  - name: nudge
+    tool_pattern: ".*"
+    action: INJECT
+    inject:
+      trigger: { mode: constant, peak: 1.0, cooldown_seconds: 0 }
+      payload: { text: "nudge" }
+"#;
+    let (out, code) = run_hook_with_policy(
+        r#"{"tool_name":"Bash","tool_input":{"command":"rm foo"}}"#,
+        policy, dir.path(),
+    );
+    assert_eq!(code, 0);
+    let v: serde_json::Value = serde_json::from_str(out.trim()).unwrap();
+    assert_eq!(v["hookSpecificOutput"]["permissionDecision"], "deny");
+}
+
+#[test]
+fn test_hook_inject_codex_permission_appends_to_message() {
+    // Codex PermissionRequest has no additionalContext channel.
+    // Inject payload should be appended to the message field with [nudge] delimiter.
+    let dir = tempfile::tempdir().unwrap();
+    let policy = r#"
+version: 1
+default_action: ALLOW
+rules:
+  - name: block_rm
+    tool_pattern: "Bash"
+    conditions:
+      - "contains(parameters, 'rm ')"
+    action: DENY
+    reason: "blocked by policy"
+  - name: nudge
+    tool_pattern: ".*"
+    action: INJECT
+    inject:
+      trigger: { mode: constant, peak: 1.0, cooldown_seconds: 0 }
+      payload: { text: "remember to ask first" }
+"#;
+    let (out, code) = run_hook_with_args_and_signet_dir(
+        r#"{"hook_event_name":"PermissionRequest","tool_name":"Bash","tool_input":{"command":"rm foo"}}"#,
+        &["--adapter", "codex", "--policy-path", &dir.path().join("policy.yaml").to_string_lossy(),
+          "--rules-path", &dir.path().join("rules.yaml").to_string_lossy()],
+        dir.path(),
+        policy,
+    );
+    assert_eq!(code, 0);
+    let v: serde_json::Value = serde_json::from_str(out.trim()).unwrap();
+    assert_eq!(v["hookSpecificOutput"]["decision"]["behavior"], "deny");
+    let msg = v["hookSpecificOutput"]["decision"]["message"].as_str().unwrap_or("");
+    assert!(msg.contains("blocked by policy"), "message was: {msg}");
+    assert!(msg.contains("[nudge]"), "missing [nudge] delimiter: {msg}");
+    assert!(msg.contains("remember to ask first"), "missing inject payload: {msg}");
+}
+
+fn run_hook_with_args_and_signet_dir(input: &str, args: &[&str], signet_dir: &std::path::Path, policy_yaml: &str) -> (String, i32) {
+    let policy_path = signet_dir.join("policy.yaml");
+    std::fs::write(&policy_path, policy_yaml).unwrap();
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_signet-eval"))
+        .args(args)
+        .env("SIGNET_DIR", signet_dir)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("failed to start signet-eval");
+    child.stdin.as_mut().unwrap().write_all(input.as_bytes()).unwrap();
+    let output = child.wait_with_output().unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    (stdout, output.status.code().unwrap_or(-1))
+}
+
+#[test]
+fn test_hook_inject_load_time_fast_path_zero_overhead_when_no_inject_rules() {
+    // Policy with no INJECT rules — verify additionalContext is never emitted.
+    let dir = tempfile::tempdir().unwrap();
+    let policy = r#"
+version: 1
+default_action: ALLOW
+rules:
+  - name: allow_ls
+    tool_pattern: "Bash"
+    conditions:
+      - "contains(parameters, 'ls')"
+    action: ALLOW
+"#;
+    let (out, code) = run_hook_with_policy(
+        r#"{"tool_name":"Bash","tool_input":{"command":"ls -la"}}"#,
+        policy, dir.path(),
+    );
+    assert_eq!(code, 0);
+    let v: serde_json::Value = serde_json::from_str(out.trim()).unwrap();
+    assert_eq!(v["hookSpecificOutput"]["permissionDecision"], "allow");
+    assert!(v["hookSpecificOutput"]["additionalContext"].is_null());
+}
+
+#[test]
+fn test_hook_inject_substitutions_applied() {
+    let dir = tempfile::tempdir().unwrap();
+    let policy = r#"
+version: 1
+default_action: ALLOW
+rules:
+  - name: nudge
+    tool_pattern: ".*"
+    action: INJECT
+    inject:
+      trigger: { mode: constant, peak: 1.0, cooldown_seconds: 0 }
+      payload:
+        text: "tool={tool_name}"
+        substitutions: true
+"#;
+    let (out, code) = run_hook_with_policy(
+        r#"{"tool_name":"Edit","tool_input":{"file_path":"/tmp/x"}}"#,
+        policy, dir.path(),
+    );
+    assert_eq!(code, 0);
+    let v: serde_json::Value = serde_json::from_str(out.trim()).unwrap();
+    let ctx = v["hookSpecificOutput"]["additionalContext"].as_str().unwrap_or("");
+    assert!(ctx.contains("tool=Edit"), "substitution not applied. Got: {ctx}");
+}
