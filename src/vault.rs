@@ -10,14 +10,14 @@
 //! Tier 2: Session-key encrypted (session state)
 //! Tier 3: Compartment-key encrypted (credentials — requires passphrase)
 
-use aes_gcm::{Aes256Gcm, KeyInit, Nonce};
 use aes_gcm::aead::Aead;
+use aes_gcm::{Aes256Gcm, KeyInit, Nonce};
 use argon2::Argon2;
-use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
+use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
 use hkdf::Hkdf;
 use hmac::{Hmac, Mac};
 use rand::RngCore;
-use rusqlite::{Connection, params};
+use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 use std::path::PathBuf;
@@ -35,12 +35,17 @@ const DEFAULT_VIOLATION_THRESHOLD: u32 = 5;
 type HmacSha256 = Hmac<Sha256>;
 
 fn now_epoch() -> f64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs_f64()
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs_f64()
 }
 
 /// Read SIGNET_SESSION env var. Returns None if unset or empty.
 pub fn current_session_id() -> Option<String> {
-    std::env::var("SIGNET_SESSION").ok().filter(|s| !s.is_empty())
+    std::env::var("SIGNET_SESSION")
+        .ok()
+        .filter(|s| !s.is_empty())
 }
 
 pub(crate) fn random_hex_id() -> String {
@@ -92,7 +97,8 @@ fn decrypt(key: &[u8; KEY_LEN], data: &[u8]) -> Result<Vec<u8>, String> {
     }
     let cipher = Aes256Gcm::new_from_slice(key).unwrap();
     let nonce = Nonce::from_slice(&data[..NONCE_LEN]);
-    cipher.decrypt(nonce, &data[NONCE_LEN..])
+    cipher
+        .decrypt(nonce, &data[NONCE_LEN..])
         .map_err(|_| "decryption failed".into())
 }
 
@@ -137,10 +143,12 @@ pub fn verify_policy_integrity(session_key: &[u8; KEY_LEN], policy_path: &std::p
 }
 
 /// Sign a policy file — write its HMAC alongside it.
-pub fn sign_policy(session_key: &[u8; KEY_LEN], policy_path: &std::path::Path) -> Result<(), String> {
+pub fn sign_policy(
+    session_key: &[u8; KEY_LEN],
+    policy_path: &std::path::Path,
+) -> Result<(), String> {
     let hmac_path = policy_path.with_extension("hmac");
-    let content = std::fs::read_to_string(policy_path)
-        .map_err(|e| format!("read policy: {e}"))?;
+    let content = std::fs::read_to_string(policy_path).map_err(|e| format!("read policy: {e}"))?;
     let sig = policy_hmac(session_key, &content);
     std::fs::write(&hmac_path, &sig).map_err(|e| format!("write hmac: {e}"))?;
     Ok(())
@@ -151,15 +159,15 @@ pub fn sign_policy(session_key: &[u8; KEY_LEN], policy_path: &std::path::Path) -
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct CredentialMeta {
     #[serde(default)]
-    pub domain: Option<String>,      // e.g. "amazon.com"
+    pub domain: Option<String>, // e.g. "amazon.com"
     #[serde(default)]
-    pub purpose: Option<String>,     // e.g. "purchase", "api_access"
+    pub purpose: Option<String>, // e.g. "purchase", "api_access"
     #[serde(default)]
-    pub max_amount: Option<f64>,     // per-use amount cap
+    pub max_amount: Option<f64>, // per-use amount cap
     #[serde(default)]
-    pub one_time: bool,              // invalidate after first use
+    pub one_time: bool, // invalidate after first use
     #[serde(default)]
-    pub label: Option<String>,       // human-readable label
+    pub label: Option<String>, // human-readable label
 }
 
 // === Preflight Structs ===
@@ -183,7 +191,7 @@ pub struct SoftConstraint {
     pub name: String,
     pub tool_pattern: String,
     pub conditions: Vec<String>,
-    pub action: String,  // "DENY" or "ASK"
+    pub action: String, // "DENY" or "ASK"
     pub reason: String,
     pub alternative: String,
 }
@@ -223,7 +231,10 @@ impl Vault {
         };
         vault.init_db();
         let start = vault.load_or_create_session_start();
-        Vault { session_start: start, ..vault }
+        Vault {
+            session_start: start,
+            ..vault
+        }
     }
 
     pub fn session_key(&self) -> &[u8; KEY_LEN] {
@@ -236,7 +247,8 @@ impl Vault {
 
     fn init_db(&self) {
         let conn = Connection::open(&self.db_path).expect("open db");
-        conn.execute_batch("
+        conn.execute_batch(
+            "
             CREATE TABLE IF NOT EXISTS ledger (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp REAL NOT NULL,
@@ -290,19 +302,30 @@ impl Vault {
                 session_fires INTEGER NOT NULL DEFAULT 0,
                 session_start REAL NOT NULL DEFAULT 0
             );
-        ").expect("init db");
+        ",
+        )
+        .expect("init db");
 
         // Migration: add session_id column to preflights (idempotent)
         let _ = conn.execute("ALTER TABLE preflights ADD COLUMN session_id TEXT", []);
-        let _ = conn.execute("CREATE INDEX IF NOT EXISTS idx_preflight_session ON preflights(session_id)", []);
+        let _ = conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_preflight_session ON preflights(session_id)",
+            [],
+        );
     }
 
     fn load_or_create_session_start(&self) -> f64 {
         let conn = Connection::open(&self.db_path).unwrap();
-        let existing: Option<f64> = conn.query_row(
-            "SELECT value FROM session_state WHERE key = '_session_start'",
-            [], |row| row.get::<_, String>(0).map(|s| s.parse::<f64>().unwrap_or(0.0))
-        ).ok();
+        let existing: Option<f64> = conn
+            .query_row(
+                "SELECT value FROM session_state WHERE key = '_session_start'",
+                [],
+                |row| {
+                    row.get::<_, String>(0)
+                        .map(|s| s.parse::<f64>().unwrap_or(0.0))
+                },
+            )
+            .ok();
 
         if let Some(start) = existing {
             if now_epoch() - start < SESSION_TTL_SECS {
@@ -336,7 +359,14 @@ impl Vault {
 
     // --- Ledger ---
 
-    pub fn log_action(&self, tool: &str, decision: &str, category: &str, amount: f64, detail: &str) {
+    pub fn log_action(
+        &self,
+        tool: &str,
+        decision: &str,
+        category: &str,
+        amount: f64,
+        detail: &str,
+    ) {
         if let Ok(conn) = Connection::open(&self.db_path) {
             let _ = conn.execute(
                 "INSERT INTO ledger (timestamp, tool, category, amount, decision, detail) VALUES (?1,?2,?3,?4,?5,?6)",
@@ -416,13 +446,17 @@ impl Vault {
         };
         let mut stmt = match conn.prepare(
             "SELECT rule_name, last_fired_ts, session_fires FROM injection_state \
-             WHERE last_fired_ts > 0 ORDER BY last_fired_ts DESC LIMIT ?1"
+             WHERE last_fired_ts > 0 ORDER BY last_fired_ts DESC LIMIT ?1",
         ) {
             Ok(s) => s,
             Err(_) => return vec![],
         };
         let rows = stmt.query_map(params![limit], |r| {
-            Ok((r.get::<_, String>(0)?, r.get::<_, f64>(1)?, r.get::<_, i64>(2)?))
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, f64>(1)?,
+                r.get::<_, i64>(2)?,
+            ))
         });
         match rows {
             Ok(it) => it.filter_map(Result::ok).collect(),
@@ -469,7 +503,10 @@ impl Vault {
                 "decision": row.get::<_, String>(4)?,
                 "detail": row.get::<_, String>(5)?,
             }))
-        }).unwrap().filter_map(|r| r.ok()).collect()
+        })
+        .unwrap()
+        .filter_map(|r| r.ok())
+        .collect()
     }
 
     /// Check if any of the last N allowed actions match the given search term(s)
@@ -481,15 +518,26 @@ impl Vault {
             Ok(c) => c,
             Err(_) => return false,
         };
-        let terms: Vec<&str> = search.split('|').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
+        let terms: Vec<&str> = search
+            .split('|')
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .collect();
         if terms.is_empty() {
             return false;
         }
         // Build OR clause: (tool LIKE '%term1%' OR detail LIKE '%term1%' OR tool LIKE '%term2%' OR ...)
-        let placeholders: Vec<String> = terms.iter().enumerate().flat_map(|(i, _)| {
-            let p = i * 2 + 2; // params start at ?2 (within is ?1)
-            vec![format!("tool LIKE '%' || ?{p} || '%' OR detail LIKE '%' || ?{} || '%'", p + 1)]
-        }).collect();
+        let placeholders: Vec<String> = terms
+            .iter()
+            .enumerate()
+            .flat_map(|(i, _)| {
+                let p = i * 2 + 2; // params start at ?2 (within is ?1)
+                vec![format!(
+                    "tool LIKE '%' || ?{p} || '%' OR detail LIKE '%' || ?{} || '%'",
+                    p + 1
+                )]
+            })
+            .collect();
         let where_clause = placeholders.join(" OR ");
         let sql = format!(
             "SELECT COUNT(*) FROM (SELECT tool, detail FROM ledger WHERE decision = 'allow' ORDER BY id DESC LIMIT ?1) WHERE {where_clause}"
@@ -502,8 +550,11 @@ impl Vault {
             param_values.push(Box::new(term.to_string()));
             param_values.push(Box::new(term.to_string())); // once for tool, once for detail
         }
-        let params_ref: Vec<&dyn rusqlite::types::ToSql> = param_values.iter().map(|b| b.as_ref()).collect();
-        let count: i64 = conn.query_row(&sql, params_ref.as_slice(), |row| row.get(0)).unwrap_or(0);
+        let params_ref: Vec<&dyn rusqlite::types::ToSql> =
+            param_values.iter().map(|b| b.as_ref()).collect();
+        let count: i64 = conn
+            .query_row(&sql, params_ref.as_slice(), |row| row.get(0))
+            .unwrap_or(0);
         count > 0
     }
 
@@ -514,15 +565,29 @@ impl Vault {
     }
 
     #[allow(dead_code)] // public API — used by callers with expiry constraints
-    pub fn store_credential_with_expiry(&self, name: &str, value: &str, tier: u8, expires_at: Option<f64>) {
+    pub fn store_credential_with_expiry(
+        &self,
+        name: &str,
+        value: &str,
+        tier: u8,
+        expires_at: Option<f64>,
+    ) {
         self.store_credential_full(name, value, tier, expires_at, None);
     }
 
     pub fn store_credential_full(
-        &self, name: &str, value: &str, tier: u8,
-        expires_at: Option<f64>, metadata: Option<&CredentialMeta>,
+        &self,
+        name: &str,
+        value: &str,
+        tier: u8,
+        expires_at: Option<f64>,
+        metadata: Option<&CredentialMeta>,
     ) {
-        let key = if tier == 3 { &self.compartment_key } else { &self.session_key };
+        let key = if tier == 3 {
+            &self.compartment_key
+        } else {
+            &self.session_key
+        };
         let encrypted = encrypt(key, value.as_bytes());
         let meta_json = metadata
             .map(|m| serde_json::to_string(m).unwrap_or_else(|_| "{}".into()))
@@ -536,10 +601,13 @@ impl Vault {
 
     pub fn get_credential(&self, name: &str) -> Option<String> {
         let conn = Connection::open(&self.db_path).ok()?;
-        let (tier, encrypted, expires_at): (i32, Vec<u8>, Option<f64>) = conn.query_row(
-            "SELECT tier, encrypted_value, expires_at FROM credentials WHERE name = ?1",
-            params![name], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?))
-        ).ok()?;
+        let (tier, encrypted, expires_at): (i32, Vec<u8>, Option<f64>) = conn
+            .query_row(
+                "SELECT tier, encrypted_value, expires_at FROM credentials WHERE name = ?1",
+                params![name],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .ok()?;
 
         if let Some(exp) = expires_at {
             if now_epoch() > exp {
@@ -547,50 +615,69 @@ impl Vault {
             }
         }
 
-        let key = if tier == 3 { &self.compartment_key } else { &self.session_key };
+        let key = if tier == 3 {
+            &self.compartment_key
+        } else {
+            &self.session_key
+        };
         let plaintext = decrypt(key, &encrypted).ok()?;
         String::from_utf8(plaintext).ok()
     }
 
     pub fn get_credential_meta(&self, name: &str) -> Option<CredentialMeta> {
         let conn = Connection::open(&self.db_path).ok()?;
-        let meta_json: String = conn.query_row(
-            "SELECT metadata FROM credentials WHERE name = ?1",
-            params![name], |row| row.get(0),
-        ).ok()?;
+        let meta_json: String = conn
+            .query_row(
+                "SELECT metadata FROM credentials WHERE name = ?1",
+                params![name],
+                |row| row.get(0),
+            )
+            .ok()?;
         serde_json::from_str(&meta_json).ok()
     }
 
     /// Request a scoped capability token for a credential.
     /// Returns the credential value if the request matches the credential's constraints.
     /// Logs the access. Invalidates one-time credentials after use.
-    pub fn request_capability(&self, name: &str, domain: &str, amount: f64, purpose: &str) -> Result<String, String> {
-        let meta = self.get_credential_meta(name)
-            .unwrap_or_default();
+    pub fn request_capability(
+        &self,
+        name: &str,
+        domain: &str,
+        amount: f64,
+        purpose: &str,
+    ) -> Result<String, String> {
+        let meta = self.get_credential_meta(name).unwrap_or_default();
 
         // Check domain constraint
         if let Some(ref allowed_domain) = meta.domain {
             if !domain.is_empty() && allowed_domain != domain {
-                return Err(format!("Credential '{name}' is scoped to domain '{allowed_domain}', not '{domain}'"));
+                return Err(format!(
+                    "Credential '{name}' is scoped to domain '{allowed_domain}', not '{domain}'"
+                ));
             }
         }
 
         // Check purpose constraint
         if let Some(ref allowed_purpose) = meta.purpose {
             if !purpose.is_empty() && allowed_purpose != purpose {
-                return Err(format!("Credential '{name}' is scoped to purpose '{allowed_purpose}', not '{purpose}'"));
+                return Err(format!(
+                    "Credential '{name}' is scoped to purpose '{allowed_purpose}', not '{purpose}'"
+                ));
             }
         }
 
         // Check amount constraint
         if let Some(max) = meta.max_amount {
             if amount > max {
-                return Err(format!("Credential '{name}' caps at ${max:.2}, requested ${amount:.2}"));
+                return Err(format!(
+                    "Credential '{name}' caps at ${max:.2}, requested ${amount:.2}"
+                ));
             }
         }
 
         // Get the actual credential
-        let value = self.get_credential(name)
+        let value = self
+            .get_credential(name)
             .ok_or_else(|| format!("Credential '{name}' not found or expired"))?;
 
         // Log the capability request
@@ -615,10 +702,9 @@ impl Vault {
             Ok(c) => c,
             Err(_) => return false,
         };
-        let rows = conn.execute(
-            "DELETE FROM credentials WHERE name = ?1",
-            params![name],
-        ).unwrap_or(0);
+        let rows = conn
+            .execute("DELETE FROM credentials WHERE name = ?1", params![name])
+            .unwrap_or(0);
         rows > 0
     }
 
@@ -629,8 +715,10 @@ impl Vault {
         };
         conn.query_row(
             "SELECT 1 FROM credentials WHERE name = ?1",
-            params![name], |_row| Ok(()),
-        ).is_ok()
+            params![name],
+            |_row| Ok(()),
+        )
+        .is_ok()
     }
 
     pub fn list_credentials(&self) -> Vec<serde_json::Value> {
@@ -638,9 +726,9 @@ impl Vault {
             Ok(c) => c,
             Err(_) => return vec![],
         };
-        let mut stmt = conn.prepare(
-            "SELECT name, tier, created_at, expires_at, metadata FROM credentials"
-        ).unwrap();
+        let mut stmt = conn
+            .prepare("SELECT name, tier, created_at, expires_at, metadata FROM credentials")
+            .unwrap();
         stmt.query_map([], |row| {
             Ok(serde_json::json!({
                 "name": row.get::<_, String>(0)?,
@@ -649,7 +737,10 @@ impl Vault {
                 "expires_at": row.get::<_, Option<f64>>(3)?,
                 "metadata": row.get::<_, String>(4)?,
             }))
-        }).unwrap().filter_map(|r| r.ok()).collect()
+        })
+        .unwrap()
+        .filter_map(|r| r.ok())
+        .collect()
     }
 
     // --- Preflight ---
@@ -657,24 +748,32 @@ impl Vault {
     /// Store a new preflight. HMAC-signs it. Deactivates any previous active preflight.
     pub fn store_preflight(&self, preflight: &Preflight) -> Result<(), String> {
         if preflight.constraints.len() > MAX_PREFLIGHT_CONSTRAINTS {
-            return Err(format!("Too many constraints: {} (max {})", preflight.constraints.len(), MAX_PREFLIGHT_CONSTRAINTS));
+            return Err(format!(
+                "Too many constraints: {} (max {})",
+                preflight.constraints.len(),
+                MAX_PREFLIGHT_CONSTRAINTS
+            ));
         }
         // Validate all constraints have non-empty alternatives
         for c in &preflight.constraints {
             if c.alternative.trim().is_empty() {
-                return Err(format!("Constraint '{}' has empty alternative (plan B required)", c.name));
+                return Err(format!(
+                    "Constraint '{}' has empty alternative (plan B required)",
+                    c.name
+                ));
             }
             if c.action != "DENY" && c.action != "ASK" {
-                return Err(format!("Constraint '{}' action must be DENY or ASK, got '{}'", c.name, c.action));
+                return Err(format!(
+                    "Constraint '{}' action must be DENY or ASK, got '{}'",
+                    c.name, c.action
+                ));
             }
         }
 
-        let payload = serde_json::to_string(preflight)
-            .map_err(|e| format!("serialize: {e}"))?;
+        let payload = serde_json::to_string(preflight).map_err(|e| format!("serialize: {e}"))?;
         let hmac = self.preflight_hmac(&payload);
 
-        let conn = Connection::open(&self.db_path)
-            .map_err(|e| format!("open db: {e}"))?;
+        let conn = Connection::open(&self.db_path).map_err(|e| format!("open db: {e}"))?;
         // Deactivate previous active preflight (scoped to session)
         match &preflight.session_id {
             Some(sid) => conn.execute(
@@ -735,7 +834,10 @@ impl Vault {
         let now = now_epoch() as u64;
         if now > preflight.lockout_until {
             // Lockout expired — deactivate
-            let _ = conn.execute("UPDATE preflights SET active = 0 WHERE id = ?1", params![preflight.id]);
+            let _ = conn.execute(
+                "UPDATE preflights SET active = 0 WHERE id = ?1",
+                params![preflight.id],
+            );
             return None;
         }
 
@@ -768,8 +870,7 @@ impl Vault {
 
     /// Record a preflight violation. Increments violation_count. Sets escalated if threshold exceeded.
     pub fn log_preflight_violation(&self, violation: &PreflightViolation) -> Result<(), String> {
-        let conn = Connection::open(&self.db_path)
-            .map_err(|e| format!("open db: {e}"))?;
+        let conn = Connection::open(&self.db_path).map_err(|e| format!("open db: {e}"))?;
         conn.execute(
             "INSERT INTO preflight_violations (preflight_id, constraint_name, tool_name, params_summary, alternative, timestamp) VALUES (?1,?2,?3,?4,?5,?6)",
             params![violation.preflight_id, violation.constraint_name, violation.tool_name, violation.parameters_summary, violation.alternative, violation.timestamp as i64],
@@ -779,19 +880,24 @@ impl Vault {
         conn.execute(
             "UPDATE preflights SET violation_count = violation_count + 1 WHERE id = ?1",
             params![violation.preflight_id],
-        ).map_err(|e| format!("update count: {e}"))?;
+        )
+        .map_err(|e| format!("update count: {e}"))?;
 
         // Check escalation threshold
-        let count: u32 = conn.query_row(
-            "SELECT violation_count FROM preflights WHERE id = ?1",
-            params![violation.preflight_id], |row| row.get(0),
-        ).unwrap_or(0);
+        let count: u32 = conn
+            .query_row(
+                "SELECT violation_count FROM preflights WHERE id = ?1",
+                params![violation.preflight_id],
+                |row| row.get(0),
+            )
+            .unwrap_or(0);
 
         if count >= DEFAULT_VIOLATION_THRESHOLD {
             conn.execute(
                 "UPDATE preflights SET escalated = 1 WHERE id = ?1",
                 params![violation.preflight_id],
-            ).map_err(|e| format!("escalate: {e}"))?;
+            )
+            .map_err(|e| format!("escalate: {e}"))?;
         }
 
         Ok(())
@@ -815,7 +921,10 @@ impl Vault {
                 alternative: row.get(4)?,
                 timestamp: row.get::<_, i64>(5)? as u64,
             })
-        }).unwrap().filter_map(|r| r.ok()).collect()
+        })
+        .unwrap()
+        .filter_map(|r| r.ok())
+        .collect()
     }
 
     /// Get preflight history.
@@ -837,14 +946,16 @@ impl Vault {
                 "escalated": row.get::<_, i32>(5)? != 0,
                 "active": row.get::<_, i32>(6)? != 0,
             }))
-        }).unwrap().filter_map(|r| r.ok()).collect()
+        })
+        .unwrap()
+        .filter_map(|r| r.ok())
+        .collect()
     }
 
     /// Deactivate the active preflight (human override).
     /// Session-scoped: only deactivates preflights for the current session.
     pub fn override_preflight(&self) -> Result<(), String> {
-        let conn = Connection::open(&self.db_path)
-            .map_err(|e| format!("open db: {e}"))?;
+        let conn = Connection::open(&self.db_path).map_err(|e| format!("open db: {e}"))?;
         let session = current_session_id();
         let rows = match &session {
             Some(sid) => conn.execute(
@@ -861,7 +972,6 @@ impl Vault {
         }
         Ok(())
     }
-
 
     /// HMAC for preflight payload.
     fn preflight_hmac(&self, payload: &str) -> String {
@@ -885,13 +995,23 @@ fn dirs() -> PathBuf {
     PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| ".".into()))
 }
 
-fn meta_path() -> PathBuf { signet_dir().join("vault.meta") }
-fn db_path() -> PathBuf { signet_dir().join("state.db") }
-fn session_key_path() -> PathBuf { signet_dir().join(".session_key") }
+fn meta_path() -> PathBuf {
+    signet_dir().join("vault.meta")
+}
+fn db_path() -> PathBuf {
+    signet_dir().join("state.db")
+}
+fn session_key_path() -> PathBuf {
+    signet_dir().join(".session_key")
+}
 
-pub fn vault_exists() -> bool { meta_path().exists() }
+pub fn vault_exists() -> bool {
+    meta_path().exists()
+}
 
-fn pause_path() -> PathBuf { signet_dir().join("pause_until") }
+fn pause_path() -> PathBuf {
+    signet_dir().join("pause_until")
+}
 
 /// File-based pause — works without vault. Stores Unix timestamp in a plain file.
 pub fn set_pause_file(pause_until: u64) {
@@ -905,8 +1025,13 @@ pub fn is_paused_file() -> bool {
     match std::fs::read_to_string(pause_path()) {
         Ok(s) => {
             let ts: u64 = s.trim().parse().unwrap_or(0);
-            let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
-            if now < ts { true } else {
+            let now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs();
+            if now < ts {
+                true
+            } else {
                 // Expired — clean up
                 std::fs::remove_file(pause_path()).ok();
                 false
@@ -929,7 +1054,9 @@ pub fn pause_until_file() -> u64 {
         .unwrap_or(0)
 }
 
-fn disabled_path() -> PathBuf { signet_dir().join("disabled") }
+fn disabled_path() -> PathBuf {
+    signet_dir().join("disabled")
+}
 
 /// Full disable — bypasses ALL rules including self-protection.
 pub fn set_disabled_file() {
@@ -950,7 +1077,9 @@ pub fn clear_disabled_file() {
 
 // --- Session-scoped disable ---
 
-fn disabled_sessions_path() -> PathBuf { signet_dir().join("disabled_sessions.json") }
+fn disabled_sessions_path() -> PathBuf {
+    signet_dir().join("disabled_sessions.json")
+}
 
 fn load_disabled_sessions() -> Vec<String> {
     std::fs::read_to_string(disabled_sessions_path())
@@ -965,7 +1094,11 @@ fn save_disabled_sessions(sessions: &[String]) {
     if sessions.is_empty() {
         std::fs::remove_file(disabled_sessions_path()).ok();
     } else {
-        std::fs::write(disabled_sessions_path(), serde_json::to_string_pretty(sessions).unwrap()).ok();
+        std::fs::write(
+            disabled_sessions_path(),
+            serde_json::to_string_pretty(sessions).unwrap(),
+        )
+        .ok();
     }
 }
 
@@ -1013,7 +1146,9 @@ pub struct PauseEntry {
     pub session: Option<String>,
 }
 
-fn pauses_path() -> PathBuf { signet_dir().join("pauses.json") }
+fn pauses_path() -> PathBuf {
+    signet_dir().join("pauses.json")
+}
 
 fn load_pauses() -> Vec<PauseEntry> {
     std::fs::read_to_string(pauses_path())
@@ -1023,14 +1158,21 @@ fn load_pauses() -> Vec<PauseEntry> {
 }
 
 fn save_pauses(pauses: &[PauseEntry]) {
-    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
     let active: Vec<_> = pauses.iter().filter(|p| p.until > now).cloned().collect();
     let dir = signet_dir();
     std::fs::create_dir_all(&dir).ok();
     if active.is_empty() {
         std::fs::remove_file(pauses_path()).ok();
     } else {
-        std::fs::write(pauses_path(), serde_json::to_string_pretty(&active).unwrap()).ok();
+        std::fs::write(
+            pauses_path(),
+            serde_json::to_string_pretty(&active).unwrap(),
+        )
+        .ok();
     }
 }
 
@@ -1063,7 +1205,10 @@ pub fn remove_pause(rule: Option<&str>, session: Option<&str>) {
 /// Check if a specific rule is paused (rule-specific entry in pauses.json).
 /// Respects SIGNET_SESSION env var.
 pub fn is_rule_paused(rule_name: &str) -> bool {
-    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
     let current_session = std::env::var("SIGNET_SESSION").ok();
     load_pauses().iter().any(|p| {
         p.until > now
@@ -1075,19 +1220,26 @@ pub fn is_rule_paused(rule_name: &str) -> bool {
 /// Check if there's a session-scoped global pause (rule=None in pauses.json).
 /// Respects SIGNET_SESSION env var.
 pub fn is_globally_paused_json() -> bool {
-    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
     let current_session = std::env::var("SIGNET_SESSION").ok();
-    load_pauses().iter().any(|p| {
-        p.until > now
-            && p.rule.is_none()
-            && session_matches(&p.session, &current_session)
-    })
+    load_pauses()
+        .iter()
+        .any(|p| p.until > now && p.rule.is_none() && session_matches(&p.session, &current_session))
 }
 
 /// List all active (non-expired) pause entries.
 pub fn list_pauses() -> Vec<PauseEntry> {
-    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
-    load_pauses().into_iter().filter(|p| p.until > now).collect()
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    load_pauses()
+        .into_iter()
+        .filter(|p| p.until > now)
+        .collect()
 }
 
 /// Derive a device-specific key for encrypting the session key file.
@@ -1114,7 +1266,8 @@ fn device_key() -> [u8; KEY_LEN] {
     let input = format!("signet-device:{machine_id}:{username}");
     let mut key = [0u8; KEY_LEN];
     let hk = Hkdf::<Sha256>::new(Some(b"signet-device-key"), input.as_bytes());
-    hk.expand(b"session-file-encryption", &mut key).expect("HKDF");
+    hk.expand(b"session-file-encryption", &mut key)
+        .expect("HKDF");
     key
 }
 
@@ -1128,7 +1281,9 @@ fn encrypt_session_key(master_key: &[u8; KEY_LEN]) -> Vec<u8> {
 fn decrypt_session_key(encrypted: &[u8]) -> Option<[u8; KEY_LEN]> {
     let dk = device_key();
     let plain = decrypt(&dk, encrypted).ok()?;
-    if plain.len() != KEY_LEN { return None; }
+    if plain.len() != KEY_LEN {
+        return None;
+    }
     let mut key = [0u8; KEY_LEN];
     key.copy_from_slice(&plain);
     Some(key)
@@ -1175,7 +1330,10 @@ pub fn unlock_vault(passphrase: &str) -> Result<Vault, String> {
     if meta.failed_attempts >= MAX_FAILED_ATTEMPTS {
         let remaining = meta.locked_until - now_epoch();
         if remaining > 0.0 {
-            return Err(format!("Vault locked for {:.0} more seconds ({} failed attempts)", remaining, meta.failed_attempts));
+            return Err(format!(
+                "Vault locked for {:.0} more seconds ({} failed attempts)",
+                remaining, meta.failed_attempts
+            ));
         }
         // Lockout expired — reset
         meta.failed_attempts = 0;
@@ -1192,15 +1350,24 @@ pub fn unlock_vault(passphrase: &str) -> Result<Vault, String> {
         if meta.failed_attempts >= MAX_FAILED_ATTEMPTS {
             meta.locked_until = now_epoch() + LOCKOUT_SECS;
         }
-        let _ = std::fs::write(meta_path(), serde_json::to_string(&meta).unwrap_or_default());
-        return Err(format!("Wrong passphrase ({}/{} attempts)", meta.failed_attempts, MAX_FAILED_ATTEMPTS));
+        let _ = std::fs::write(
+            meta_path(),
+            serde_json::to_string(&meta).unwrap_or_default(),
+        );
+        return Err(format!(
+            "Wrong passphrase ({}/{} attempts)",
+            meta.failed_attempts, MAX_FAILED_ATTEMPTS
+        ));
     }
 
     // Reset failed attempts on success
     if meta.failed_attempts > 0 {
         meta.failed_attempts = 0;
         meta.locked_until = 0.0;
-        let _ = std::fs::write(meta_path(), serde_json::to_string(&meta).unwrap_or_default());
+        let _ = std::fs::write(
+            meta_path(),
+            serde_json::to_string(&meta).unwrap_or_default(),
+        );
     }
 
     // Update encrypted session key cache
@@ -1255,7 +1422,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let vault = make_test_vault(dir.path(), "testpass123");
         vault.store_credential("cc_visa", "4111111111111111", 3);
-        assert_eq!(vault.get_credential("cc_visa").as_deref(), Some("4111111111111111"));
+        assert_eq!(
+            vault.get_credential("cc_visa").as_deref(),
+            Some("4111111111111111")
+        );
         assert_eq!(vault.get_credential("nonexistent"), None);
     }
 
@@ -1295,7 +1465,13 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let vault = make_test_vault(dir.path(), "testpass123");
         // Log action where "EnterPlanMode" is the tool name, not in detail
-        vault.log_action("EnterPlanMode", "allow", "", 0.0, r#"{"description":"refactor"}"#);
+        vault.log_action(
+            "EnterPlanMode",
+            "allow",
+            "",
+            0.0,
+            r#"{"description":"refactor"}"#,
+        );
         // Should find via tool column
         assert!(vault.has_recent_allowed_action("EnterPlanMode", 10));
         // Should NOT find something that's nowhere
@@ -1348,7 +1524,10 @@ mod tests {
         vault.store_credential_with_expiry("expired_key", "secret", 2, Some(now_epoch() - 3600.0));
         assert_eq!(vault.get_credential("expired_key"), None);
         vault.store_credential("valid_key", "secret2", 2);
-        assert_eq!(vault.get_credential("valid_key").as_deref(), Some("secret2"));
+        assert_eq!(
+            vault.get_credential("valid_key").as_deref(),
+            Some("secret2")
+        );
     }
 
     #[test]
@@ -1380,18 +1559,27 @@ mod tests {
         vault.store_credential_full("cc", "4111", 3, None, Some(&meta));
 
         // Matching domain works
-        assert!(vault.request_capability("cc", "amazon.com", 50.0, "").is_ok());
+        assert!(vault
+            .request_capability("cc", "amazon.com", 50.0, "")
+            .is_ok());
         // Wrong domain fails
-        assert!(vault.request_capability("cc", "evil.com", 50.0, "").is_err());
+        assert!(vault
+            .request_capability("cc", "evil.com", 50.0, "")
+            .is_err());
         // Over max fails
-        assert!(vault.request_capability("cc", "amazon.com", 300.0, "").is_err());
+        assert!(vault
+            .request_capability("cc", "amazon.com", 300.0, "")
+            .is_err());
     }
 
     #[test]
     fn test_request_capability_one_time() {
         let dir = tempfile::tempdir().unwrap();
         let vault = make_test_vault(dir.path(), "testpass123");
-        let meta = CredentialMeta { one_time: true, ..Default::default() };
+        let meta = CredentialMeta {
+            one_time: true,
+            ..Default::default()
+        };
         vault.store_credential_full("token", "abc123", 2, None, Some(&meta));
 
         assert!(vault.request_capability("token", "", 0.0, "").is_ok());

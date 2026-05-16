@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [3.11.0] - 2026-05-15
+
 ### Added
 - **`INJECT` rule action** — 6th `Decision` variant alongside `ALLOW`/`DENY`/`ASK`/`GATE`/`ENSURE`. Inject rules emit advisory context strings into the agent's stream via the hook's existing `additionalContext` channel (Claude) or appended to the `message` field with a `[nudge]` delimiter (Codex `PermissionRequest`). Non-authoritative: the first-match-wins auth pass is unchanged; inject rules are evaluated in a separate post-auth pass that collects payloads from all matching rules.
 - Recency-weighted probability with four trigger modes: `constant`, `step` (alias for constant), `linear` (ramps from 0 to `peak` over `peak_after_seconds`), `exponential` (`peak * (1 - exp(-(t-cooldown)/peak_after_seconds))`). Per-rule state persisted in new `injection_state` SQLite table (`rule_name`, `last_fired_ts`, `session_fires`, `session_start`).

@@ -1,9 +1,9 @@
 //! Signet MCP Proxy — wraps upstream MCP servers with policy enforcement.
 
 use rmcp::model::*;
-use rmcp::{RoleServer, ServerHandler, ErrorData as McpError};
 use rmcp::service::RequestContext;
 use rmcp::transport::child_process::TokioChildProcess;
+use rmcp::{ErrorData as McpError, RoleServer, ServerHandler};
 use serde::Deserialize;
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -49,10 +49,10 @@ pub struct ProxyServer {
 impl ServerHandler for ProxyServer {
     fn get_info(&self) -> ServerInfo {
         let mut info = ServerInfo::default();
-        info.instructions = Some("Signet-proxied MCP server. All tool calls pass through policy enforcement.".into());
-        info.capabilities = ServerCapabilities::builder()
-            .enable_tools()
-            .build();
+        info.instructions = Some(
+            "Signet-proxied MCP server. All tool calls pass through policy enforcement.".into(),
+        );
+        info.capabilities = ServerCapabilities::builder().enable_tools().build();
         info
     }
 
@@ -69,12 +69,17 @@ impl ServerHandler for ProxyServer {
                     let mut proxied = tool.clone();
                     proxied.name = Cow::Owned(format!("{}__{}", upstream.name, tool.name));
                     if let Some(ref desc) = proxied.description {
-                        proxied.description = Some(Cow::Owned(format!("[{}] {}", upstream.name, desc)));
+                        proxied.description =
+                            Some(Cow::Owned(format!("[{}] {}", upstream.name, desc)));
                     }
                     tools.push(proxied);
                 }
             }
-            Ok(ListToolsResult { tools, next_cursor: None, meta: None })
+            Ok(ListToolsResult {
+                tools,
+                next_cursor: None,
+                meta: None,
+            })
         }
     }
 
@@ -88,7 +93,12 @@ impl ServerHandler for ProxyServer {
 
             let (server_name, original_name) = match tool_name.split_once("__") {
                 Some((s, t)) => (s.to_string(), t.to_string()),
-                None => return Err(McpError::invalid_params("Tool name must be server__tool format", None)),
+                None => {
+                    return Err(McpError::invalid_params(
+                        "Tool name must be server__tool format",
+                        None,
+                    ))
+                }
             };
 
             // Reload policy on each call (hot-reload) with integrity verification
@@ -96,7 +106,9 @@ impl ServerHandler for ProxyServer {
                 if !vault::verify_policy_integrity(v.session_key(), &self.policy_path) {
                     // Tampered system policy — use safe defaults
                     policy::default_policy()
-                } else if self.rules_path.exists() && !vault::verify_policy_integrity(v.session_key(), &self.rules_path) {
+                } else if self.rules_path.exists()
+                    && !vault::verify_policy_integrity(v.session_key(), &self.rules_path)
+                {
                     // Tampered user rules — use safe defaults
                     policy::default_policy()
                 } else {
@@ -106,7 +118,9 @@ impl ServerHandler for ProxyServer {
                 // No vault — cannot verify policy integrity, use hardcoded defaults
                 policy::default_policy()
             };
-            let args_value = request.arguments.as_ref()
+            let args_value = request
+                .arguments
+                .as_ref()
                 .map(|a| serde_json::Value::Object(a.clone()))
                 .unwrap_or_default();
             let call = ToolCall {
@@ -117,32 +131,59 @@ impl ServerHandler for ProxyServer {
 
             // Log
             if let Some(ref v) = self.vault {
-                let amount = args_value.get("amount")
-                    .and_then(|v| v.as_f64().or_else(|| v.as_str().and_then(|s| s.parse().ok())))
+                let amount = args_value
+                    .get("amount")
+                    .and_then(|v| {
+                        v.as_f64()
+                            .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
+                    })
                     .unwrap_or(0.0);
-                let category = args_value.get("category").and_then(|v| v.as_str()).unwrap_or("");
-                let amt = if result.decision == Decision::Allow { amount } else { 0.0 };
+                let category = args_value
+                    .get("category")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let amt = if result.decision == Decision::Allow {
+                    amount
+                } else {
+                    0.0
+                };
                 let detail = args_value.to_string();
-                v.log_action(&tool_name, result.decision.as_lowercase(), category, amt, &detail[..detail.len().min(500)]);
+                v.log_action(
+                    &tool_name,
+                    result.decision.as_lowercase(),
+                    category,
+                    amt,
+                    &detail[..detail.len().min(500)],
+                );
             }
 
             match result.decision {
                 Decision::Deny => {
                     let reason = result.reason.unwrap_or_else(|| "Denied by policy".into());
-                    Ok(CallToolResult::error(vec![Content::text(format!("DENIED by Signet: {reason}"))]))
+                    Ok(CallToolResult::error(vec![Content::text(format!(
+                        "DENIED by Signet: {reason}"
+                    ))]))
                 }
                 Decision::Ask => {
                     let reason = result.reason.unwrap_or_else(|| "Requires approval".into());
-                    Ok(CallToolResult::error(vec![Content::text(format!("REQUIRES APPROVAL: {reason}"))]))
+                    Ok(CallToolResult::error(vec![Content::text(format!(
+                        "REQUIRES APPROVAL: {reason}"
+                    ))]))
                 }
                 Decision::Gate => {
                     // Gate should be resolved by evaluate() — safety net
                     let reason = result.reason.unwrap_or_else(|| "Gate check failed".into());
-                    Ok(CallToolResult::error(vec![Content::text(format!("DENIED by Signet: {reason}"))]))
+                    Ok(CallToolResult::error(vec![Content::text(format!(
+                        "DENIED by Signet: {reason}"
+                    ))]))
                 }
                 Decision::Ensure => {
-                    let reason = result.reason.unwrap_or_else(|| "Ensure checks cannot run in proxy mode".into());
-                    Ok(CallToolResult::error(vec![Content::text(format!("DENIED by Signet: {reason}"))]))
+                    let reason = result
+                        .reason
+                        .unwrap_or_else(|| "Ensure checks cannot run in proxy mode".into());
+                    Ok(CallToolResult::error(vec![Content::text(format!(
+                        "DENIED by Signet: {reason}"
+                    ))]))
                 }
                 Decision::Inject => {
                     // Inject rules are non-authoritative and skipped in the auth pass.
@@ -157,12 +198,14 @@ impl ServerHandler for ProxyServer {
                             fwd.arguments = request.arguments.clone();
                             match u.client.peer().call_tool(fwd).await {
                                 Ok(r) => Ok(r),
-                                Err(e) => Ok(CallToolResult::error(vec![
-                                    Content::text(format!("Upstream error: {e}"))
-                                ])),
+                                Err(e) => Ok(CallToolResult::error(vec![Content::text(format!(
+                                    "Upstream error: {e}"
+                                ))])),
                             }
                         }
-                        None => Ok(CallToolResult::error(vec![Content::text(format!("Unknown upstream: {server_name}"))])),
+                        None => Ok(CallToolResult::error(vec![Content::text(format!(
+                            "Unknown upstream: {server_name}"
+                        ))])),
                     }
                 }
                 Decision::Allow => {
@@ -175,13 +218,14 @@ impl ServerHandler for ProxyServer {
                             fwd.arguments = request.arguments.clone();
                             match u.client.peer().call_tool(fwd).await {
                                 Ok(r) => Ok(r),
-                                Err(e) => Ok(CallToolResult::error(vec![
-                                    Content::text(format!("Upstream error: {e}"))
-                                ])),
+                                Err(e) => Ok(CallToolResult::error(vec![Content::text(format!(
+                                    "Upstream error: {e}"
+                                ))])),
                             }
                         }
                         None => Err(McpError::invalid_params(
-                            format!("Unknown server: {server_name}"), None
+                            format!("Unknown server: {server_name}"),
+                            None,
                         )),
                     }
                 }
@@ -190,15 +234,18 @@ impl ServerHandler for ProxyServer {
     }
 }
 
-async fn connect_upstream(name: &str, config: &UpstreamConfig) -> Result<UpstreamConnection, Box<dyn std::error::Error>> {
+async fn connect_upstream(
+    name: &str,
+    config: &UpstreamConfig,
+) -> Result<UpstreamConnection, Box<dyn std::error::Error>> {
     let mut cmd = tokio::process::Command::new(&config.command);
     cmd.args(&config.args);
     for (k, v) in &config.env {
         cmd.env(k, v);
     }
     cmd.stdin(std::process::Stdio::piped())
-       .stdout(std::process::Stdio::piped())
-       .stderr(std::process::Stdio::null());
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null());
 
     let process = TokioChildProcess::new(cmd)?;
     let client = rmcp::serve_client((), process).await?;
@@ -242,7 +289,11 @@ pub async fn run_proxy() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let total_tools: usize = upstreams.iter().map(|u| u.tools.len()).sum();
-    eprintln!("Proxy ready: {} servers, {} tools", upstreams.len(), total_tools);
+    eprintln!(
+        "Proxy ready: {} servers, {} tools",
+        upstreams.len(),
+        total_tools
+    );
 
     let proxy = ProxyServer {
         upstreams: Arc::new(Mutex::new(upstreams)),

@@ -69,7 +69,10 @@ struct HookOutput {
     hook_event_name: String,
     #[serde(rename = "permissionDecision")]
     permission_decision: String,
-    #[serde(rename = "permissionDecisionReason", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "permissionDecisionReason",
+        skip_serializing_if = "Option::is_none"
+    )]
     reason: Option<String>,
     #[serde(rename = "additionalContext", skip_serializing_if = "Option::is_none")]
     additional_context: Option<String>,
@@ -115,8 +118,11 @@ fn evaluate_preflight_constraint(
         let mut all_match = true;
         for cond in &constraint.conditions {
             match policy::evaluate_condition(cond, call, Some(vault)) {
-                Ok(true) => {},
-                _ => { all_match = false; break; },
+                Ok(true) => {}
+                _ => {
+                    all_match = false;
+                    break;
+                }
             }
         }
         if all_match {
@@ -155,7 +161,9 @@ pub fn run_hook_with_adapter(
 
     let call = ToolCall {
         tool_name: hook_input.tool_name.clone(),
-        parameters: hook_input.parameters.unwrap_or(Value::Object(Default::default())),
+        parameters: hook_input
+            .parameters
+            .unwrap_or(Value::Object(Default::default())),
     };
 
     // Check if paused — if so, only enforce locked (self-protection) rules
@@ -194,10 +202,19 @@ pub fn run_hook_with_adapter(
     let result = if result.decision != Decision::Allow && !result.matched_locked {
         if let Some(ref rule_name) = result.matched_rule {
             if crate::vault::is_rule_paused(rule_name) {
-                EvaluationResult { decision: Decision::Allow, ..result }
-            } else { result }
-        } else { result }
-    } else { result };
+                EvaluationResult {
+                    decision: Decision::Allow,
+                    ..result
+                }
+            } else {
+                result
+            }
+        } else {
+            result
+        }
+    } else {
+        result
+    };
 
     // Capture any inject-pass payload before consuming `result` in subsequent branches.
     let inject_context = result.injected_context.clone();
@@ -224,8 +241,11 @@ pub fn run_hook_with_adapter(
                         by_constraint
                             .entry(viol.constraint_name.clone())
                             .or_default()
-                            .push(format!("{}({})", viol.tool_name,
-                                &viol.parameters_summary[..viol.parameters_summary.len().min(60)]));
+                            .push(format!(
+                                "{}({})",
+                                viol.tool_name,
+                                &viol.parameters_summary[..viol.parameters_summary.len().min(60)]
+                            ));
                     }
 
                     // Build constraint detail block
@@ -233,13 +253,17 @@ pub fn run_hook_with_adapter(
                     for constraint in &preflight.constraints {
                         constraint_detail.push_str(&format!(
                             "\n  - [{}] {} ({}): {}\n    INSTEAD: {}",
-                            constraint.action, constraint.name,
-                            constraint.tool_pattern, constraint.reason, constraint.alternative
+                            constraint.action,
+                            constraint.name,
+                            constraint.tool_pattern,
+                            constraint.reason,
+                            constraint.alternative
                         ));
                         if let Some(hits) = by_constraint.get(&constraint.name) {
                             constraint_detail.push_str(&format!(
                                 "\n    YOU DID THIS {} TIME(S): {}",
-                                hits.len(), hits.join("; ")
+                                hits.len(),
+                                hits.join("; ")
                             ));
                         }
                     }
@@ -285,7 +309,8 @@ pub fn run_hook_with_adapter(
                     match evaluate_preflight_constraint(&call, &preflight, v) {
                         Some((constraint, reason)) => {
                             // Log the violation
-                            let detail = serde_json::to_string(&call.parameters).unwrap_or_default();
+                            let detail =
+                                serde_json::to_string(&call.parameters).unwrap_or_default();
                             let violation = PreflightViolation {
                                 preflight_id: preflight.id.clone(),
                                 constraint_name: constraint.name.clone(),
@@ -338,15 +363,30 @@ pub fn run_hook_with_adapter(
     // Log to vault if available
     if let Some(v) = vault {
         let params = &call.parameters;
-        let amount: f64 = params.get("amount")
-            .and_then(|v| v.as_f64().or_else(|| v.as_str().and_then(|s| s.parse().ok())))
+        let amount: f64 = params
+            .get("amount")
+            .and_then(|v| {
+                v.as_f64()
+                    .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
+            })
             .unwrap_or(0.0);
-        let category = params.get("category")
+        let category = params
+            .get("category")
             .and_then(|v| v.as_str())
             .unwrap_or("");
         let detail = serde_json::to_string(params).unwrap_or_default();
-        let amt = if final_decision == Decision::Allow { amount } else { 0.0 };
-        v.log_action(&call.tool_name, final_decision.as_lowercase(), category, amt, &detail[..detail.len().min(500)]);
+        let amt = if final_decision == Decision::Allow {
+            amount
+        } else {
+            0.0
+        };
+        v.log_action(
+            &call.tool_name,
+            final_decision.as_lowercase(),
+            category,
+            amt,
+            &detail[..detail.len().min(500)],
+        );
     }
 
     // Combine preflight-derived context with any inject-pass payload. Inject context
@@ -362,7 +402,11 @@ pub fn run_hook_with_adapter(
         adapter,
         event,
         final_decision.as_lowercase(),
-        if final_decision != Decision::Allow { final_reason } else { None },
+        if final_decision != Decision::Allow {
+            final_reason
+        } else {
+            None
+        },
         combined_context,
     );
     0
@@ -384,7 +428,9 @@ fn emit_decision(
             // Allow/ask fail open in Codex, so emit no output for allow and turn ask into deny.
             // additional_context is preserved on deny so inject nudges still reach the agent.
             match decision {
-                "deny" => emit_pre_tool_use_decision("PreToolUse", "deny", reason, additional_context),
+                "deny" => {
+                    emit_pre_tool_use_decision("PreToolUse", "deny", reason, additional_context)
+                }
                 "ask" => emit_pre_tool_use_decision(
                     "PreToolUse",
                     "deny",
@@ -413,7 +459,9 @@ fn emit_decision(
                 "allow" => emit_permission_request_decision("allow", codex_message(None)),
                 "deny" => emit_permission_request_decision(
                     "deny",
-                    codex_message(Some(reason.unwrap_or_else(|| "Blocked by Signet policy.".into()))),
+                    codex_message(Some(
+                        reason.unwrap_or_else(|| "Blocked by Signet policy.".into()),
+                    )),
                 ),
                 "ask" => {}
                 _ => {}
@@ -478,7 +526,10 @@ fn resolve_ensure(config: &EnsureConfig, locked: bool) -> (bool, String) {
 
     if !script_path.exists() {
         if locked {
-            return (false, format!("Check script not found: {}", script_path.display()));
+            return (
+                false,
+                format!("Check script not found: {}", script_path.display()),
+            );
         } else {
             // Unlocked ensure: script not installed yet, allow gracefully
             return (true, String::new());
@@ -499,7 +550,9 @@ fn resolve_ensure(config: &EnsureConfig, locked: bool) -> (bool, String) {
 
     match child.wait_timeout(Duration::from_secs(timeout_secs)) {
         Ok(Some(status)) => {
-            let stderr = child.stderr.take()
+            let stderr = child
+                .stderr
+                .take()
                 .and_then(|mut s| {
                     let mut buf = Vec::new();
                     io::Read::read_to_end(&mut s, &mut buf).ok()?;
@@ -515,11 +568,12 @@ fn resolve_ensure(config: &EnsureConfig, locked: bool) -> (bool, String) {
         Ok(None) => {
             let _ = child.kill();
             let _ = child.wait();
-            (false, format!("Check script timed out after {timeout_secs}s"))
+            (
+                false,
+                format!("Check script timed out after {timeout_secs}s"),
+            )
         }
-        Err(e) => {
-            (false, format!("Error waiting for check script: {e}"))
-        }
+        Err(e) => (false, format!("Error waiting for check script: {e}")),
     }
 }
 

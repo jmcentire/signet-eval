@@ -1,12 +1,23 @@
 # signet-eval
 
-Deterministic policy enforcement for AI agent tool calls. Every action an agent proposes passes through user-defined rules before execution. No LLM in the authorization path. No prompt injection surface. 25ms end-to-end.
+Deterministic policy enforcement for AI agent tool calls. Every action an agent proposes passes through user-defined rules before execution. No LLM in the authorization path. Advisory nudges are separate from authorization. 25ms end-to-end.
 
 ## Install
 
 ```bash
+# crates.io
 cargo install signet-eval
+
+# from source
+git clone https://github.com/jmcentire/signet-eval
+cd signet-eval
+cargo install --path .
 ```
+
+There is no npm or PyPI package for signet-eval. The public distribution path is
+crates.io plus source install from GitHub. The MCP Registry listing points at
+the repository metadata; the runtime is the local `signet-eval serve` stdio
+server.
 
 ## Quick Start
 
@@ -123,6 +134,50 @@ rules:
 
 Rules are evaluated in order — first match wins. Multiple conditions on a rule are AND'd. Rules with `locked: true` cannot be modified through the MCP management server.
 
+## Advisory Injection
+
+`INJECT` rules probabilistically add advisory context near the tool call that
+triggered them. They are nudges, not authorization: the normal
+`ALLOW`/`DENY`/`ASK`/`GATE`/`ENSURE` pass remains first-match-wins and
+deterministic. Injection runs afterward and only emits context when a matching
+inject rule fires.
+
+```yaml
+rules:
+  - name: maybe_remind_kindex_on_git
+    tool_pattern: "^Bash$"
+    conditions: ["contains(parameters, 'git ')"]
+    action: INJECT
+    inject:
+      trigger:
+        mode: exponential
+        peak: 0.35
+        cooldown_seconds: 300
+        peak_after_seconds: 1800
+        max_per_session: 3
+      payload:
+        text: "Before committing, check whether project `.kin` files should be included."
+```
+
+Trigger modes:
+
+| Mode | Behavior |
+|------|----------|
+| `constant` / `step` | Fixed probability after cooldown |
+| `linear` | Ramps from 0 to `peak` over `peak_after_seconds` |
+| `exponential` | Approaches `peak` with exponential decay |
+
+Payload sources:
+
+| Source | Notes |
+|--------|-------|
+| `text` | Inline literal text |
+| `text_file` | Bare filename under `~/.signet/injections/` |
+| `from_command` | HMAC-signed allowlist entry from `~/.signet/inject_commands.yaml`; direct exec, no shell |
+
+Template substitutions are enabled by default: `{tool_name}`, `{cwd}`, `{date}`,
+and `{matched_param.X}`. See `examples/inject_examples.yaml`.
+
 ## Condition Functions
 
 | Function | Description | Example |
@@ -167,7 +222,7 @@ Spending limits use the vault ledger — each tool call that spends money is log
 
 ## Self-Protection
 
-signet-eval ships with four locked rules that prevent an AI agent from disabling its own policy enforcement:
+signet-eval ships with locked rules that prevent an AI agent from disabling its own policy enforcement:
 
 1. **protect_signet_dir** — Denies any Write, Edit, or Bash command touching `.signet/` (policy files, vault, HMAC)
 2. **protect_signet_binary** — Denies tampering with the `signet-eval` binary itself
@@ -248,6 +303,8 @@ claude mcp add --scope user --transport stdio signet-proxy -- signet-eval proxy
 | `signet-eval log` | Recent action log |
 | `signet-eval reset-session` | Clear spending counters |
 | `signet-eval sign` | HMAC-sign policy file |
+| `signet-eval injections` | Show recent inject rule fires |
+| `signet-eval inject-test <rule>` | Force-fire one inject rule for testing |
 | `signet-eval serve` | MCP management server (17 tools) |
 | `signet-eval proxy` | MCP proxy for upstream servers |
 
@@ -268,6 +325,8 @@ signet-eval is the enforcement layer of the [Signet](https://signet.tools) perso
 Agent proposes action  ->  signet-eval evaluates policy  ->  allow / deny / ask
                            (deterministic, 25ms, no NLP)
 ```
+
+<!-- mcp-name: io.github.jmcentire/signet-eval -->
 
 ## Security Model
 

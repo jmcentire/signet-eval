@@ -3,9 +3,9 @@ mod policy;
 mod vault;
 
 #[cfg(feature = "mcp")]
-mod mcp_server;
-#[cfg(feature = "mcp")]
 mod mcp_proxy;
+#[cfg(feature = "mcp")]
+mod mcp_server;
 
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
@@ -201,7 +201,10 @@ fn run() -> i32 {
                 Ok(_) => {
                     println!("System policy written to {}", policy_path.display());
                 }
-                Err(e) => { eprintln!("Error writing policy: {e}"); return 1; }
+                Err(e) => {
+                    eprintln!("Error writing policy: {e}");
+                    return 1;
+                }
             }
             // Write sample.yaml (always overwritten — it's a reference, not user data)
             let sample_path = policy_path.parent().unwrap().join("sample.yaml");
@@ -216,11 +219,16 @@ fn run() -> i32 {
                     Err(e) => eprintln!("Warning: could not sign policy: {e}"),
                 }
             } else {
-                eprintln!("Warning: no vault. Run 'signet-eval setup' to enable HMAC verification.");
+                eprintln!(
+                    "Warning: no vault. Run 'signet-eval setup' to enable HMAC verification."
+                );
             }
             // Hint about user rules (don't touch rules.yaml)
             if !rules_path.exists() {
-                println!("Hint: create {} for custom rules (see sample.yaml for examples).", rules_path.display());
+                println!(
+                    "Hint: create {} for custom rules (see sample.yaml for examples).",
+                    rules_path.display()
+                );
             } else {
                 println!("User rules preserved at {}", rules_path.display());
             }
@@ -231,8 +239,10 @@ fn run() -> i32 {
                 eprintln!("Vault already exists. Delete ~/.signet/vault.meta to reset.");
                 1
             } else {
-                let pass = rpassword::prompt_password("Create vault passphrase: ").unwrap_or_default();
-                let confirm = rpassword::prompt_password("Confirm passphrase: ").unwrap_or_default();
+                let pass =
+                    rpassword::prompt_password("Create vault passphrase: ").unwrap_or_default();
+                let confirm =
+                    rpassword::prompt_password("Confirm passphrase: ").unwrap_or_default();
                 if pass != confirm {
                     eprintln!("Passphrases don't match.");
                     1
@@ -241,8 +251,14 @@ fn run() -> i32 {
                     1
                 } else {
                     match vault::setup_vault(&pass) {
-                        Ok(_) => { println!("Vault created. Session key cached."); 0 }
-                        Err(e) => { eprintln!("Error: {e}"); 1 }
+                        Ok(_) => {
+                            println!("Vault created. Session key cached.");
+                            0
+                        }
+                        Err(e) => {
+                            eprintln!("Error: {e}");
+                            1
+                        }
                     }
                 }
             }
@@ -275,7 +291,10 @@ fn run() -> i32 {
                 for p in &pauses {
                     let rule_label = p.rule.as_deref().unwrap_or("(all non-locked)");
                     let session_label = p.session.as_deref().unwrap_or("(all sessions)");
-                    println!("  rule: {rule_label}  session: {session_label}  until: ts {}", p.until);
+                    println!(
+                        "  rule: {rule_label}  session: {session_label}  until: ts {}",
+                        p.until
+                    );
                 }
             }
 
@@ -286,7 +305,9 @@ fn run() -> i32 {
                     let actions = v.recent_actions(10);
                     println!("\nVault: unlocked");
                     println!("Credentials: {}", creds.len());
-                    if spend > 0.0 { println!("Session spend: ${spend:.2}"); }
+                    if spend > 0.0 {
+                        println!("Session spend: ${spend:.2}");
+                    }
                     if !actions.is_empty() {
                         println!("\nRecent actions:");
                         for a in &actions {
@@ -309,29 +330,42 @@ fn run() -> i32 {
                 }
             }
         }
-        Some(Command::Store { name, value }) => {
-            match vault::try_load_vault() {
-                Some(v) => {
-                    v.store_credential(&name, &value, 3);
-                    println!("Stored '{name}' (Tier 3 compartment-encrypted)");
-                    0
-                }
-                None => { eprintln!("Vault not set up or locked."); 1 }
+        Some(Command::Store { name, value }) => match vault::try_load_vault() {
+            Some(v) => {
+                v.store_credential(&name, &value, 3);
+                println!("Stored '{name}' (Tier 3 compartment-encrypted)");
+                0
             }
-        }
+            None => {
+                eprintln!("Vault not set up or locked.");
+                1
+            }
+        },
         Some(Command::Rules) => {
             let system_config = match policy::load_policy_config(&policy_path) {
                 Ok(config) => config,
-                Err(e) => { eprintln!("Error loading system policy: {e}"); return 1; }
+                Err(e) => {
+                    eprintln!("Error loading system policy: {e}");
+                    return 1;
+                }
             };
             let user_rules = policy::load_rules(&rules_path);
             let merged = policy::merge_rules(&system_config.rules, &user_rules);
             // Build a set of user rule names for labeling
-            let user_names: std::collections::HashSet<&str> = user_rules.iter().map(|r| r.name.as_str()).collect();
+            let user_names: std::collections::HashSet<&str> =
+                user_rules.iter().map(|r| r.name.as_str()).collect();
 
-            println!("System policy: {} (v{})", policy_path.display(), system_config.version);
+            println!(
+                "System policy: {} (v{})",
+                policy_path.display(),
+                system_config.version
+            );
             if !user_rules.is_empty() {
-                println!("User rules: {} ({} rules)", rules_path.display(), user_rules.len());
+                println!(
+                    "User rules: {} ({} rules)",
+                    rules_path.display(),
+                    user_rules.len()
+                );
             }
             println!("Default action: {:?}", system_config.default_action);
             println!("Rules: {} (eval order)\n", merged.len());
@@ -356,33 +390,41 @@ fn run() -> i32 {
             }
             0
         }
-        Some(Command::Log { limit }) => {
-            match vault::try_load_vault() {
-                Some(v) => {
-                    let actions = v.recent_actions(limit);
-                    if actions.is_empty() {
-                        println!("No actions recorded.");
-                    } else {
-                        println!("{:<24} {:<12} {:<10} {:>8} {}", "TIMESTAMP", "TOOL", "CATEGORY", "AMOUNT", "DECISION");
-                        println!("{}", "-".repeat(70));
-                        for a in &actions {
-                            let ts = a["timestamp"].as_f64().unwrap_or(0.0);
-                            let dt = chrono::DateTime::from_timestamp(ts as i64, 0)
-                                .map(|d| d.format("%Y-%m-%d %H:%M:%S").to_string())
-                                .unwrap_or_else(|| format!("{ts:.0}"));
-                            let tool = a["tool"].as_str().unwrap_or("?");
-                            let cat = a["category"].as_str().unwrap_or("");
-                            let amt = a["amount"].as_f64().unwrap_or(0.0);
-                            let dec = a["decision"].as_str().unwrap_or("?");
-                            let amt_str = if amt > 0.0 { format!("${amt:.2}") } else { "-".into() };
-                            println!("{dt:<24} {tool:<12} {cat:<10} {amt_str:>8} {dec}");
-                        }
+        Some(Command::Log { limit }) => match vault::try_load_vault() {
+            Some(v) => {
+                let actions = v.recent_actions(limit);
+                if actions.is_empty() {
+                    println!("No actions recorded.");
+                } else {
+                    println!(
+                        "{:<24} {:<12} {:<10} {:>8} {}",
+                        "TIMESTAMP", "TOOL", "CATEGORY", "AMOUNT", "DECISION"
+                    );
+                    println!("{}", "-".repeat(70));
+                    for a in &actions {
+                        let ts = a["timestamp"].as_f64().unwrap_or(0.0);
+                        let dt = chrono::DateTime::from_timestamp(ts as i64, 0)
+                            .map(|d| d.format("%Y-%m-%d %H:%M:%S").to_string())
+                            .unwrap_or_else(|| format!("{ts:.0}"));
+                        let tool = a["tool"].as_str().unwrap_or("?");
+                        let cat = a["category"].as_str().unwrap_or("");
+                        let amt = a["amount"].as_f64().unwrap_or(0.0);
+                        let dec = a["decision"].as_str().unwrap_or("?");
+                        let amt_str = if amt > 0.0 {
+                            format!("${amt:.2}")
+                        } else {
+                            "-".into()
+                        };
+                        println!("{dt:<24} {tool:<12} {cat:<10} {amt_str:>8} {dec}");
                     }
-                    0
                 }
-                None => { eprintln!("Vault not set up or locked. Run: signet-eval setup"); 1 }
+                0
             }
-        }
+            None => {
+                eprintln!("Vault not set up or locked. Run: signet-eval setup");
+                1
+            }
+        },
         Some(Command::Test { json }) => {
             #[derive(serde::Deserialize)]
             struct TestInput {
@@ -401,7 +443,9 @@ fn run() -> i32 {
             let v = vault::try_load_vault();
             let call = policy::ToolCall {
                 tool_name: input.tool_name,
-                parameters: input.parameters.unwrap_or(serde_json::Value::Object(Default::default())),
+                parameters: input
+                    .parameters
+                    .unwrap_or(serde_json::Value::Object(Default::default())),
             };
             let result = policy::evaluate(&call, &compiled, v.as_ref());
             println!("Decision:     {:?}", result.decision);
@@ -416,56 +460,81 @@ fn run() -> i32 {
             println!("Eval time:    {}us", result.evaluation_time_us);
             0
         }
-        Some(Command::Delete { name }) => {
-            match vault::try_load_vault() {
-                Some(v) => {
-                    if v.delete_credential(&name) {
-                        println!("Deleted credential '{name}'.");
-                        0
-                    } else {
-                        eprintln!("Credential '{name}' not found.");
-                        1
-                    }
-                }
-                None => { eprintln!("Vault not set up or locked."); 1 }
-            }
-        }
-        Some(Command::ResetSession) => {
-            match vault::try_load_vault() {
-                Some(mut v) => {
-                    v.reset_session();
-                    println!("Session reset. Spending counters cleared.");
+        Some(Command::Delete { name }) => match vault::try_load_vault() {
+            Some(v) => {
+                if v.delete_credential(&name) {
+                    println!("Deleted credential '{name}'.");
                     0
+                } else {
+                    eprintln!("Credential '{name}' not found.");
+                    1
                 }
-                None => { eprintln!("Vault not set up or locked."); 1 }
             }
-        }
-        Some(Command::Sign) => {
-            match vault::try_load_vault() {
-                Some(v) => {
-                    let mut ok = true;
-                    match vault::sign_policy(v.session_key(), &policy_path) {
-                        Ok(_) => println!("Policy signed: {}", policy_path.with_extension("hmac").display()),
-                        Err(e) => { eprintln!("Error signing policy: {e}"); ok = false; }
+            None => {
+                eprintln!("Vault not set up or locked.");
+                1
+            }
+        },
+        Some(Command::ResetSession) => match vault::try_load_vault() {
+            Some(mut v) => {
+                v.reset_session();
+                println!("Session reset. Spending counters cleared.");
+                0
+            }
+            None => {
+                eprintln!("Vault not set up or locked.");
+                1
+            }
+        },
+        Some(Command::Sign) => match vault::try_load_vault() {
+            Some(v) => {
+                let mut ok = true;
+                match vault::sign_policy(v.session_key(), &policy_path) {
+                    Ok(_) => println!(
+                        "Policy signed: {}",
+                        policy_path.with_extension("hmac").display()
+                    ),
+                    Err(e) => {
+                        eprintln!("Error signing policy: {e}");
+                        ok = false;
                     }
-                    if rules_path.exists() {
-                        match vault::sign_policy(v.session_key(), &rules_path) {
-                            Ok(_) => println!("Rules signed: {}", rules_path.with_extension("hmac").display()),
-                            Err(e) => { eprintln!("Error signing rules: {e}"); ok = false; }
+                }
+                if rules_path.exists() {
+                    match vault::sign_policy(v.session_key(), &rules_path) {
+                        Ok(_) => println!(
+                            "Rules signed: {}",
+                            rules_path.with_extension("hmac").display()
+                        ),
+                        Err(e) => {
+                            eprintln!("Error signing rules: {e}");
+                            ok = false;
                         }
                     }
-                    let inject_path = policy::inject_commands_path();
-                    if inject_path.exists() {
-                        match vault::sign_policy(v.session_key(), &inject_path) {
-                            Ok(_) => println!("Inject allowlist signed: {}", inject_path.with_extension("hmac").display()),
-                            Err(e) => { eprintln!("Error signing inject allowlist: {e}"); ok = false; }
+                }
+                let inject_path = policy::inject_commands_path();
+                if inject_path.exists() {
+                    match vault::sign_policy(v.session_key(), &inject_path) {
+                        Ok(_) => println!(
+                            "Inject allowlist signed: {}",
+                            inject_path.with_extension("hmac").display()
+                        ),
+                        Err(e) => {
+                            eprintln!("Error signing inject allowlist: {e}");
+                            ok = false;
                         }
                     }
-                    if ok { 0 } else { 1 }
                 }
-                None => { eprintln!("Vault not set up or locked (needed for signing key)."); 1 }
+                if ok {
+                    0
+                } else {
+                    1
+                }
             }
-        }
+            None => {
+                eprintln!("Vault not set up or locked (needed for signing key).");
+                1
+            }
+        },
         Some(Command::Unlock) => {
             if !vault::vault_exists() {
                 eprintln!("No vault found. Run: signet-eval setup");
@@ -473,8 +542,14 @@ fn run() -> i32 {
             } else {
                 let pass = rpassword::prompt_password("Vault passphrase: ").unwrap_or_default();
                 match vault::unlock_vault(&pass) {
-                    Ok(_) => { println!("Vault unlocked. Session key refreshed."); 0 }
-                    Err(e) => { eprintln!("Error: {e}"); 1 }
+                    Ok(_) => {
+                        println!("Vault unlocked. Session key refreshed.");
+                        0
+                    }
+                    Err(e) => {
+                        eprintln!("Error: {e}");
+                        1
+                    }
                 }
             }
         }
@@ -498,9 +573,12 @@ fn run() -> i32 {
                                     Ok(_) => {
                                         println!("Policy written to {}", policy_path.display());
                                         if let Some(v) = vault::try_load_vault() {
-                                            match vault::sign_policy(v.session_key(), &policy_path) {
+                                            match vault::sign_policy(v.session_key(), &policy_path)
+                                            {
                                                 Ok(_) => println!("Policy re-signed."),
-                                                Err(e) => eprintln!("Warning: could not re-sign: {e}"),
+                                                Err(e) => {
+                                                    eprintln!("Warning: could not re-sign: {e}")
+                                                }
                                             }
                                         }
                                     }
@@ -513,10 +591,12 @@ fn run() -> i32 {
                         }
                     } else {
                         let diagnostics = policy::validate_policy(&config);
-                        let errors: Vec<_> = diagnostics.iter()
+                        let errors: Vec<_> = diagnostics
+                            .iter()
                             .filter(|d| d.severity == policy::DiagnosticSeverity::Error)
                             .collect();
-                        let warnings: Vec<_> = diagnostics.iter()
+                        let warnings: Vec<_> = diagnostics
+                            .iter()
                             .filter(|d| d.severity == policy::DiagnosticSeverity::Warning)
                             .collect();
 
@@ -531,11 +611,16 @@ fn run() -> i32 {
                                 eprintln!("WARN  [{}]: {}", w.rule_name, w.error);
                                 eprintln!("  Fix: {}", w.fix_hint);
                             }
-                            if !errors.is_empty() { exit_code = 1; }
+                            if !errors.is_empty() {
+                                exit_code = 1;
+                            }
                         }
                     }
                 }
-                Err(e) => { eprintln!("ERROR: {e}"); exit_code = 1; }
+                Err(e) => {
+                    eprintln!("ERROR: {e}");
+                    exit_code = 1;
+                }
             }
             // Validate user rules (if file exists)
             if rules_path.exists() {
@@ -550,10 +635,12 @@ fn run() -> i32 {
                         rules: user_rules,
                     };
                     let diagnostics = policy::validate_policy(&user_config);
-                    let errors: Vec<_> = diagnostics.iter()
+                    let errors: Vec<_> = diagnostics
+                        .iter()
                         .filter(|d| d.severity == policy::DiagnosticSeverity::Error)
                         .collect();
-                    let warnings: Vec<_> = diagnostics.iter()
+                    let warnings: Vec<_> = diagnostics
+                        .iter()
                         .filter(|d| d.severity == policy::DiagnosticSeverity::Warning)
                         .collect();
                     if errors.is_empty() && warnings.is_empty() {
@@ -567,7 +654,9 @@ fn run() -> i32 {
                             eprintln!("WARN  [{}]: {}", w.rule_name, w.error);
                             eprintln!("  Fix: {}", w.fix_hint);
                         }
-                        if !errors.is_empty() { exit_code = 1; }
+                        if !errors.is_empty() {
+                            exit_code = 1;
+                        }
                     }
                 }
             }
@@ -578,7 +667,10 @@ fn run() -> i32 {
             let rt = tokio::runtime::Runtime::new().unwrap();
             match rt.block_on(mcp_server::run_server()) {
                 Ok(_) => 0,
-                Err(e) => { eprintln!("MCP server error: {e}"); 1 }
+                Err(e) => {
+                    eprintln!("MCP server error: {e}");
+                    1
+                }
             }
         }
         #[cfg(feature = "mcp")]
@@ -586,39 +678,48 @@ fn run() -> i32 {
             let rt = tokio::runtime::Runtime::new().unwrap();
             match rt.block_on(mcp_proxy::run_proxy()) {
                 Ok(_) => 0,
-                Err(e) => { eprintln!("MCP proxy error: {e}"); 1 }
-            }
-        }
-        Some(Command::PreflightStatus) => {
-            match vault::try_load_vault() {
-                Some(v) => {
-                    match v.active_preflight() {
-                        Some(pf) => {
-                            println!("Active preflight: {}", pf.id);
-                            println!("Task: {}", pf.task);
-                            match &pf.session_id {
-                                Some(sid) => println!("Session: {}", sid),
-                                None => println!("Session: global"),
-                            }
-                            println!("Constraints: {}", pf.constraints.len());
-                            println!("Violations: {}", pf.violation_count);
-                            println!("Escalated: {}", pf.escalated);
-                            println!("Lockout until: {}", pf.lockout_until);
-                            let locked = v.is_preflight_locked();
-                            println!("Locked: {locked}");
-                            for (i, c) in pf.constraints.iter().enumerate() {
-                                println!("  {}. [{}] {} — {}", i + 1, c.action, c.name, c.reason);
-                                println!("     Plan B: {}", c.alternative);
-                            }
-                            0
-                        }
-                        None => { println!("No active preflight."); 0 }
-                    }
+                Err(e) => {
+                    eprintln!("MCP proxy error: {e}");
+                    1
                 }
-                None => { eprintln!("Vault not set up or locked."); 1 }
             }
         }
-        Some(Command::Pause { minutes, rule, session }) => {
+        Some(Command::PreflightStatus) => match vault::try_load_vault() {
+            Some(v) => match v.active_preflight() {
+                Some(pf) => {
+                    println!("Active preflight: {}", pf.id);
+                    println!("Task: {}", pf.task);
+                    match &pf.session_id {
+                        Some(sid) => println!("Session: {}", sid),
+                        None => println!("Session: global"),
+                    }
+                    println!("Constraints: {}", pf.constraints.len());
+                    println!("Violations: {}", pf.violation_count);
+                    println!("Escalated: {}", pf.escalated);
+                    println!("Lockout until: {}", pf.lockout_until);
+                    let locked = v.is_preflight_locked();
+                    println!("Locked: {locked}");
+                    for (i, c) in pf.constraints.iter().enumerate() {
+                        println!("  {}. [{}] {} — {}", i + 1, c.action, c.name, c.reason);
+                        println!("     Plan B: {}", c.alternative);
+                    }
+                    0
+                }
+                None => {
+                    println!("No active preflight.");
+                    0
+                }
+            },
+            None => {
+                eprintln!("Vault not set up or locked.");
+                1
+            }
+        },
+        Some(Command::Pause {
+            minutes,
+            rule,
+            session,
+        }) => {
             // 0 = indefinite, only allowed with --session
             if minutes == 0 && session.is_none() {
                 eprintln!("Indefinite pause (0) requires --session.");
@@ -632,7 +733,9 @@ fn run() -> i32 {
                 u64::MAX
             } else {
                 std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH).unwrap().as_secs()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs()
                     + (minutes as u64 * 60)
             };
 
@@ -641,7 +744,9 @@ fn run() -> i32 {
                 // Validate rule name exists if specified
                 if let Some(ref rule_name) = rule {
                     // Check merged policy (system + user rules) for rule name
-                    let system_rules = policy::load_policy_config(&policy_path).map(|c| c.rules).unwrap_or_default();
+                    let system_rules = policy::load_policy_config(&policy_path)
+                        .map(|c| c.rules)
+                        .unwrap_or_default();
                     let user_rules = policy::load_rules(&rules_path);
                     let merged = policy::merge_rules(&system_rules, &user_rules);
                     if !merged.iter().any(|r| r.name == *rule_name) {
@@ -654,22 +759,37 @@ fn run() -> i32 {
                     }
                 }
                 vault::add_pause(rule.as_deref(), until, session.as_deref());
-                let duration = if minutes == 0 { "indefinitely".to_string() } else { format!("for {minutes} min") };
+                let duration = if minutes == 0 {
+                    "indefinitely".to_string()
+                } else {
+                    format!("for {minutes} min")
+                };
                 match (&rule, &session) {
                     (Some(r), Some(s)) => println!("Rule '{r}' paused {duration} (session: {s})."),
                     (Some(r), None) => println!("Rule '{r}' paused {duration}."),
-                    (None, Some(s)) => println!("All non-locked rules paused {duration} (session: {s})."),
+                    (None, Some(s)) => {
+                        println!("All non-locked rules paused {duration} (session: {s}).")
+                    }
                     (None, None) => unreachable!(),
                 }
                 println!("Self-protection rules remain active.");
-                println!("Run 'signet-eval resume{}{}' to end early.",
-                    rule.as_ref().map(|r| format!(" --rule {r}")).unwrap_or_default(),
-                    session.as_ref().map(|s| format!(" --session {s}")).unwrap_or_default(),
+                println!(
+                    "Run 'signet-eval resume{}{}' to end early.",
+                    rule.as_ref()
+                        .map(|r| format!(" --rule {r}"))
+                        .unwrap_or_default(),
+                    session
+                        .as_ref()
+                        .map(|s| format!(" --session {s}"))
+                        .unwrap_or_default(),
                 );
             } else {
                 // Global pause (existing behavior)
                 if vault::is_paused_file() {
-                    eprintln!("Already paused until timestamp {}.", vault::pause_until_file());
+                    eprintln!(
+                        "Already paused until timestamp {}.",
+                        vault::pause_until_file()
+                    );
                     return 1;
                 }
                 vault::set_pause_file(until);
@@ -765,60 +885,85 @@ fn run() -> i32 {
                     match v.active_preflight() {
                         Some(pf) => {
                             println!("Active preflight: {} (task: {})", pf.id, pf.task);
-                            println!("Violations: {}, Escalated: {}", pf.violation_count, pf.escalated);
+                            println!(
+                                "Violations: {}, Escalated: {}",
+                                pf.violation_count, pf.escalated
+                            );
                             // Require passphrase confirmation for override
-                            let pass = rpassword::prompt_password("Vault passphrase to confirm override: ").unwrap_or_default();
+                            let pass = rpassword::prompt_password(
+                                "Vault passphrase to confirm override: ",
+                            )
+                            .unwrap_or_default();
                             match vault::unlock_vault(&pass) {
                                 Ok(_) => {
                                     match v.override_preflight() {
-                                        Ok(_) => { println!("Preflight overridden. Soft constraints deactivated."); 0 }
-                                        Err(e) => { eprintln!("Error: {e}"); 1 }
+                                        Ok(_) => {
+                                            println!("Preflight overridden. Soft constraints deactivated.");
+                                            0
+                                        }
+                                        Err(e) => {
+                                            eprintln!("Error: {e}");
+                                            1
+                                        }
                                     }
                                 }
-                                Err(e) => { eprintln!("Authentication failed: {e}"); 1 }
+                                Err(e) => {
+                                    eprintln!("Authentication failed: {e}");
+                                    1
+                                }
                             }
                         }
-                        None => { eprintln!("No active preflight to override."); 0 }
+                        None => {
+                            eprintln!("No active preflight to override.");
+                            0
+                        }
                     }
                 }
-                None => { eprintln!("Vault not set up or locked."); 1 }
-            }
-        }
-        Some(Command::Injections { limit }) => {
-            match vault::try_load_vault() {
-                Some(v) => {
-                    let fires = v.recent_inject_fires(limit as i64);
-                    if fires.is_empty() {
-                        println!("No inject rule fires recorded yet.");
-                        return 0;
-                    }
-                    let now = std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .map(|d| d.as_secs_f64())
-                        .unwrap_or(0.0);
-                    println!("{:<40} {:>10} {:>14}", "RULE", "SESSION#", "LAST FIRED");
-                    for (rule, ts, fires_count) in fires {
-                        let ago_s = (now - ts).max(0.0) as u64;
-                        let ago_str = if ago_s < 60 {
-                            format!("{ago_s}s ago")
-                        } else if ago_s < 3600 {
-                            format!("{}m ago", ago_s / 60)
-                        } else if ago_s < 86400 {
-                            format!("{}h ago", ago_s / 3600)
-                        } else {
-                            format!("{}d ago", ago_s / 86400)
-                        };
-                        println!("{:<40} {:>10} {:>14}", rule, fires_count, ago_str);
-                    }
-                    0
+                None => {
+                    eprintln!("Vault not set up or locked.");
+                    1
                 }
-                None => { eprintln!("Vault not set up or locked."); 1 }
             }
         }
+        Some(Command::Injections { limit }) => match vault::try_load_vault() {
+            Some(v) => {
+                let fires = v.recent_inject_fires(limit as i64);
+                if fires.is_empty() {
+                    println!("No inject rule fires recorded yet.");
+                    return 0;
+                }
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs_f64())
+                    .unwrap_or(0.0);
+                println!("{:<40} {:>10} {:>14}", "RULE", "SESSION#", "LAST FIRED");
+                for (rule, ts, fires_count) in fires {
+                    let ago_s = (now - ts).max(0.0) as u64;
+                    let ago_str = if ago_s < 60 {
+                        format!("{ago_s}s ago")
+                    } else if ago_s < 3600 {
+                        format!("{}m ago", ago_s / 60)
+                    } else if ago_s < 86400 {
+                        format!("{}h ago", ago_s / 3600)
+                    } else {
+                        format!("{}d ago", ago_s / 86400)
+                    };
+                    println!("{:<40} {:>10} {:>14}", rule, fires_count, ago_str);
+                }
+                0
+            }
+            None => {
+                eprintln!("Vault not set up or locked.");
+                1
+            }
+        },
         Some(Command::InjectTest { rule }) => {
             let v = vault::try_load_vault();
             let compiled = policy::load_merged_policy(&policy_path, &rules_path);
-            let target = compiled.rules.iter().find(|r| r.name == rule && r.action == policy::Decision::Inject);
+            let target = compiled
+                .rules
+                .iter()
+                .find(|r| r.name == rule && r.action == policy::Decision::Inject);
             let target = match target {
                 Some(t) => t,
                 None => {

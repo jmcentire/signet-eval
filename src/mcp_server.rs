@@ -1,14 +1,14 @@
 //! Signet MCP Management Server — manage policies conversationally through Claude.
 
 use rmcp::model::*;
-use rmcp::{RoleServer, ServerHandler, ErrorData as McpError};
 use rmcp::service::RequestContext;
+use rmcp::{ErrorData as McpError, RoleServer, ServerHandler};
 use serde_json::Value;
 use std::borrow::Cow;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::policy::{PolicyConfig, PolicyRule, Decision, GateConfig, EnsureConfig};
+use crate::policy::{Decision, EnsureConfig, GateConfig, PolicyConfig, PolicyRule};
 use crate::vault;
 
 fn policy_path() -> PathBuf {
@@ -63,7 +63,11 @@ fn auto_sign() {
 
 impl Default for PolicyConfig {
     fn default() -> Self {
-        PolicyConfig { version: 1, rules: vec![], default_action: Decision::Allow }
+        PolicyConfig {
+            version: 1,
+            rules: vec![],
+            default_action: Decision::Allow,
+        }
     }
 }
 
@@ -85,9 +89,7 @@ impl ServerHandler for SignetMcpServer {
     fn get_info(&self) -> ServerInfo {
         let mut info = ServerInfo::default();
         info.instructions = Some("Signet policy enforcement for Claude Code. Use these tools to manage what actions are allowed, denied, or require confirmation.".into());
-        info.capabilities = ServerCapabilities::builder()
-            .enable_tools()
-            .build();
+        info.capabilities = ServerCapabilities::builder().enable_tools().build();
         info
     }
 
@@ -245,7 +247,11 @@ impl ServerHandler for SignetMcpServer {
                     "required": ["constraints"]
                 })),
             ];
-            Ok(ListToolsResult { tools, next_cursor: None, meta: None })
+            Ok(ListToolsResult {
+                tools,
+                next_cursor: None,
+                meta: None,
+            })
         }
     }
 
@@ -295,9 +301,13 @@ fn handle_list_rules() -> String {
     let user_rules = load_rules_raw();
     let merged = crate::policy::merge_rules(&config.rules, &user_rules);
     if merged.is_empty() {
-        return format!("No rules. Default action: {:?}. Everything is allowed.", config.default_action);
+        return format!(
+            "No rules. Default action: {:?}. Everything is allowed.",
+            config.default_action
+        );
     }
-    let user_names: std::collections::HashSet<&str> = user_rules.iter().map(|r| r.name.as_str()).collect();
+    let user_names: std::collections::HashSet<&str> =
+        user_rules.iter().map(|r| r.name.as_str()).collect();
     let mut lines = vec![
         format!("Default: {:?}", config.default_action),
         format!("Rules ({}, eval order):\n", merged.len()),
@@ -310,7 +320,13 @@ fn handle_list_rules() -> String {
         } else {
             " [SYSTEM]"
         };
-        lines.push(format!("  {}. [{:?}] {}{}", i + 1, r.action, r.name, source));
+        lines.push(format!(
+            "  {}. [{:?}] {}{}",
+            i + 1,
+            r.action,
+            r.name,
+            source
+        ));
         if let Some(ref reason) = r.reason {
             lines.push(format!("     Reason: {reason}"));
         }
@@ -321,10 +337,16 @@ fn handle_list_rules() -> String {
             lines.push(format!("     Condition: {c}"));
         }
         if let Some(ref gc) = r.gate {
-            lines.push(format!("     Gate: requires '{}' in last {} actions", gc.requires_prior, gc.within));
+            lines.push(format!(
+                "     Gate: requires '{}' in last {} actions",
+                gc.requires_prior, gc.within
+            ));
         }
         if let Some(ref ec) = r.ensure {
-            lines.push(format!("     Ensure: check='{}' timeout={}s", ec.check, ec.timeout));
+            lines.push(format!(
+                "     Ensure: check='{}' timeout={}s",
+                ec.check, ec.timeout
+            ));
             if !ec.message.is_empty() {
                 lines.push(format!("     Message: {}", ec.message));
             }
@@ -338,10 +360,18 @@ fn handle_add_rule(args: &serde_json::Map<String, Value>) -> String {
     let name = args.get("name").and_then(|v| v.as_str()).unwrap_or("");
     let action_str = args.get("action").and_then(|v| v.as_str()).unwrap_or("");
     let reason = args.get("reason").and_then(|v| v.as_str()).unwrap_or("");
-    let tool_pattern = args.get("tool_pattern").and_then(|v| v.as_str()).unwrap_or(".*");
-    let conditions: Vec<String> = args.get("conditions")
+    let tool_pattern = args
+        .get("tool_pattern")
+        .and_then(|v| v.as_str())
+        .unwrap_or(".*");
+    let conditions: Vec<String> = args
+        .get("conditions")
         .and_then(|v| v.as_array())
-        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        })
         .unwrap_or_default();
 
     let action = match action_str.to_uppercase().as_str() {
@@ -350,7 +380,11 @@ fn handle_add_rule(args: &serde_json::Map<String, Value>) -> String {
         "ASK" => Decision::Ask,
         "GATE" => Decision::Gate,
         "ENSURE" => Decision::Ensure,
-        _ => return format!("Invalid action '{action_str}'. Must be ALLOW, DENY, ASK, GATE, or ENSURE."),
+        _ => {
+            return format!(
+                "Invalid action '{action_str}'. Must be ALLOW, DENY, ASK, GATE, or ENSURE."
+            )
+        }
     };
 
     // Parse Gate config
@@ -358,7 +392,11 @@ fn handle_add_rule(args: &serde_json::Map<String, Value>) -> String {
         let gc = args.get("gate").and_then(|v| v.as_object());
         match gc {
             Some(g) => {
-                let requires_prior = g.get("requires_prior").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let requires_prior = g
+                    .get("requires_prior")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
                 if requires_prior.is_empty() {
                     return "GATE action requires gate.requires_prior".into();
                 }
@@ -366,18 +404,27 @@ fn handle_add_rule(args: &serde_json::Map<String, Value>) -> String {
                 if within < 1 || within > 500 {
                     return "gate.within must be 1-500".into();
                 }
-                Some(GateConfig { requires_prior, within })
+                Some(GateConfig {
+                    requires_prior,
+                    within,
+                })
             }
             None => return "GATE action requires a 'gate' config object".into(),
         }
-    } else { None };
+    } else {
+        None
+    };
 
     // Parse Ensure config
     let ensure = if action == Decision::Ensure {
         let ec = args.get("ensure").and_then(|v| v.as_object());
         match ec {
             Some(e) => {
-                let check = e.get("check").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let check = e
+                    .get("check")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
                 if let Err(err) = crate::policy::validate_ensure_check_name(&check) {
                     return format!("Invalid ensure.check: {err}");
                 }
@@ -385,30 +432,47 @@ fn handle_add_rule(args: &serde_json::Map<String, Value>) -> String {
                 if timeout < 1 || timeout > 30 {
                     return "ensure.timeout must be 1-30".into();
                 }
-                let message = e.get("message").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                Some(EnsureConfig { check, timeout, message })
+                let message = e
+                    .get("message")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                Some(EnsureConfig {
+                    check,
+                    timeout,
+                    message,
+                })
             }
             None => return "ENSURE action requires an 'ensure' config object".into(),
         }
-    } else { None };
+    } else {
+        None
+    };
 
     // Check name uniqueness across both system and user rules
     let system_config = load_policy_raw();
     let mut user_rules = load_rules_raw();
     if system_config.rules.iter().any(|r| r.name == name) {
-        return format!("Rule '{name}' already exists in system policy. Use a different name or override it.");
+        return format!(
+            "Rule '{name}' already exists in system policy. Use a different name or override it."
+        );
     }
     if user_rules.iter().any(|r| r.name == name) {
         return format!("Rule '{name}' already exists in user rules. Remove it first.");
     }
 
     user_rules.push(PolicyRule {
-        name: name.into(), tool_pattern: tool_pattern.into(),
-        conditions, action, reason: Some(reason.into()),
-        alternative: None, locked: false,
-        gate, ensure,
-    inject: None,
-});
+        name: name.into(),
+        tool_pattern: tool_pattern.into(),
+        conditions,
+        action,
+        reason: Some(reason.into()),
+        alternative: None,
+        locked: false,
+        gate,
+        ensure,
+        inject: None,
+    });
     save_rules(&user_rules);
     auto_sign();
     format!("Added rule '{name}' ({action:?}) to user rules: {reason}")
@@ -423,7 +487,9 @@ fn handle_remove_rule(args: &serde_json::Map<String, Value>) -> String {
             return format!("Cannot remove rule '{name}': rule is locked (self-protection).");
         }
         if !rule.locked {
-            return format!("Cannot remove system rule '{name}'. Add an overriding rule in user rules instead.");
+            return format!(
+                "Cannot remove system rule '{name}'. Add an overriding rule in user rules instead."
+            );
         }
     }
     // Remove from user rules
@@ -440,9 +506,17 @@ fn handle_remove_rule(args: &serde_json::Map<String, Value>) -> String {
 
 fn handle_set_limit(args: &serde_json::Map<String, Value>) -> String {
     let category = args.get("category").and_then(|v| v.as_str()).unwrap_or("");
-    let max_amount = args.get("max_amount").and_then(|v| v.as_f64()).unwrap_or(0.0);
-    let per = args.get("per").and_then(|v| v.as_str()).unwrap_or("session");
-    let tool_pattern = args.get("tool_pattern").and_then(|v| v.as_str())
+    let max_amount = args
+        .get("max_amount")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(0.0);
+    let per = args
+        .get("per")
+        .and_then(|v| v.as_str())
+        .unwrap_or("session");
+    let tool_pattern = args
+        .get("tool_pattern")
+        .and_then(|v| v.as_str())
         .unwrap_or(".*purchase.*|.*buy.*|.*shop.*|.*order.*");
 
     let name = format!("limit_{}_{}", category, max_amount as u64);
@@ -457,11 +531,15 @@ fn handle_set_limit(args: &serde_json::Map<String, Value>) -> String {
             format!("spend_plus_amount_gt('{category}', amount, {max_amount})"),
         ],
         action: Decision::Deny,
-        reason: Some(format!("Spending limit: ${max_amount:.0}/{per} on {category}")),
-        alternative: None, locked: false,
-        gate: None, ensure: None,
-    inject: None,
-});
+        reason: Some(format!(
+            "Spending limit: ${max_amount:.0}/{per} on {category}"
+        )),
+        alternative: None,
+        locked: false,
+        gate: None,
+        ensure: None,
+        inject: None,
+    });
     save_policy(&config);
     auto_sign();
     format!("Set ${max_amount:.0}/{per} limit on {category}.")
@@ -469,9 +547,11 @@ fn handle_set_limit(args: &serde_json::Map<String, Value>) -> String {
 
 fn handle_status() -> String {
     let config = load_policy_raw();
-    let mut lines = vec![
-        format!("Policy: {} rules (default: {:?})", config.rules.len(), config.default_action),
-    ];
+    let mut lines = vec![format!(
+        "Policy: {} rules (default: {:?})",
+        config.rules.len(),
+        config.default_action
+    )];
     if !vault::vault_exists() {
         lines.push("Vault: not set up (run: signet-eval setup)".into());
         return lines.join("\n");
@@ -481,7 +561,9 @@ fn handle_status() -> String {
             lines.push("Vault: unlocked".into());
             lines.push(format!("Credentials: {}", v.list_credentials().len()));
             let spend = v.session_spend("");
-            if spend > 0.0 { lines.push(format!("Session spend: ${spend:.2}")); }
+            if spend > 0.0 {
+                lines.push(format!("Session spend: ${spend:.2}"));
+            }
             let actions = v.recent_actions(5);
             if !actions.is_empty() {
                 lines.push(format!("\nLast {} actions:", actions.len()));
@@ -490,8 +572,11 @@ fn handle_status() -> String {
                     let dec = a["decision"].as_str().unwrap_or("?");
                     let amt = a["amount"].as_f64().unwrap_or(0.0);
                     let cat = a["category"].as_str().unwrap_or("");
-                    if amt > 0.0 { lines.push(format!("  {tool} [{cat}] ${amt:.2} -> {dec}")); }
-                    else { lines.push(format!("  {tool} -> {dec}")); }
+                    if amt > 0.0 {
+                        lines.push(format!("  {tool} [{cat}] ${amt:.2} -> {dec}"));
+                    } else {
+                        lines.push(format!("  {tool} -> {dec}"));
+                    }
                 }
             }
         }
@@ -505,15 +590,20 @@ fn handle_recent_actions(args: &serde_json::Map<String, Value>) -> String {
     match vault::try_load_vault() {
         Some(v) => {
             let actions = v.recent_actions(limit);
-            if actions.is_empty() { return "No actions recorded.".into(); }
+            if actions.is_empty() {
+                return "No actions recorded.".into();
+            }
             let mut lines = vec![format!("Recent actions ({}):", actions.len())];
             for a in &actions {
                 let tool = a["tool"].as_str().unwrap_or("?");
                 let dec = a["decision"].as_str().unwrap_or("?");
                 let amt = a["amount"].as_f64().unwrap_or(0.0);
                 let cat = a["category"].as_str().unwrap_or("");
-                if amt > 0.0 { lines.push(format!("  {tool} [{cat}] ${amt:.2} -> {dec}")); }
-                else { lines.push(format!("  {tool} -> {dec}")); }
+                if amt > 0.0 {
+                    lines.push(format!("  {tool} [{cat}] ${amt:.2} -> {dec}"));
+                } else {
+                    lines.push(format!("  {tool} -> {dec}"));
+                }
             }
             lines.join("\n")
         }
@@ -537,7 +627,9 @@ fn handle_list_credentials() -> String {
     match vault::try_load_vault() {
         Some(v) => {
             let creds = v.list_credentials();
-            if creds.is_empty() { return "No credentials stored.".into(); }
+            if creds.is_empty() {
+                return "No credentials stored.".into();
+            }
             let mut lines = vec![format!("Credentials ({}):", creds.len())];
             for c in &creds {
                 let name = c["name"].as_str().unwrap_or("?");
@@ -576,7 +668,10 @@ fn handle_validate(args: &serde_json::Map<String, Value>) -> String {
             if fix {
                 let result = crate::policy::fix_policy(&mut config);
                 if result.rules_removed.is_empty() && result.rules_modified.is_empty() {
-                    lines.push(format!("No auto-fixable issues. {} rules.", config.rules.len()));
+                    lines.push(format!(
+                        "No auto-fixable issues. {} rules.",
+                        config.rules.len()
+                    ));
                 } else {
                     lines.push(format!("Fixed: {}", result.description));
                     save_policy(&config);
@@ -588,7 +683,11 @@ fn handle_validate(args: &serde_json::Map<String, Value>) -> String {
                 lines.push(format!("Valid: {} rules.", config.rules.len()));
             } else {
                 for d in &diagnostics {
-                    let sev = if d.severity == crate::policy::DiagnosticSeverity::Error { "ERROR" } else { "WARN" };
+                    let sev = if d.severity == crate::policy::DiagnosticSeverity::Error {
+                        "ERROR"
+                    } else {
+                        "WARN"
+                    };
                     lines.push(format!("  {sev} [{}]: {}", d.rule_name, d.error));
                 }
             }
@@ -600,13 +699,21 @@ fn handle_validate(args: &serde_json::Map<String, Value>) -> String {
     let user_rules = load_rules_raw();
     if !user_rules.is_empty() {
         lines.push("\n--- User rules ---".to_string());
-        let user_config = PolicyConfig { version: 1, default_action: Decision::Allow, rules: user_rules };
+        let user_config = PolicyConfig {
+            version: 1,
+            default_action: Decision::Allow,
+            rules: user_rules,
+        };
         let diagnostics = crate::policy::validate_policy(&user_config);
         if diagnostics.is_empty() {
             lines.push(format!("Valid: {} rules.", user_config.rules.len()));
         } else {
             for d in &diagnostics {
-                let sev = if d.severity == crate::policy::DiagnosticSeverity::Error { "ERROR" } else { "WARN" };
+                let sev = if d.severity == crate::policy::DiagnosticSeverity::Error {
+                    "ERROR"
+                } else {
+                    "WARN"
+                };
                 lines.push(format!("  {sev} [{}]: {}", d.rule_name, d.error));
             }
         }
@@ -617,7 +724,10 @@ fn handle_validate(args: &serde_json::Map<String, Value>) -> String {
 
 fn handle_test(args: &serde_json::Map<String, Value>) -> String {
     let tool_name = args.get("tool_name").and_then(|v| v.as_str()).unwrap_or("");
-    let tool_input = args.get("tool_input").cloned().unwrap_or(serde_json::Value::Object(Default::default()));
+    let tool_input = args
+        .get("tool_input")
+        .cloned()
+        .unwrap_or(serde_json::Value::Object(Default::default()));
 
     let policy = crate::policy::load_merged_policy(&policy_path(), &rules_path());
     let v = vault::try_load_vault();
@@ -626,9 +736,7 @@ fn handle_test(args: &serde_json::Map<String, Value>) -> String {
         parameters: tool_input,
     };
     let result = crate::policy::evaluate(&call, &policy, v.as_ref());
-    let mut lines = vec![
-        format!("Decision: {:?}", result.decision),
-    ];
+    let mut lines = vec![format!("Decision: {:?}", result.decision)];
     if let Some(rule) = &result.matched_rule {
         lines.push(format!("Matched rule: {rule}"));
     } else {
@@ -644,11 +752,17 @@ fn handle_test(args: &serde_json::Map<String, Value>) -> String {
 fn handle_reorder_rule(args: &serde_json::Map<String, Value>) -> String {
     let name = args.get("name").and_then(|v| v.as_str()).unwrap_or("");
     let position = args.get("position").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
-    if position == 0 { return "Position must be >= 1".into(); }
+    if position == 0 {
+        return "Position must be >= 1".into();
+    }
 
     // Check if it's a system/locked rule
     let system_config = load_policy_raw();
-    if system_config.rules.iter().any(|r| r.name == name && r.locked) {
+    if system_config
+        .rules
+        .iter()
+        .any(|r| r.name == name && r.locked)
+    {
         return format!("Cannot reorder rule '{name}': rule is locked (self-protection).");
     }
     if system_config.rules.iter().any(|r| r.name == name) {
@@ -666,7 +780,10 @@ fn handle_reorder_rule(args: &serde_json::Map<String, Value>) -> String {
             user_rules.insert(new_idx, rule);
             save_rules(&user_rules);
             auto_sign();
-            format!("Moved user rule '{name}' to position {} (within user rules).", new_idx + 1)
+            format!(
+                "Moved user rule '{name}' to position {} (within user rules).",
+                new_idx + 1
+            )
         }
     }
 }
@@ -675,7 +792,11 @@ fn handle_edit_rule(args: &serde_json::Map<String, Value>) -> String {
     let name = args.get("name").and_then(|v| v.as_str()).unwrap_or("");
     // Check if it's a system/locked rule
     let system_config = load_policy_raw();
-    if system_config.rules.iter().any(|r| r.name == name && r.locked) {
+    if system_config
+        .rules
+        .iter()
+        .any(|r| r.name == name && r.locked)
+    {
         return format!("Cannot edit rule '{name}': rule is locked (self-protection).");
     }
     if system_config.rules.iter().any(|r| r.name == name) {
@@ -691,11 +812,26 @@ fn handle_edit_rule(args: &serde_json::Map<String, Value>) -> String {
             let mut changes = Vec::new();
             if let Some(action_str) = args.get("action").and_then(|v| v.as_str()) {
                 match action_str.to_uppercase().as_str() {
-                    "ALLOW" => { rule.action = Decision::Allow; changes.push("action"); }
-                    "DENY" => { rule.action = Decision::Deny; changes.push("action"); }
-                    "ASK" => { rule.action = Decision::Ask; changes.push("action"); }
-                    "GATE" => { rule.action = Decision::Gate; changes.push("action"); }
-                    "ENSURE" => { rule.action = Decision::Ensure; changes.push("action"); }
+                    "ALLOW" => {
+                        rule.action = Decision::Allow;
+                        changes.push("action");
+                    }
+                    "DENY" => {
+                        rule.action = Decision::Deny;
+                        changes.push("action");
+                    }
+                    "ASK" => {
+                        rule.action = Decision::Ask;
+                        changes.push("action");
+                    }
+                    "GATE" => {
+                        rule.action = Decision::Gate;
+                        changes.push("action");
+                    }
+                    "ENSURE" => {
+                        rule.action = Decision::Ensure;
+                        changes.push("action");
+                    }
                     _ => return format!("Invalid action '{action_str}'."),
                 }
             }
@@ -708,26 +844,48 @@ fn handle_edit_rule(args: &serde_json::Map<String, Value>) -> String {
                 changes.push("tool_pattern");
             }
             if let Some(conds) = args.get("conditions").and_then(|v| v.as_array()) {
-                rule.conditions = conds.iter().filter_map(|v| v.as_str().map(String::from)).collect();
+                rule.conditions = conds
+                    .iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect();
                 changes.push("conditions");
             }
             if let Some(gc) = args.get("gate").and_then(|v| v.as_object()) {
-                let requires_prior = gc.get("requires_prior").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let requires_prior = gc
+                    .get("requires_prior")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
                 if requires_prior.is_empty() {
                     return "gate.requires_prior cannot be empty".into();
                 }
                 let within = gc.get("within").and_then(|v| v.as_u64()).unwrap_or(50) as u32;
-                rule.gate = Some(GateConfig { requires_prior, within });
+                rule.gate = Some(GateConfig {
+                    requires_prior,
+                    within,
+                });
                 changes.push("gate");
             }
             if let Some(ec) = args.get("ensure").and_then(|v| v.as_object()) {
-                let check = ec.get("check").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let check = ec
+                    .get("check")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
                 if let Err(err) = crate::policy::validate_ensure_check_name(&check) {
                     return format!("Invalid ensure.check: {err}");
                 }
                 let timeout = ec.get("timeout").and_then(|v| v.as_u64()).unwrap_or(5) as u32;
-                let message = ec.get("message").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                rule.ensure = Some(EnsureConfig { check, timeout, message });
+                let message = ec
+                    .get("message")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                rule.ensure = Some(EnsureConfig {
+                    check,
+                    timeout,
+                    message,
+                });
                 changes.push("ensure");
             }
             save_rules(&user_rules);
@@ -777,7 +935,11 @@ fn handle_use_credential(args: &serde_json::Map<String, Value>) -> String {
                 Ok(value) => {
                     // Mask the credential in the response — show last 4 chars only
                     let masked = if value.len() > 4 {
-                        format!("{}...{}", "*".repeat(value.len() - 4), &value[value.len()-4..])
+                        format!(
+                            "{}...{}",
+                            "*".repeat(value.len() - 4),
+                            &value[value.len() - 4..]
+                        )
                     } else {
                         "*".repeat(value.len())
                     };
@@ -835,50 +997,120 @@ Ensure config (required when action=ENSURE):
   ensure.timeout: max seconds to wait (default 5, max 30)
   ensure.message: message shown to agent on failure
   Exit 0 = allow, non-zero = deny. Script stderr is captured and relayed.
-  Note: ensure scripts add latency. Use gate when a log check suffices."#.into()
+  Note: ensure scripts add latency. Use gate when a log check suffices."#
+        .into()
 }
 
 // === Preflight Handlers ===
 
-fn parse_soft_constraints(args: &serde_json::Map<String, Value>) -> Result<Vec<vault::SoftConstraint>, String> {
-    let arr = args.get("constraints")
+fn parse_soft_constraints(
+    args: &serde_json::Map<String, Value>,
+) -> Result<Vec<vault::SoftConstraint>, String> {
+    let arr = args
+        .get("constraints")
         .and_then(|v| v.as_array())
         .ok_or_else(|| "Missing 'constraints' array".to_string())?;
     let mut constraints = Vec::new();
     for item in arr {
-        let obj = item.as_object().ok_or("Each constraint must be an object")?;
-        let name = obj.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
-        let tool_pattern = obj.get("tool_pattern").and_then(|v| v.as_str()).unwrap_or(".*").to_string();
-        let conditions: Vec<String> = obj.get("conditions")
+        let obj = item
+            .as_object()
+            .ok_or("Each constraint must be an object")?;
+        let name = obj
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let tool_pattern = obj
+            .get("tool_pattern")
+            .and_then(|v| v.as_str())
+            .unwrap_or(".*")
+            .to_string();
+        let conditions: Vec<String> = obj
+            .get("conditions")
             .and_then(|v| v.as_array())
-            .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
             .unwrap_or_default();
-        let action = obj.get("action").and_then(|v| v.as_str()).unwrap_or("DENY").to_string();
-        let reason = obj.get("reason").and_then(|v| v.as_str()).unwrap_or("").to_string();
-        let alternative = obj.get("alternative").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let action = obj
+            .get("action")
+            .and_then(|v| v.as_str())
+            .unwrap_or("DENY")
+            .to_string();
+        let reason = obj
+            .get("reason")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let alternative = obj
+            .get("alternative")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
 
         // Validate
-        if name.is_empty() { return Err("Constraint name is required".into()); }
-        if action != "DENY" && action != "ASK" { return Err(format!("Constraint '{name}' action must be DENY or ASK, got '{action}'")); }
-        if alternative.trim().is_empty() { return Err(format!("Constraint '{name}' requires a non-empty alternative (plan B)")); }
-        if regex::Regex::new(&tool_pattern).is_err() { return Err(format!("Constraint '{name}' has invalid regex: {tool_pattern}")); }
+        if name.is_empty() {
+            return Err("Constraint name is required".into());
+        }
+        if action != "DENY" && action != "ASK" {
+            return Err(format!(
+                "Constraint '{name}' action must be DENY or ASK, got '{action}'"
+            ));
+        }
+        if alternative.trim().is_empty() {
+            return Err(format!(
+                "Constraint '{name}' requires a non-empty alternative (plan B)"
+            ));
+        }
+        if regex::Regex::new(&tool_pattern).is_err() {
+            return Err(format!(
+                "Constraint '{name}' has invalid regex: {tool_pattern}"
+            ));
+        }
 
-        constraints.push(vault::SoftConstraint { name, tool_pattern, conditions, action, reason, alternative });
+        constraints.push(vault::SoftConstraint {
+            name,
+            tool_pattern,
+            conditions,
+            action,
+            reason,
+            alternative,
+        });
     }
     Ok(constraints)
 }
 
 fn handle_preflight_submit(args: &serde_json::Map<String, Value>) -> String {
-    let task = args.get("task").and_then(|v| v.as_str()).unwrap_or("").to_string();
-    let risks: Vec<String> = args.get("risks")
+    let task = args
+        .get("task")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let risks: Vec<String> = args
+        .get("risks")
         .and_then(|v| v.as_array())
-        .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        })
         .unwrap_or_default();
-    let lockout_minutes = args.get("lockout_minutes").and_then(|v| v.as_u64()).unwrap_or(30);
+    let lockout_minutes = args
+        .get("lockout_minutes")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(30);
 
-    if task.is_empty() { return "Task description is required.".into(); }
-    if lockout_minutes < 5 { return "Lockout must be at least 5 minutes.".into(); }
-    if lockout_minutes > 480 { return "Lockout cannot exceed 480 minutes (8 hours).".into(); }
+    if task.is_empty() {
+        return "Task description is required.".into();
+    }
+    if lockout_minutes < 5 {
+        return "Lockout must be at least 5 minutes.".into();
+    }
+    if lockout_minutes > 480 {
+        return "Lockout cannot exceed 480 minutes (8 hours).".into();
+    }
 
     let constraints = match parse_soft_constraints(args) {
         Ok(c) => c,
@@ -888,10 +1120,12 @@ fn handle_preflight_submit(args: &serde_json::Map<String, Value>) -> String {
     // Advisory: reject overly broad constraints unless force=true
     let force = args.get("force").and_then(|v| v.as_bool()).unwrap_or(false);
     if !force {
-        let broad: Vec<&str> = constraints.iter()
+        let broad: Vec<&str> = constraints
+            .iter()
             .filter(|c| {
                 let pat = c.tool_pattern.trim();
-                (pat == ".*" || pat == ".+" || pat == "^.*$" || pat == "^.+$") && c.conditions.is_empty()
+                (pat == ".*" || pat == ".+" || pat == "^.*$" || pat == "^.+$")
+                    && c.conditions.is_empty()
             })
             .map(|c| c.name.as_str())
             .collect();
@@ -917,7 +1151,10 @@ fn handle_preflight_submit(args: &serde_json::Map<String, Value>) -> String {
                     return format!("Active preflight is locked until timestamp {}. Cannot submit a new one until lockout expires or user runs 'signet-eval preflight-override'.", active.lockout_until);
                 }
             }
-            let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs();
             let preflight = vault::Preflight {
                 id: vault::random_hex_id(),
                 task,
@@ -935,8 +1172,13 @@ fn handle_preflight_submit(args: &serde_json::Map<String, Value>) -> String {
                         Some(sid) => format!(" (session: {})", sid),
                         None => " (global)".into(),
                     };
-                    format!("Preflight filed. ID: {}.{} Locked for {} minutes ({} constraints active).",
-                        preflight.id, scope, lockout_minutes, preflight.constraints.len())
+                    format!(
+                        "Preflight filed. ID: {}.{} Locked for {} minutes ({} constraints active).",
+                        preflight.id,
+                        scope,
+                        lockout_minutes,
+                        preflight.constraints.len()
+                    )
                 }
                 Err(e) => format!("Failed to store preflight: {e}"),
             }
@@ -947,31 +1189,35 @@ fn handle_preflight_submit(args: &serde_json::Map<String, Value>) -> String {
 
 fn handle_preflight_active() -> String {
     match vault::try_load_vault() {
-        Some(v) => {
-            match v.active_preflight() {
-                Some(pf) => {
-                    let mut lines = vec![
-                        format!("Active preflight: {}", pf.id),
-                        format!("Task: {}", pf.task),
-                        format!("Risks: {}", pf.risks.join("; ")),
-                        format!("Constraints: {}", pf.constraints.len()),
-                        format!("Violations: {}", pf.violation_count),
-                        format!("Escalated: {}", pf.escalated),
-                        format!("Lockout until: {}", pf.lockout_until),
-                    ];
-                    match &pf.session_id {
-                        Some(sid) => lines.push(format!("Session: {}", sid)),
-                        None => lines.push("Session: global".into()),
-                    }
-                    for (i, c) in pf.constraints.iter().enumerate() {
-                        lines.push(format!("  {}. [{}] {} — {}", i + 1, c.action, c.name, c.reason));
-                        lines.push(format!("     Plan B: {}", c.alternative));
-                    }
-                    lines.join("\n")
+        Some(v) => match v.active_preflight() {
+            Some(pf) => {
+                let mut lines = vec![
+                    format!("Active preflight: {}", pf.id),
+                    format!("Task: {}", pf.task),
+                    format!("Risks: {}", pf.risks.join("; ")),
+                    format!("Constraints: {}", pf.constraints.len()),
+                    format!("Violations: {}", pf.violation_count),
+                    format!("Escalated: {}", pf.escalated),
+                    format!("Lockout until: {}", pf.lockout_until),
+                ];
+                match &pf.session_id {
+                    Some(sid) => lines.push(format!("Session: {}", sid)),
+                    None => lines.push("Session: global".into()),
                 }
-                None => "No active preflight.".into(),
+                for (i, c) in pf.constraints.iter().enumerate() {
+                    lines.push(format!(
+                        "  {}. [{}] {} — {}",
+                        i + 1,
+                        c.action,
+                        c.name,
+                        c.reason
+                    ));
+                    lines.push(format!("     Plan B: {}", c.alternative));
+                }
+                lines.join("\n")
             }
-        }
+            None => "No active preflight.".into(),
+        },
         None => "Vault not set up or locked.".into(),
     }
 }
@@ -981,7 +1227,9 @@ fn handle_preflight_history(args: &serde_json::Map<String, Value>) -> String {
     match vault::try_load_vault() {
         Some(v) => {
             let history = v.preflight_history(limit);
-            if history.is_empty() { return "No preflight history.".into(); }
+            if history.is_empty() {
+                return "No preflight history.".into();
+            }
             let mut lines = vec![format!("Preflight history ({}):", history.len())];
             for h in &history {
                 let id = h["id"].as_str().unwrap_or("?");
@@ -989,8 +1237,20 @@ fn handle_preflight_history(args: &serde_json::Map<String, Value>) -> String {
                 let violations = h["violation_count"].as_u64().unwrap_or(0);
                 let escalated = h["escalated"].as_bool().unwrap_or(false);
                 let active = h["active"].as_bool().unwrap_or(false);
-                let status = if active { "ACTIVE" } else if escalated { "ESCALATED" } else { "completed" };
-                lines.push(format!("  {} [{}] {} (violations: {})", &id[..8.min(id.len())], status, task, violations));
+                let status = if active {
+                    "ACTIVE"
+                } else if escalated {
+                    "ESCALATED"
+                } else {
+                    "completed"
+                };
+                lines.push(format!(
+                    "  {} [{}] {} (violations: {})",
+                    &id[..8.min(id.len())],
+                    status,
+                    task,
+                    violations
+                ));
             }
             lines.join("\n")
         }
@@ -1007,13 +1267,22 @@ fn handle_preflight_violations(args: &serde_json::Map<String, Value>) -> String 
                 None => match v.active_preflight() {
                     Some(pf) => pf.id,
                     None => return "No active preflight and no preflight_id specified.".into(),
-                }
+                },
             };
             let violations = v.preflight_violations(&id);
-            if violations.is_empty() { return format!("No violations for preflight {}.", &id[..8.min(id.len())]); }
-            let mut lines = vec![format!("Violations for {} ({}):", &id[..8.min(id.len())], violations.len())];
+            if violations.is_empty() {
+                return format!("No violations for preflight {}.", &id[..8.min(id.len())]);
+            }
+            let mut lines = vec![format!(
+                "Violations for {} ({}):",
+                &id[..8.min(id.len())],
+                violations.len()
+            )];
             for viol in &violations {
-                lines.push(format!("  [{}] {} via {} — Plan B: {}", viol.constraint_name, viol.tool_name, viol.parameters_summary, viol.alternative));
+                lines.push(format!(
+                    "  [{}] {} via {} — Plan B: {}",
+                    viol.constraint_name, viol.tool_name, viol.parameters_summary, viol.alternative
+                ));
             }
             lines.join("\n")
         }
@@ -1024,9 +1293,18 @@ fn handle_preflight_violations(args: &serde_json::Map<String, Value>) -> String 
 fn handle_preflight_test(args: &serde_json::Map<String, Value>) -> String {
     match parse_soft_constraints(args) {
         Ok(constraints) => {
-            let mut lines = vec![format!("Validation passed: {} constraints OK.", constraints.len())];
+            let mut lines = vec![format!(
+                "Validation passed: {} constraints OK.",
+                constraints.len()
+            )];
             for (i, c) in constraints.iter().enumerate() {
-                lines.push(format!("  {}. [{}] {} — plan B: {}", i + 1, c.action, c.name, c.alternative));
+                lines.push(format!(
+                    "  {}. [{}] {} — plan B: {}",
+                    i + 1,
+                    c.action,
+                    c.name,
+                    c.alternative
+                ));
             }
             lines.join("\n")
         }
