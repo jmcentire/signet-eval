@@ -19,6 +19,64 @@ struct HookInput {
     parameters: Option<Value>,
 }
 
+fn string_field(value: &Value, key: &str) -> Option<String> {
+    value
+        .get(key)
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.trim().is_empty())
+        .map(|s| s.to_string())
+}
+
+fn extract_session_id(value: &Value) -> Option<String> {
+    for key in [
+        "conversation_id",
+        "conversationId",
+        "chat_id",
+        "chatId",
+        "session_id",
+        "sessionId",
+        "thread_id",
+        "threadId",
+        "transcript_path",
+        "transcriptPath",
+    ] {
+        if let Some(id) = string_field(value, key) {
+            return Some(id);
+        }
+    }
+
+    for parent in ["conversation", "chat", "session", "thread"] {
+        if let Some(child) = value.get(parent).and_then(|v| v.as_object()) {
+            for key in [
+                "id",
+                "conversation_id",
+                "chat_id",
+                "session_id",
+                "thread_id",
+            ] {
+                if let Some(id) = child
+                    .get(key)
+                    .and_then(|v| v.as_str())
+                    .filter(|s| !s.trim().is_empty())
+                {
+                    return Some(id.to_string());
+                }
+            }
+        }
+    }
+
+    None
+}
+
+fn install_hook_session(value: &Value) {
+    if let Some(session_id) = extract_session_id(value) {
+        // Process-local override used by vault::current_session_id(). This keeps
+        // hook evaluation scoped even when older shell setup left SIGNET_SESSION
+        // pointing at the working directory.
+        std::env::set_var("SIGNET_CHAT_ID", session_id);
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum HookAdapter {
     Claude,
@@ -138,19 +196,28 @@ pub fn run_hook_with_adapter(
     vault: Option<&Vault>,
     adapter: HookAdapter,
 ) -> i32 {
-    // Full disable — bypass everything silently (global or session-scoped)
-    if crate::vault::is_disabled_file() || crate::vault::is_session_disabled() {
-        emit_allow(adapter, HookEvent::PreToolUse);
-        return 0;
-    }
-
     let mut input = String::new();
     if io::stdin().read_to_string(&mut input).is_err() {
         emit_deny(adapter, HookEvent::PreToolUse, "Failed to read stdin");
         return 0;
     }
 
-    let hook_input: HookInput = match serde_json::from_str(&input) {
+    let raw_input: Value = match serde_json::from_str(&input) {
+        Ok(v) => v,
+        Err(_) => {
+            emit_deny(adapter, HookEvent::PreToolUse, "Malformed hook input");
+            return 0;
+        }
+    };
+    install_hook_session(&raw_input);
+
+    // Full disable — bypass everything silently (global or session-scoped)
+    if crate::vault::is_disabled_file() || crate::vault::is_session_disabled() {
+        emit_allow(adapter, HookEvent::PreToolUse);
+        return 0;
+    }
+
+    let hook_input: HookInput = match serde_json::from_value(raw_input) {
         Ok(h) => h,
         Err(_) => {
             emit_deny(adapter, HookEvent::PreToolUse, "Malformed hook input");

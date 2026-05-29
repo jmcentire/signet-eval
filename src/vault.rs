@@ -41,11 +41,28 @@ fn now_epoch() -> f64 {
         .as_secs_f64()
 }
 
-/// Read SIGNET_SESSION env var. Returns None if unset or empty.
+/// Read the current agent chat/session id from env. Returns None if unset or empty.
+///
+/// Client-native chat identifiers take precedence over the older SIGNET_SESSION
+/// fallback because SIGNET_SESSION was commonly set to $PWD, which crosses chat
+/// boundaries when two windows are open in the same repo.
 pub fn current_session_id() -> Option<String> {
-    std::env::var("SIGNET_SESSION")
-        .ok()
-        .filter(|s| !s.is_empty())
+    const KEYS: &[&str] = &[
+        "SIGNET_CHAT_ID",
+        "KIN_CHAT_ID",
+        "KIN_CONVERSATION_ID",
+        "CLAUDE_SESSION_ID",
+        "CODEX_SESSION_ID",
+        "CODEX_CONVERSATION_ID",
+        "OPENCODE_SESSION_ID",
+        "OPENCODE_CHAT_ID",
+        "CURSOR_SESSION_ID",
+        "CURSOR_CHAT_ID",
+        "SIGNET_SESSION",
+    ];
+    KEYS.iter()
+        .filter_map(|key| std::env::var(key).ok())
+        .find(|s| !s.trim().is_empty())
 }
 
 pub(crate) fn random_hex_id() -> String {
@@ -774,17 +791,18 @@ impl Vault {
         let hmac = self.preflight_hmac(&payload);
 
         let conn = Connection::open(&self.db_path).map_err(|e| format!("open db: {e}"))?;
-        // Deactivate previous active preflight (scoped to session)
+        // Deactivate previous active preflight in the same scope only.
         match &preflight.session_id {
             Some(sid) => conn.execute(
-                "UPDATE preflights SET active = 0 WHERE active = 1 AND (session_id = ?1 OR session_id IS NULL)",
+                "UPDATE preflights SET active = 0 WHERE active = 1 AND session_id = ?1",
                 params![sid],
             ),
             None => conn.execute(
-                "UPDATE preflights SET active = 0 WHERE active = 1",
+                "UPDATE preflights SET active = 0 WHERE active = 1 AND session_id IS NULL",
                 [],
             ),
-        }.map_err(|e| format!("deactivate: {e}"))?;
+        }
+        .map_err(|e| format!("deactivate: {e}"))?;
         conn.execute(
             "INSERT INTO preflights (id, task, payload, hmac, submitted_at, lockout_until, violation_count, escalated, active, session_id) VALUES (?1,?2,?3,?4,?5,?6,0,0,1,?7)",
             params![preflight.id, preflight.task, payload, hmac, preflight.submitted_at as i64, preflight.lockout_until as i64, preflight.session_id],
@@ -793,30 +811,48 @@ impl Vault {
     }
 
     /// Get the currently active preflight (if any, not expired, HMAC valid).
-    /// When SIGNET_SESSION is set, only returns preflights matching that session or global (NULL).
+    /// When a session id is set, returns the exact session preflight first, then
+    /// an explicit global (NULL) preflight. Without a session id, only global
+    /// preflights are visible.
     pub fn active_preflight(&self) -> Option<Preflight> {
         let conn = Connection::open(&self.db_path).ok()?;
         let session = current_session_id();
-        let (payload, stored_hmac, violation_count, escalated): (String, String, u32, bool) = match &session {
-            Some(sid) => conn.query_row(
-                "SELECT payload, hmac, violation_count, escalated FROM preflights WHERE active = 1 AND (session_id = ?1 OR session_id IS NULL)",
-                params![sid], |row| Ok((
-                    row.get(0)?,
-                    row.get(1)?,
-                    row.get::<_, u32>(2)?,
-                    row.get::<_, i32>(3)? != 0,
-                ))
-            ),
-            None => conn.query_row(
-                "SELECT payload, hmac, violation_count, escalated FROM preflights WHERE active = 1",
-                [], |row| Ok((
-                    row.get(0)?,
-                    row.get(1)?,
-                    row.get::<_, u32>(2)?,
-                    row.get::<_, i32>(3)? != 0,
-                ))
-            ),
-        }.ok()?;
+        let (payload, stored_hmac, violation_count, escalated): (String, String, u32, bool) =
+            match &session {
+                Some(sid) => conn.query_row(
+                    "SELECT payload, hmac, violation_count, escalated
+                 FROM preflights
+                 WHERE active = 1 AND (session_id = ?1 OR session_id IS NULL)
+                 ORDER BY CASE WHEN session_id = ?1 THEN 0 ELSE 1 END, submitted_at DESC
+                 LIMIT 1",
+                    params![sid],
+                    |row| {
+                        Ok((
+                            row.get(0)?,
+                            row.get(1)?,
+                            row.get::<_, u32>(2)?,
+                            row.get::<_, i32>(3)? != 0,
+                        ))
+                    },
+                ),
+                None => conn.query_row(
+                    "SELECT payload, hmac, violation_count, escalated
+                 FROM preflights
+                 WHERE active = 1 AND session_id IS NULL
+                 ORDER BY submitted_at DESC
+                 LIMIT 1",
+                    [],
+                    |row| {
+                        Ok((
+                            row.get(0)?,
+                            row.get(1)?,
+                            row.get::<_, u32>(2)?,
+                            row.get::<_, i32>(3)? != 0,
+                        ))
+                    },
+                ),
+            }
+            .ok()?;
 
         // Verify HMAC
         let expected = self.preflight_hmac(&payload);
@@ -854,14 +890,25 @@ impl Vault {
         let session = current_session_id();
         let lockout_until: Option<i64> = match &session {
             Some(sid) => conn.query_row(
-                "SELECT lockout_until FROM preflights WHERE active = 1 AND (session_id = ?1 OR session_id IS NULL)",
-                params![sid], |row| row.get(0),
+                "SELECT lockout_until
+                 FROM preflights
+                 WHERE active = 1 AND (session_id = ?1 OR session_id IS NULL)
+                 ORDER BY CASE WHEN session_id = ?1 THEN 0 ELSE 1 END, submitted_at DESC
+                 LIMIT 1",
+                params![sid],
+                |row| row.get(0),
             ),
             None => conn.query_row(
-                "SELECT lockout_until FROM preflights WHERE active = 1",
-                [], |row| row.get(0),
+                "SELECT lockout_until
+                 FROM preflights
+                 WHERE active = 1 AND session_id IS NULL
+                 ORDER BY submitted_at DESC
+                 LIMIT 1",
+                [],
+                |row| row.get(0),
             ),
-        }.ok();
+        }
+        .ok();
         match lockout_until {
             Some(until) => (now_epoch() as i64) < until,
             None => false,
@@ -933,10 +980,27 @@ impl Vault {
             Ok(c) => c,
             Err(_) => return vec![],
         };
-        let mut stmt = conn.prepare(
-            "SELECT id, task, submitted_at, lockout_until, violation_count, escalated, active FROM preflights ORDER BY submitted_at DESC LIMIT ?1"
-        ).unwrap();
-        stmt.query_map(params![limit], |row| {
+        let session = current_session_id();
+        let (sql, params): (&str, Vec<rusqlite::types::Value>) = match session {
+            Some(sid) => (
+                "SELECT id, task, submitted_at, lockout_until, violation_count, escalated, active, session_id
+                 FROM preflights
+                 WHERE session_id = ?1 OR session_id IS NULL
+                 ORDER BY submitted_at DESC
+                 LIMIT ?2",
+                vec![sid.into(), (limit as i64).into()],
+            ),
+            None => (
+                "SELECT id, task, submitted_at, lockout_until, violation_count, escalated, active, session_id
+                 FROM preflights
+                 WHERE session_id IS NULL
+                 ORDER BY submitted_at DESC
+                 LIMIT ?1",
+                vec![(limit as i64).into()],
+            ),
+        };
+        let mut stmt = conn.prepare(sql).unwrap();
+        stmt.query_map(rusqlite::params_from_iter(params), |row| {
             Ok(serde_json::json!({
                 "id": row.get::<_, String>(0)?,
                 "task": row.get::<_, String>(1)?,
@@ -945,6 +1009,7 @@ impl Vault {
                 "violation_count": row.get::<_, u32>(4)?,
                 "escalated": row.get::<_, i32>(5)? != 0,
                 "active": row.get::<_, i32>(6)? != 0,
+                "session_id": row.get::<_, Option<String>>(7)?,
             }))
         })
         .unwrap()
@@ -959,14 +1024,15 @@ impl Vault {
         let session = current_session_id();
         let rows = match &session {
             Some(sid) => conn.execute(
-                "UPDATE preflights SET active = 0 WHERE active = 1 AND (session_id = ?1 OR session_id IS NULL)",
+                "UPDATE preflights SET active = 0 WHERE active = 1 AND session_id = ?1",
                 params![sid],
             ),
             None => conn.execute(
-                "UPDATE preflights SET active = 0 WHERE active = 1",
+                "UPDATE preflights SET active = 0 WHERE active = 1 AND session_id IS NULL",
                 [],
             ),
-        }.map_err(|e| format!("deactivate: {e}"))?;
+        }
+        .map_err(|e| format!("deactivate: {e}"))?;
         if rows == 0 {
             return Err("No active preflight to override.".into());
         }
@@ -1120,11 +1186,11 @@ pub fn remove_disabled_session(session: &str) -> bool {
     sessions.len() < before
 }
 
-/// Check if the current SIGNET_SESSION is disabled.
+/// Check if the current agent session is disabled.
 pub fn is_session_disabled() -> bool {
-    match std::env::var("SIGNET_SESSION") {
-        Ok(s) if !s.is_empty() => load_disabled_sessions().iter().any(|ds| ds == &s),
-        _ => false,
+    match current_session_id() {
+        Some(s) => load_disabled_sessions().iter().any(|ds| ds == &s),
+        None => false,
     }
 }
 
@@ -1209,7 +1275,7 @@ pub fn is_rule_paused(rule_name: &str) -> bool {
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_secs();
-    let current_session = std::env::var("SIGNET_SESSION").ok();
+    let current_session = current_session_id();
     load_pauses().iter().any(|p| {
         p.until > now
             && p.rule.as_deref() == Some(rule_name)
@@ -1224,7 +1290,7 @@ pub fn is_globally_paused_json() -> bool {
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_secs();
-    let current_session = std::env::var("SIGNET_SESSION").ok();
+    let current_session = current_session_id();
     load_pauses()
         .iter()
         .any(|p| p.until > now && p.rule.is_none() && session_matches(&p.session, &current_session))
@@ -1400,6 +1466,27 @@ pub fn try_load_vault() -> Option<Vault> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    fn clear_session_env() {
+        for key in [
+            "SIGNET_CHAT_ID",
+            "KIN_CHAT_ID",
+            "KIN_CONVERSATION_ID",
+            "CLAUDE_SESSION_ID",
+            "CODEX_SESSION_ID",
+            "CODEX_CONVERSATION_ID",
+            "OPENCODE_SESSION_ID",
+            "OPENCODE_CHAT_ID",
+            "CURSOR_SESSION_ID",
+            "CURSOR_CHAT_ID",
+            "SIGNET_SESSION",
+        ] {
+            std::env::remove_var(key);
+        }
+    }
 
     fn make_test_vault(dir: &std::path::Path, passphrase: &str) -> Vault {
         let db = dir.join("state.db");
@@ -1407,6 +1494,107 @@ mod tests {
         rand::thread_rng().fill_bytes(&mut salt);
         let master_key = derive_master_key(passphrase, &salt);
         Vault::new(master_key, db)
+    }
+
+    fn make_preflight(id: &str, session_id: Option<&str>) -> Preflight {
+        let now = now_epoch() as u64;
+        Preflight {
+            id: id.into(),
+            task: format!("task {id}"),
+            risks: vec![],
+            constraints: vec![],
+            submitted_at: now,
+            lockout_until: now + 3600,
+            violation_count: 0,
+            escalated: false,
+            session_id: session_id.map(|s| s.to_string()),
+        }
+    }
+
+    #[test]
+    fn test_current_session_id_prefers_client_chat_alias_over_signet_session() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        clear_session_env();
+        std::env::set_var("SIGNET_SESSION", "cwd-session");
+        std::env::set_var("CLAUDE_SESSION_ID", "chat-session");
+
+        assert_eq!(current_session_id().as_deref(), Some("chat-session"));
+
+        clear_session_env();
+    }
+
+    #[test]
+    fn test_active_preflight_prefers_matching_session_then_global() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        clear_session_env();
+        let dir = tempfile::tempdir().unwrap();
+        let vault = make_test_vault(dir.path(), "testpass123");
+        vault
+            .store_preflight(&make_preflight("global", None))
+            .unwrap();
+        vault
+            .store_preflight(&make_preflight("chat-a", Some("chat-a")))
+            .unwrap();
+
+        std::env::set_var("SIGNET_CHAT_ID", "chat-a");
+        assert_eq!(vault.active_preflight().unwrap().id, "chat-a");
+
+        std::env::set_var("SIGNET_CHAT_ID", "chat-b");
+        assert_eq!(vault.active_preflight().unwrap().id, "global");
+
+        clear_session_env();
+    }
+
+    #[test]
+    fn test_session_preflight_does_not_deactivate_global_or_other_sessions() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        clear_session_env();
+        let dir = tempfile::tempdir().unwrap();
+        let vault = make_test_vault(dir.path(), "testpass123");
+        vault
+            .store_preflight(&make_preflight("global", None))
+            .unwrap();
+        vault
+            .store_preflight(&make_preflight("chat-a", Some("chat-a")))
+            .unwrap();
+        vault
+            .store_preflight(&make_preflight("chat-b", Some("chat-b")))
+            .unwrap();
+
+        std::env::set_var("SIGNET_CHAT_ID", "chat-a");
+        assert_eq!(vault.active_preflight().unwrap().id, "chat-a");
+        std::env::set_var("SIGNET_CHAT_ID", "chat-b");
+        assert_eq!(vault.active_preflight().unwrap().id, "chat-b");
+        clear_session_env();
+        assert_eq!(vault.active_preflight().unwrap().id, "global");
+
+        clear_session_env();
+    }
+
+    #[test]
+    fn test_override_preflight_only_deactivates_current_session() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        clear_session_env();
+        let dir = tempfile::tempdir().unwrap();
+        let vault = make_test_vault(dir.path(), "testpass123");
+        vault
+            .store_preflight(&make_preflight("global", None))
+            .unwrap();
+        vault
+            .store_preflight(&make_preflight("chat-a", Some("chat-a")))
+            .unwrap();
+        vault
+            .store_preflight(&make_preflight("chat-b", Some("chat-b")))
+            .unwrap();
+
+        std::env::set_var("SIGNET_CHAT_ID", "chat-a");
+        vault.override_preflight().unwrap();
+        assert_eq!(vault.active_preflight().unwrap().id, "global");
+
+        std::env::set_var("SIGNET_CHAT_ID", "chat-b");
+        assert_eq!(vault.active_preflight().unwrap().id, "chat-b");
+
+        clear_session_env();
     }
 
     #[test]

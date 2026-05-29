@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [3.11.1] - 2026-05-29
+
+### Fixed
+- Scoped preflight state to real client chat/session identifiers before falling back to `SIGNET_SESSION`, preventing two agent windows in the same repository from sharing a preflight unintentionally.
+- Hook evaluation now extracts session identifiers from client payloads and applies them process-locally for preflight, pause, and disable checks.
+- Session-scoped preflights no longer deactivate global preflights or preflights from other sessions; active lookup prefers the exact session before an explicit global preflight.
+
+
 ## [3.11.0] - 2026-05-15
 
 ### Added

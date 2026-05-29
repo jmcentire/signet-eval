@@ -215,6 +215,7 @@ impl ServerHandler for SignetMcpServer {
                             "required": ["name", "tool_pattern", "conditions", "action", "reason", "alternative"]
                         }, "description": "Self-imposed soft constraints (max 20)"},
                         "lockout_minutes": {"type": "integer", "description": "How long this preflight is locked (5-480 min)", "minimum": 5, "maximum": 480},
+                        "session_id": {"type": "string", "description": "Optional chat/session id. Defaults to current client session env if available."},
                         "force": {"type": "boolean", "description": "Bypass overly-broad constraint check (default false)", "default": false}
                     },
                     "required": ["task", "risks", "constraints", "lockout_minutes"]
@@ -1142,7 +1143,12 @@ fn handle_preflight_submit(args: &serde_json::Map<String, Value>) -> String {
         }
     }
 
-    let session_id = vault::current_session_id();
+    let session_id = args
+        .get("session_id")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.trim().is_empty())
+        .map(|s| s.to_string())
+        .or_else(vault::current_session_id);
 
     match vault::try_load_vault() {
         Some(v) => {
@@ -1244,12 +1250,14 @@ fn handle_preflight_history(args: &serde_json::Map<String, Value>) -> String {
                 } else {
                     "completed"
                 };
+                let session = h["session_id"].as_str().unwrap_or("global");
                 lines.push(format!(
-                    "  {} [{}] {} (violations: {})",
+                    "  {} [{}] {} (violations: {}, session: {})",
                     &id[..8.min(id.len())],
                     status,
                     task,
-                    violations
+                    violations,
+                    session
                 ));
             }
             lines.join("\n")
