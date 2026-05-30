@@ -1,3 +1,6 @@
+domains:
+  - signet-eval
+
 name: signet-eval
 description: Deterministic policy enforcement for AI agent tool calls. Rust single binary. Claude Code PreToolUse hook + MCP management server + MCP proxy.
 version: 3.11.0
@@ -6,3 +9,14 @@ license: MIT
 repository: https://github.com/jmcentire/signet-eval
 tags: signet, security, policy, ai-safety, claude-code, mcp, rust
 audience: public
+
+work_policy:
+  require_active_tag: false
+  linear:
+    enabled: false
+    require_issue: false
+  git:
+    block_commit_without_tag: false
+    block_commit_without_linear: false
+    block_push_without_tag: false
+    block_push_without_linear: false
