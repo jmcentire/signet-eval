@@ -1,2903 +1,560 @@
 {
-  "version": "1.0.0",
-  "project": {
-    "name": "signet-eval",
-    "description": "Code map exported from Kindex for signet-eval.",
-    "languages": [
-      "Python",
-      "Rust",
-      "python",
-      "rust"
-    ],
-    "frameworks": [],
-    "analyzedAt": "2026-05-24T15:04:47",
-    "gitCommitHash": "640230b8934a2dc22797694e40e1de7b1346fddf"
-  },
-  "nodes": [
-    {
-      "id": "code-sym-signet-eval-2ca611844f11",
-      "type": "class",
-      "name": "HookAdapter",
-      "filePath": "src/hook.rs",
-      "summary": "class HookAdapter (src/hook.rs:23)",
-      "tags": [
-        "code",
-        "rust"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Rust",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-a4011e89af72",
-      "type": "class",
-      "name": "HookEvent",
-      "filePath": "src/hook.rs",
-      "summary": "class HookEvent (src/hook.rs:54)",
-      "tags": [
-        "code",
-        "rust"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Rust",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-06133aed5d2b",
-      "type": "class",
-      "name": "PauseEntry",
-      "filePath": "src/vault.rs",
-      "summary": "class PauseEntry (src/vault.rs:1139)",
-      "tags": [
-        "code",
-        "rust"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Rust",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-f34cd53a8b6f",
-      "type": "class",
-      "name": "FromCommandSpec",
-      "filePath": "src/policy.rs",
-      "summary": "class FromCommandSpec (src/policy.rs:78)",
-      "tags": [
-        "code",
-        "rust"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Rust",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-3525ca839e94",
-      "type": "class",
-      "name": "InjectCommandAllowlist",
-      "filePath": "src/policy.rs",
-      "summary": "class InjectCommandAllowlist (src/policy.rs:904)",
-      "tags": [
-        "code",
-        "rust"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Rust",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-4090c4a9df77",
-      "type": "class",
-      "name": "InjectCommandEntry",
-      "filePath": "src/policy.rs",
-      "summary": "class InjectCommandEntry (src/policy.rs:910)",
-      "tags": [
-        "code",
-        "rust"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Rust",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-5240bf0328b8",
-      "type": "class",
-      "name": "InjectConfig",
-      "filePath": "src/policy.rs",
-      "summary": "class InjectConfig (src/policy.rs:105)",
-      "tags": [
-        "code",
-        "rust"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Rust",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-710bbcc9bcff",
-      "type": "class",
-      "name": "InjectMode",
-      "filePath": "src/policy.rs",
-      "summary": "class InjectMode (src/policy.rs:48)",
-      "tags": [
-        "code",
-        "rust"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Rust",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-b97f23b7a608",
-      "type": "class",
-      "name": "InjectPayload",
-      "filePath": "src/policy.rs",
-      "summary": "class InjectPayload (src/policy.rs:85)",
-      "tags": [
-        "code",
-        "rust"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Rust",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-17bf64bc9a3e",
-      "type": "class",
-      "name": "InjectTrigger",
-      "filePath": "src/policy.rs",
-      "summary": "class InjectTrigger (src/policy.rs:57)",
-      "tags": [
-        "code",
-        "rust"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Rust",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-69d94fc188a1",
-      "type": "class",
-      "name": "CodexPermissionDecision",
-      "filePath": "src/hook.rs",
-      "summary": "class CodexPermissionDecision (src/hook.rs:95)",
-      "tags": [
-        "code",
-        "rust"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Rust",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-b2bffbf5a472",
-      "type": "class",
-      "name": "CodexPermissionOutput",
-      "filePath": "src/hook.rs",
-      "summary": "class CodexPermissionOutput (src/hook.rs:88)",
-      "tags": [
-        "code",
-        "rust"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Rust",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-24957ac972ef",
-      "type": "class",
-      "name": "CodexPermissionResponse",
-      "filePath": "src/hook.rs",
-      "summary": "class CodexPermissionResponse (src/hook.rs:82)",
-      "tags": [
-        "code",
-        "rust"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Rust",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-mod-signet-eval-3c742d80eead",
-      "type": "file",
-      "name": "contracts/root/interface.py",
-      "filePath": "contracts/root/interface.py",
-      "summary": "Language: Python | Path: contracts/root/interface.py | ~296 lines ## Classes - McpToolResponse",
-      "tags": [
-        "code",
-        "python"
-      ],
-      "complexity": 17,
-      "languageNotes": {
-        "language": "Python",
-        "kindexType": "artifact",
-        "toolTier": "C"
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-a3dc2bec41f8",
-      "type": "class",
-      "name": "McpToolResponse",
-      "filePath": "contracts/root/interface.py",
-      "summary": "class McpToolResponse (contracts/root/interface.py:52)",
-      "tags": [
-        "code",
-        "python"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Python",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-a7cd1eb88eed",
-      "type": "class",
-      "name": "MigrationResult",
-      "filePath": "contracts/root/interface.py",
-      "summary": "class MigrationResult(Enum) (contracts/root/interface.py:59)",
-      "tags": [
-        "code",
-        "python"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Python",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-24d0cb9147d4",
-      "type": "class",
-      "name": "Preflight",
-      "filePath": "contracts/root/interface.py",
-      "summary": "class Preflight (contracts/root/interface.py:33)",
-      "tags": [
-        "code",
-        "python"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Python",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-fdb86c4342e9",
-      "type": "class",
-      "name": "PreflightDeactivationScope",
-      "filePath": "contracts/root/interface.py",
-      "summary": "class PreflightDeactivationScope(Enum) (contracts/root/interface.py:28)",
-      "tags": [
-        "code",
-        "python"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Python",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-6622fa4726b7",
-      "type": "class",
-      "name": "PreflightError",
-      "filePath": "contracts/root/interface.py",
-      "summary": "class PreflightError(Enum) (contracts/root/interface.py:65)",
-      "tags": [
-        "code",
-        "python"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Python",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-8f28884c29da",
-      "type": "class",
-      "name": "PreflightHistoryFilter",
-      "filePath": "contracts/root/interface.py",
-      "summary": "class PreflightHistoryFilter (contracts/root/interface.py:46)",
-      "tags": [
-        "code",
-        "python"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Python",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-a4d42b39ff74",
-      "type": "class",
-      "name": "PreflightSessionFilter",
-      "filePath": "contracts/root/interface.py",
-      "summary": "class PreflightSessionFilter(Enum) (contracts/root/interface.py:23)",
-      "tags": [
-        "code",
-        "python"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Python",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-mod-signet-eval-cc29b449457e",
-      "type": "file",
-      "name": "contracts/cli_observability_and_fix/interface.py",
-      "filePath": "contracts/cli_observability_and_fix/interface.py",
-      "summary": "Language: Python | Path: contracts/cli_observability_and_fix/interface.py | ~351 lines ## Classes - ClearedOverride",
-      "tags": [
-        "code",
-        "python"
-      ],
-      "complexity": 28,
-      "languageNotes": {
-        "language": "Python",
-        "kindexType": "artifact",
-        "toolTier": "C"
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-d5c70c95aac4",
-      "type": "class",
-      "name": "ClearedOverride",
-      "filePath": "contracts/cli_observability_and_fix/interface.py",
-      "summary": "class ClearedOverride (contracts/cli_observability_and_fix/interface.py:94)",
-      "tags": [
-        "code",
-        "python"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Python",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-d96983c01a37",
-      "type": "class",
-      "name": "ClearedOverrideKind",
-      "filePath": "contracts/cli_observability_and_fix/interface.py",
-      "summary": "class ClearedOverrideKind(Enum) (contracts/cli_observability_and_fix/interface.py:89)",
-      "tags": [
-        "code",
-        "python"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Python",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-206a52b7b8e4",
-      "type": "class",
-      "name": "CliExitCode",
-      "filePath": "contracts/cli_observability_and_fix/interface.py",
-      "summary": "class CliExitCode(Enum) (contracts/cli_observability_and_fix/interface.py:43)",
-      "tags": [
-        "code",
-        "python"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Python",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-9a18de66b132",
-      "type": "class",
-      "name": "Diagnostic",
-      "filePath": "contracts/cli_observability_and_fix/interface.py",
-      "summary": "class Diagnostic (contracts/cli_observability_and_fix/interface.py:62)",
-      "tags": [
-        "code",
-        "python"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Python",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-081fdc5dbc10",
-      "type": "class",
-      "name": "DiagnosticSeverity",
-      "filePath": "contracts/cli_observability_and_fix/interface.py",
-      "summary": "class DiagnosticSeverity(Enum) (contracts/cli_observability_and_fix/interface.py:56)",
-      "tags": [
-        "code",
-        "python"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Python",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-c4d1c56e06de",
-      "type": "class",
-      "name": "DiffLine",
-      "filePath": "contracts/cli_observability_and_fix/interface.py",
-      "summary": "class DiffLine (contracts/cli_observability_and_fix/interface.py:135)",
-      "tags": [
-        "code",
-        "python"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Python",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-01e03fb9d5b7",
-      "type": "class",
-      "name": "EnableResult",
-      "filePath": "contracts/cli_observability_and_fix/interface.py",
-      "summary": "class EnableResult (contracts/cli_observability_and_fix/interface.py:102)",
-      "tags": [
-        "code",
-        "python"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Python",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-34de3df90ba8",
-      "type": "class",
-      "name": "EnforcementState",
-      "filePath": "contracts/cli_observability_and_fix/interface.py",
-      "summary": "class EnforcementState (contracts/cli_observability_and_fix/interface.py:127)",
-      "tags": [
-        "code",
-        "python"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Python",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-32e60c6afb76",
-      "type": "class",
-      "name": "FieldPath",
-      "filePath": "contracts/cli_observability_and_fix/interface.py",
-      "summary": "class FieldPath (contracts/cli_observability_and_fix/interface.py:29)",
-      "tags": [
-        "code",
-        "python"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Python",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-a9e6aa779575",
-      "type": "class",
-      "name": "FixChange",
-      "filePath": "contracts/cli_observability_and_fix/interface.py",
-      "summary": "class FixChange (contracts/cli_observability_and_fix/interface.py:72)",
-      "tags": [
-        "code",
-        "python"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Python",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-3f2f2f9c6bb1",
-      "type": "class",
-      "name": "FixResult",
-      "filePath": "contracts/cli_observability_and_fix/interface.py",
-      "summary": "class FixResult (contracts/cli_observability_and_fix/interface.py:82)",
-      "tags": [
-        "code",
-        "python"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Python",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-70d3b6024c38",
-      "type": "class",
-      "name": "PauseEntry",
-      "filePath": "contracts/cli_observability_and_fix/interface.py",
-      "summary": "class PauseEntry (contracts/cli_observability_and_fix/interface.py:117)",
-      "tags": [
-        "code",
-        "python"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Python",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-acc1cd4ccb16",
-      "type": "class",
-      "name": "PauseScope",
-      "filePath": "contracts/cli_observability_and_fix/interface.py",
-      "summary": "class PauseScope(Enum) (contracts/cli_observability_and_fix/interface.py:110)",
-      "tags": [
-        "code",
-        "python"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Python",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-a4f4f62165c3",
-      "type": "class",
-      "name": "Policy",
-      "filePath": "contracts/cli_observability_and_fix/interface.py",
-      "summary": "class Policy (contracts/cli_observability_and_fix/interface.py:50)",
-      "tags": [
-        "code",
-        "python"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Python",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-3f281541792f",
-      "type": "class",
-      "name": "PolicyPath",
-      "filePath": "contracts/cli_observability_and_fix/interface.py",
-      "summary": "class PolicyPath (contracts/cli_observability_and_fix/interface.py:19)",
-      "tags": [
-        "code",
-        "python"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Python",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-a40063605d39",
-      "type": "class",
-      "name": "PolicyRule",
-      "filePath": "contracts/cli_observability_and_fix/interface.py",
-      "summary": "class PolicyRule (contracts/cli_observability_and_fix/interface.py:159)",
-      "tags": [
-        "code",
-        "python"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Python",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-275cbe92a8a3",
-      "type": "class",
-      "name": "RuleId",
-      "filePath": "contracts/cli_observability_and_fix/interface.py",
-      "summary": "class RuleId (contracts/cli_observability_and_fix/interface.py:25)",
-      "tags": [
-        "code",
-        "python"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Python",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-85f3a75ac3ce",
-      "type": "class",
-      "name": "Timestamp",
-      "filePath": "contracts/cli_observability_and_fix/interface.py",
-      "summary": "class Timestamp (contracts/cli_observability_and_fix/interface.py:33)",
-      "tags": [
-        "code",
-        "python"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Python",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-9ecb2f543b3a",
-      "type": "class",
-      "name": "ValidateMode",
-      "filePath": "contracts/cli_observability_and_fix/interface.py",
-      "summary": "class ValidateMode(Enum) (contracts/cli_observability_and_fix/interface.py:37)",
-      "tags": [
-        "code",
-        "python"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Python",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-c1adfe396aa5",
-      "type": "class",
-      "name": "EvaluationResult",
-      "filePath": "src/policy.rs",
-      "summary": "class EvaluationResult (src/policy.rs:224)",
-      "tags": [
-        "code",
-        "rust"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Rust",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-8a03ad4b3fd5",
-      "type": "class",
-      "name": "EvaluationResult",
-      "filePath": "contracts/src_policy.rs/interface.py",
-      "summary": "class EvaluationResult (contracts/src_policy.rs/interface.py:73)",
-      "tags": [
-        "code",
-        "python"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Python",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-1d27d16584d5",
-      "type": "class",
-      "name": "ToolCall",
-      "filePath": "src/policy.rs",
-      "summary": "class ToolCall (src/policy.rs:236)",
-      "tags": [
-        "code",
-        "rust"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Rust",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-73ba719e1523",
-      "type": "class",
-      "name": "ToolCall",
-      "filePath": "src/src_policy.rs/policy.rs",
-      "summary": "class ToolCall (src/src_policy.rs/policy.rs:115)",
-      "tags": [
-        "code",
-        "rust"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Rust",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-0e0d9a9b4521",
-      "type": "class",
-      "name": "ToolCall",
-      "filePath": "contracts/src_policy.rs/interface.py",
-      "summary": "class ToolCall (contracts/src_policy.rs/interface.py:82)",
-      "tags": [
-        "code",
-        "python"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Python",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-28be9fc6dc2d",
-      "type": "class",
-      "name": "Command",
-      "filePath": "src/main.rs",
-      "summary": "class Command (src/main.rs:37)",
-      "tags": [
-        "code",
-        "rust"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Rust",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-130673b713c5",
-      "type": "class",
-      "name": "PolicyRule",
-      "filePath": "src/policy.rs",
-      "summary": "class PolicyRule (src/policy.rs:144)",
-      "tags": [
-        "code",
-        "rust"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Rust",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-mod-signet-eval-016defdf85b9",
-      "type": "file",
-      "name": "src/policy.rs",
-      "filePath": "src/policy.rs",
-      "summary": "Language: Rust | Path: src/policy.rs | ~4905 lines ## Classes - CompiledPolicy",
-      "tags": [
-        "code",
-        "rust"
-      ],
-      "complexity": 57,
-      "languageNotes": {
-        "language": "Rust",
-        "kindexType": "artifact",
-        "toolTier": "C"
-      }
-    },
-    {
-      "id": "code-mod-signet-eval-42cb6807ad74",
-      "type": "file",
-      "name": "src/main.rs",
-      "filePath": "src/main.rs",
-      "summary": "Language: Rust | Path: src/main.rs | ~1003 lines ## Classes - Cli",
-      "tags": [
-        "code",
-        "rust"
-      ],
-      "complexity": 6,
-      "languageNotes": {
-        "language": "Rust",
-        "kindexType": "artifact",
-        "toolTier": "C"
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-5a85256144ef",
-      "type": "class",
-      "name": "Cli",
-      "filePath": "src/main.rs",
-      "summary": "class Cli (src/main.rs:19)",
-      "tags": [
-        "code",
-        "rust"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Rust",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-cc19c400db0a",
-      "type": "class",
-      "name": "run.TestInput",
-      "filePath": "src/main.rs",
-      "summary": "class TestInput (src/main.rs:430)",
-      "tags": [
-        "code",
-        "rust"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Rust",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-mod-signet-eval-695264fb0bd2",
-      "type": "file",
-      "name": "src/vault.rs",
-      "filePath": "src/vault.rs",
-      "summary": "Language: Rust | Path: src/vault.rs | ~1622 lines ## Classes - CredentialMeta",
-      "tags": [
-        "code",
-        "rust"
-      ],
-      "complexity": 55,
-      "languageNotes": {
-        "language": "Rust",
-        "kindexType": "artifact",
-        "toolTier": "C"
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-0561ecd8823e",
-      "type": "class",
-      "name": "CredentialMeta",
-      "filePath": "src/vault.rs",
-      "summary": "class CredentialMeta (src/vault.rs:160)",
-      "tags": [
-        "code",
-        "rust"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Rust",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-3d4678aea139",
-      "type": "class",
-      "name": "Preflight",
-      "filePath": "src/vault.rs",
-      "summary": "class Preflight (src/vault.rs:176)",
-      "tags": [
-        "code",
-        "rust"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Rust",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-2686c4ffeb7a",
-      "type": "class",
-      "name": "PreflightViolation",
-      "filePath": "src/vault.rs",
-      "summary": "class PreflightViolation (src/vault.rs:200)",
-      "tags": [
-        "code",
-        "rust"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Rust",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-e73ec591c56b",
-      "type": "class",
-      "name": "SoftConstraint",
-      "filePath": "src/vault.rs",
-      "summary": "class SoftConstraint (src/vault.rs:190)",
-      "tags": [
-        "code",
-        "rust"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Rust",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-007f6577f9ca",
-      "type": "class",
-      "name": "Vault",
-      "filePath": "src/vault.rs",
-      "summary": "class Vault (src/vault.rs:211)",
-      "tags": [
-        "code",
-        "rust"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Rust",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-a4d640bef76e",
-      "type": "class",
-      "name": "VaultMeta",
-      "filePath": "src/vault.rs",
-      "summary": "class VaultMeta (src/vault.rs:108)",
-      "tags": [
-        "code",
-        "rust"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Rust",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-mod-signet-eval-408baa03c3b1",
-      "type": "file",
-      "name": "src/hook.rs",
-      "filePath": "src/hook.rs",
-      "summary": "Language: Rust | Path: src/hook.rs | ~581 lines ## Classes - CodexPermissionDecision",
-      "tags": [
-        "code",
-        "rust"
-      ],
-      "complexity": 17,
-      "languageNotes": {
-        "language": "Rust",
-        "kindexType": "artifact",
-        "toolTier": "C"
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-e9b254a7732f",
-      "type": "class",
-      "name": "HookInput",
-      "filePath": "src/hook.rs",
-      "summary": "class HookInput (src/hook.rs:14)",
-      "tags": [
-        "code",
-        "rust"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Rust",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-97431ed7f7e1",
-      "type": "class",
-      "name": "HookOutput",
-      "filePath": "src/hook.rs",
-      "summary": "class HookOutput (src/hook.rs:67)",
-      "tags": [
-        "code",
-        "rust"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Rust",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-47c329f4d795",
-      "type": "class",
-      "name": "HookResponse",
-      "filePath": "src/hook.rs",
-      "summary": "class HookResponse (src/hook.rs:61)",
-      "tags": [
-        "code",
-        "rust"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Rust",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-mod-signet-eval-33e8367dba2d",
-      "type": "file",
-      "name": "src/mcp_server.rs",
-      "filePath": "src/mcp_server.rs",
-      "summary": "Language: Rust | Path: src/mcp_server.rs | ~1316 lines ## Classes - SignetMcpServer",
-      "tags": [
-        "code",
-        "rust"
-      ],
-      "complexity": 33,
-      "languageNotes": {
-        "language": "Rust",
-        "kindexType": "artifact",
-        "toolTier": "C"
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-7701260b92f6",
-      "type": "class",
-      "name": "SignetMcpServer",
-      "filePath": "src/mcp_server.rs",
-      "summary": "class SignetMcpServer (src/mcp_server.rs:86)",
-      "tags": [
-        "code",
-        "rust"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Rust",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-mod-signet-eval-f016d9507188",
-      "type": "file",
-      "name": "src/mcp_proxy.rs",
-      "filePath": "src/mcp_proxy.rs",
-      "summary": "Language: Rust | Path: src/mcp_proxy.rs | ~263 lines ## Classes - ProxyConfig",
-      "tags": [
-        "code",
-        "rust"
-      ],
-      "complexity": 7,
-      "languageNotes": {
-        "language": "Rust",
-        "kindexType": "artifact",
-        "toolTier": "C"
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-f40e6046d039",
-      "type": "class",
-      "name": "ProxyConfig",
-      "filePath": "src/mcp_proxy.rs",
-      "summary": "class ProxyConfig (src/mcp_proxy.rs:22)",
-      "tags": [
-        "code",
-        "rust"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Rust",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-b8093564cdf7",
-      "type": "class",
-      "name": "ProxyServer",
-      "filePath": "src/mcp_proxy.rs",
-      "summary": "class ProxyServer (src/mcp_proxy.rs:42)",
-      "tags": [
-        "code",
-        "rust"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Rust",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-66707c4a17a7",
-      "type": "class",
-      "name": "UpstreamConfig",
-      "filePath": "src/mcp_proxy.rs",
-      "summary": "class UpstreamConfig (src/mcp_proxy.rs:28)",
-      "tags": [
-        "code",
-        "rust"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Rust",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-9ed6ca35e44f",
-      "type": "class",
-      "name": "UpstreamConnection",
-      "filePath": "src/mcp_proxy.rs",
-      "summary": "class UpstreamConnection (src/mcp_proxy.rs:36)",
-      "tags": [
-        "code",
-        "rust"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Rust",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-33132ade651a",
-      "type": "class",
-      "name": "CompiledPolicy",
-      "filePath": "src/policy.rs",
-      "summary": "class CompiledPolicy (src/policy.rs:217)",
-      "tags": [
-        "code",
-        "rust"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Rust",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-95b76164bcf5",
-      "type": "class",
-      "name": "CompiledRule",
-      "filePath": "src/policy.rs",
-      "summary": "class CompiledRule (src/policy.rs:203)",
-      "tags": [
-        "code",
-        "rust"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Rust",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-b216b235c099",
-      "type": "class",
-      "name": "Decision",
-      "filePath": "src/policy.rs",
-      "summary": "class Decision (src/policy.rs:15)",
-      "tags": [
-        "code",
-        "rust"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Rust",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-dd7cf73f4994",
-      "type": "class",
-      "name": "PolicyConfig",
-      "filePath": "src/policy.rs",
-      "summary": "class PolicyConfig (src/policy.rs:165)",
-      "tags": [
-        "code",
-        "rust"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Rust",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-1b0ace137a62",
-      "type": "class",
-      "name": "EnsureConfig",
-      "filePath": "src/policy.rs",
-      "summary": "class EnsureConfig (src/policy.rs:131)",
-      "tags": [
-        "code",
-        "rust"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Rust",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-5175fb0751a5",
-      "type": "class",
-      "name": "GateConfig",
-      "filePath": "src/policy.rs",
-      "summary": "class GateConfig (src/policy.rs:120)",
-      "tags": [
-        "code",
-        "rust"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Rust",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-c1c1081e81e5",
-      "type": "class",
-      "name": "DiagnosticSeverity",
-      "filePath": "src/policy.rs",
-      "summary": "class DiagnosticSeverity (src/policy.rs:182)",
-      "tags": [
-        "code",
-        "rust"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Rust",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-ecd4107cdfdf",
-      "type": "class",
-      "name": "PolicyFix",
-      "filePath": "src/policy.rs",
-      "summary": "class PolicyFix (src/policy.rs:196)",
-      "tags": [
-        "code",
-        "rust"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Rust",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-110e31d36060",
-      "type": "class",
-      "name": "ValidationDiagnostic",
-      "filePath": "src/policy.rs",
-      "summary": "class ValidationDiagnostic (src/policy.rs:188)",
-      "tags": [
-        "code",
-        "rust"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Rust",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-cee5a46f70f8",
-      "type": "class",
-      "name": "PolicyConfig",
-      "filePath": "contracts/src_policy.rs/interface.py",
-      "summary": "class PolicyConfig (contracts/src_policy.rs/interface.py:50) [Merged from: PolicyConfig] class PolicyConfig (contracts/src_mcp_server.rs/interface.py:26)",
-      "tags": [
-        "code",
-        "python"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Python",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-mod-signet-eval-78b27d5b9119",
-      "type": "file",
-      "name": "contracts/src_policy.rs/interface.py",
-      "filePath": "contracts/src_policy.rs/interface.py",
-      "summary": "Language: Python | Path: contracts/src_policy.rs/interface.py | ~411 lines ## Classes - CompiledPolicy",
-      "tags": [
-        "code",
-        "python"
-      ],
-      "complexity": 29,
-      "languageNotes": {
-        "language": "Python",
-        "kindexType": "artifact",
-        "toolTier": "C"
-      }
-    },
-    {
-      "id": "code-mod-signet-eval-f53017d105df",
-      "type": "file",
-      "name": "contracts/src_mcp_server.rs/interface.py",
-      "filePath": "contracts/src_mcp_server.rs/interface.py",
-      "summary": "Language: Python | Path: contracts/src_mcp_server.rs/interface.py | ~629 lines ## Classes - CallToolResult",
-      "tags": [
-        "code",
-        "python"
-      ],
-      "complexity": 39,
-      "languageNotes": {
-        "language": "Python",
-        "kindexType": "artifact",
-        "toolTier": "C"
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-8442832cf738",
-      "type": "class",
-      "name": "Cli",
-      "filePath": "contracts/src_main.rs/interface.py",
-      "summary": "class Cli (contracts/src_main.rs/interface.py:24)",
-      "tags": [
-        "code",
-        "python"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Python",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-c9b650ebd271",
-      "type": "class",
-      "name": "Command",
-      "filePath": "contracts/src_main.rs/interface.py",
-      "summary": "class Command(Enum) (contracts/src_main.rs/interface.py:29)",
-      "tags": [
-        "code",
-        "python"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Python",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-183a0745d780",
-      "type": "class",
-      "name": "TestInput",
-      "filePath": "contracts/src_main.rs/interface.py",
-      "summary": "class TestInput (contracts/src_main.rs/interface.py:53)",
-      "tags": [
-        "code",
-        "python"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Python",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-bff8c704354d",
-      "type": "class",
-      "name": "ServerInfo",
-      "filePath": "contracts/src_mcp_server.rs/interface.py",
-      "summary": "class ServerInfo (contracts/src_mcp_server.rs/interface.py:38)",
-      "tags": [
-        "code",
-        "python"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Python",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-8082b0b127db",
-      "type": "class",
-      "name": "SignetMcpServer",
-      "filePath": "contracts/src_mcp_server.rs/interface.py",
-      "summary": "class SignetMcpServer (contracts/src_mcp_server.rs/interface.py:22)",
-      "tags": [
-        "code",
-        "python"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Python",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-4112a2997e6a",
-      "type": "class",
-      "name": "Tool",
-      "filePath": "contracts/src_mcp_server.rs/interface.py",
-      "summary": "class Tool (contracts/src_mcp_server.rs/interface.py:32)",
-      "tags": [
-        "code",
-        "python"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Python",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-30abea207a45",
-      "type": "class",
-      "name": "CallToolResult",
-      "filePath": "contracts/src_mcp_server.rs/interface.py",
-      "summary": "class CallToolResult (contracts/src_mcp_server.rs/interface.py:48)",
-      "tags": [
-        "code",
-        "python"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Python",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-c1ecc27cae9a",
-      "type": "class",
-      "name": "Content",
-      "filePath": "contracts/src_mcp_server.rs/interface.py",
-      "summary": "class Content (contracts/src_mcp_server.rs/interface.py:52)",
-      "tags": [
-        "code",
-        "python"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Python",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-abd32ae73e3c",
-      "type": "class",
-      "name": "ListToolsResult",
-      "filePath": "contracts/src_mcp_server.rs/interface.py",
-      "summary": "class ListToolsResult (contracts/src_mcp_server.rs/interface.py:42)",
-      "tags": [
-        "code",
-        "python"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Python",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-bd4371a637ca",
-      "type": "class",
-      "name": "Decision",
-      "filePath": "src/src_policy.rs/policy.rs",
-      "summary": "class Decision (src/src_policy.rs/policy.rs:14)",
-      "tags": [
-        "code",
-        "rust"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Rust",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-a2af1ee9ded8",
-      "type": "class",
-      "name": "EvaluationResult",
-      "filePath": "src/src_policy.rs/policy.rs",
-      "summary": "class EvaluationResult (src/src_policy.rs/policy.rs:105)",
-      "tags": [
-        "code",
-        "rust"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Rust",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-mod-signet-eval-65a480e07df8",
-      "type": "file",
-      "name": "src/src_policy.rs/policy.rs",
-      "filePath": "src/src_policy.rs/policy.rs",
-      "summary": "Language: Rust | Path: src/src_policy.rs/policy.rs | ~2057 lines ## Classes - CompiledPolicy",
-      "tags": [
-        "code",
-        "rust"
-      ],
-      "complexity": 28,
-      "languageNotes": {
-        "language": "Rust",
-        "kindexType": "artifact",
-        "toolTier": "A"
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-ae5e6f813e40",
-      "type": "class",
-      "name": "CompiledPolicy",
-      "filePath": "src/src_policy.rs/policy.rs",
-      "summary": "class CompiledPolicy (src/src_policy.rs/policy.rs:100)",
-      "tags": [
-        "code",
-        "rust"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Rust",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-a329f20c0dfc",
-      "type": "class",
-      "name": "CompiledRule",
-      "filePath": "src/src_policy.rs/policy.rs",
-      "summary": "class CompiledRule (src/src_policy.rs/policy.rs:87)",
-      "tags": [
-        "code",
-        "rust"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Rust",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-739b29099c20",
-      "type": "class",
-      "name": "GateConfig",
-      "filePath": "contracts/src_policy.rs/interface.py",
-      "summary": "class GateConfig (contracts/src_policy.rs/interface.py:27)",
-      "tags": [
-        "code",
-        "python"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Python",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-fdbaba0ce037",
-      "type": "class",
-      "name": "PolicyRule",
-      "filePath": "contracts/src_policy.rs/interface.py",
-      "summary": "class PolicyRule (contracts/src_policy.rs/interface.py:38)",
-      "tags": [
-        "code",
-        "python"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Python",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-469c61dc3027",
-      "type": "class",
-      "name": "CompiledPolicy",
-      "filePath": "contracts/src_policy.rs/interface.py",
-      "summary": "class CompiledPolicy (contracts/src_policy.rs/interface.py:68)",
-      "tags": [
-        "code",
-        "python"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Python",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-9836e1885a79",
-      "type": "class",
-      "name": "CompiledRule",
-      "filePath": "contracts/src_policy.rs/interface.py",
-      "summary": "class CompiledRule (contracts/src_policy.rs/interface.py:56)",
-      "tags": [
-        "code",
-        "python"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Python",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-4abaf2ed93da",
-      "type": "class",
-      "name": "Decision",
-      "filePath": "contracts/src_policy.rs/interface.py",
-      "summary": "class Decision(Enum) (contracts/src_policy.rs/interface.py:19)",
-      "tags": [
-        "code",
-        "python"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Python",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-324ce5c5f43e",
-      "type": "class",
-      "name": "EnsureConfig",
-      "filePath": "contracts/src_policy.rs/interface.py",
-      "summary": "class EnsureConfig (contracts/src_policy.rs/interface.py:32)",
-      "tags": [
-        "code",
-        "python"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "Python",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-mod-signet-eval-0b1c85c552b8",
-      "type": "file",
-      "name": "contracts/src_main.rs/interface.py",
-      "filePath": "contracts/src_main.rs/interface.py",
-      "summary": "Language: Python | Path: contracts/src_main.rs/interface.py | ~128 lines ## Classes - Cli",
-      "tags": [
-        "code",
-        "python"
-      ],
-      "complexity": 6,
-      "languageNotes": {
-        "language": "Python",
-        "kindexType": "artifact",
-        "toolTier": "C"
-      }
-    },
-    {
-      "id": "code-mod-signet-eval-ba1f97205bea",
-      "type": "file",
-      "name": "src/src_main.rs/main.rs",
-      "filePath": "src/src_main.rs/main.rs",
-      "summary": "Language: Rust | Path: src/src_main.rs/main.rs | ~481 lines ## Classes - Cli",
-      "tags": [
-        "code",
-        "rust"
-      ],
-      "complexity": 6,
-      "languageNotes": {
-        "language": "Rust",
-        "kindexType": "artifact",
-        "toolTier": "A"
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-6b8cdca65ee0",
-      "type": "concept",
-      "name": "EnsureConfig",
-      "filePath": "/Users/jmcentire/Code/signet-eval/src/src_policy.rs/policy.rs:44",
-      "summary": "class EnsureConfig (src/src_policy.rs/policy.rs:44)",
-      "tags": [
-        "code",
-        "rust"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "rust",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-70f1420cb7a4",
-      "type": "concept",
-      "name": "GateConfig",
-      "filePath": "/Users/jmcentire/Code/signet-eval/src/src_policy.rs/policy.rs:35",
-      "summary": "class GateConfig (src/src_policy.rs/policy.rs:35)",
-      "tags": [
-        "code",
-        "rust"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "rust",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-1d7e4feb477e",
-      "type": "concept",
-      "name": "PolicyConfig",
-      "filePath": "/Users/jmcentire/Code/signet-eval/src/src_policy.rs/policy.rs:74",
-      "summary": "class PolicyConfig (src/src_policy.rs/policy.rs:74)",
-      "tags": [
-        "code",
-        "rust"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "rust",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-9e351bf035d5",
-      "type": "concept",
-      "name": "PolicyRule",
-      "filePath": "/Users/jmcentire/Code/signet-eval/src/src_policy.rs/policy.rs:55",
-      "summary": "class PolicyRule (src/src_policy.rs/policy.rs:55)",
-      "tags": [
-        "code",
-        "rust"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "rust",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    },
-    {
-      "id": "code-sym-signet-eval-e39fad7a8fe7",
-      "type": "concept",
-      "name": "PolicyConfig",
-      "filePath": "/Users/jmcentire/Code/signet-eval/contracts/src_mcp_server.rs/interface.py:26",
-      "summary": "class PolicyConfig (contracts/src_mcp_server.rs/interface.py:26)",
-      "tags": [
-        "code",
-        "python"
-      ],
-      "complexity": 1,
-      "languageNotes": {
-        "language": "python",
-        "kindexType": "concept",
-        "toolTier": ""
-      }
-    }
-  ],
   "edges": [
     {
-      "source": "code-sym-signet-eval-2ca611844f11",
-      "target": "code-mod-signet-eval-408baa03c3b1",
-      "type": "contains",
       "direction": "outbound",
-      "weight": 0.6
-    },
-    {
-      "source": "code-sym-signet-eval-a4011e89af72",
-      "target": "code-mod-signet-eval-408baa03c3b1",
-      "type": "contains",
-      "direction": "outbound",
-      "weight": 0.6
-    },
-    {
-      "source": "code-sym-signet-eval-06133aed5d2b",
-      "target": "code-mod-signet-eval-695264fb0bd2",
-      "type": "contains",
-      "direction": "outbound",
-      "weight": 0.6
-    },
-    {
-      "source": "code-sym-signet-eval-f34cd53a8b6f",
-      "target": "code-mod-signet-eval-016defdf85b9",
-      "type": "contains",
-      "direction": "outbound",
-      "weight": 0.6
-    },
-    {
-      "source": "code-sym-signet-eval-3525ca839e94",
-      "target": "code-mod-signet-eval-016defdf85b9",
-      "type": "contains",
-      "direction": "outbound",
-      "weight": 0.6
-    },
-    {
-      "source": "code-sym-signet-eval-4090c4a9df77",
-      "target": "code-mod-signet-eval-016defdf85b9",
-      "type": "contains",
-      "direction": "outbound",
-      "weight": 0.6
-    },
-    {
-      "source": "code-sym-signet-eval-5240bf0328b8",
-      "target": "code-mod-signet-eval-016defdf85b9",
-      "type": "contains",
-      "direction": "outbound",
-      "weight": 0.6
-    },
-    {
-      "source": "code-sym-signet-eval-710bbcc9bcff",
-      "target": "code-mod-signet-eval-016defdf85b9",
-      "type": "contains",
-      "direction": "outbound",
-      "weight": 0.6
-    },
-    {
-      "source": "code-sym-signet-eval-b97f23b7a608",
-      "target": "code-mod-signet-eval-016defdf85b9",
-      "type": "contains",
-      "direction": "outbound",
-      "weight": 0.6
-    },
-    {
-      "source": "code-sym-signet-eval-17bf64bc9a3e",
-      "target": "code-mod-signet-eval-016defdf85b9",
-      "type": "contains",
-      "direction": "outbound",
-      "weight": 0.6
-    },
-    {
-      "source": "code-sym-signet-eval-69d94fc188a1",
-      "target": "code-mod-signet-eval-408baa03c3b1",
-      "type": "contains",
-      "direction": "outbound",
-      "weight": 0.6
-    },
-    {
-      "source": "code-sym-signet-eval-b2bffbf5a472",
-      "target": "code-mod-signet-eval-408baa03c3b1",
-      "type": "contains",
-      "direction": "outbound",
-      "weight": 0.6
-    },
-    {
-      "source": "code-sym-signet-eval-24957ac972ef",
-      "target": "code-mod-signet-eval-408baa03c3b1",
-      "type": "contains",
-      "direction": "outbound",
-      "weight": 0.6
-    },
-    {
-      "source": "code-sym-signet-eval-a3dc2bec41f8",
-      "target": "code-mod-signet-eval-3c742d80eead",
-      "type": "contains",
-      "direction": "outbound",
-      "weight": 0.6
-    },
-    {
-      "source": "code-sym-signet-eval-a7cd1eb88eed",
-      "target": "code-mod-signet-eval-3c742d80eead",
-      "type": "contains",
-      "direction": "outbound",
-      "weight": 0.6
-    },
-    {
-      "source": "code-sym-signet-eval-24d0cb9147d4",
-      "target": "code-mod-signet-eval-3c742d80eead",
-      "type": "contains",
-      "direction": "outbound",
-      "weight": 0.6
-    },
-    {
-      "source": "code-sym-signet-eval-fdb86c4342e9",
-      "target": "code-mod-signet-eval-3c742d80eead",
-      "type": "contains",
-      "direction": "outbound",
-      "weight": 0.6
-    },
-    {
-      "source": "code-sym-signet-eval-6622fa4726b7",
-      "target": "code-mod-signet-eval-3c742d80eead",
-      "type": "contains",
-      "direction": "outbound",
-      "weight": 0.6
-    },
-    {
-      "source": "code-sym-signet-eval-8f28884c29da",
-      "target": "code-mod-signet-eval-3c742d80eead",
-      "type": "contains",
-      "direction": "outbound",
-      "weight": 0.6
-    },
-    {
-      "source": "code-sym-signet-eval-a4d42b39ff74",
-      "target": "code-mod-signet-eval-3c742d80eead",
-      "type": "contains",
-      "direction": "outbound",
-      "weight": 0.6
-    },
-    {
-      "source": "code-sym-signet-eval-d5c70c95aac4",
-      "target": "code-mod-signet-eval-cc29b449457e",
-      "type": "contains",
-      "direction": "outbound",
-      "weight": 0.6
-    },
-    {
-      "source": "code-sym-signet-eval-d96983c01a37",
-      "target": "code-mod-signet-eval-cc29b449457e",
-      "type": "contains",
-      "direction": "outbound",
-      "weight": 0.6
-    },
-    {
-      "source": "code-sym-signet-eval-206a52b7b8e4",
-      "target": "code-mod-signet-eval-cc29b449457e",
-      "type": "contains",
-      "direction": "outbound",
-      "weight": 0.6
-    },
-    {
-      "source": "code-sym-signet-eval-9a18de66b132",
-      "target": "code-mod-signet-eval-cc29b449457e",
-      "type": "contains",
-      "direction": "outbound",
-      "weight": 0.6
-    },
-    {
-      "source": "code-sym-signet-eval-081fdc5dbc10",
-      "target": "code-mod-signet-eval-cc29b449457e",
-      "type": "contains",
-      "direction": "outbound",
-      "weight": 0.6
-    },
-    {
-      "source": "code-sym-signet-eval-c4d1c56e06de",
-      "target": "code-mod-signet-eval-cc29b449457e",
-      "type": "contains",
-      "direction": "outbound",
-      "weight": 0.6
-    },
-    {
-      "source": "code-sym-signet-eval-01e03fb9d5b7",
-      "target": "code-mod-signet-eval-cc29b449457e",
-      "type": "contains",
-      "direction": "outbound",
-      "weight": 0.6
-    },
-    {
-      "source": "code-sym-signet-eval-34de3df90ba8",
-      "target": "code-mod-signet-eval-cc29b449457e",
-      "type": "contains",
-      "direction": "outbound",
-      "weight": 0.6
-    },
-    {
-      "source": "code-sym-signet-eval-32e60c6afb76",
-      "target": "code-mod-signet-eval-cc29b449457e",
-      "type": "contains",
-      "direction": "outbound",
-      "weight": 0.6
-    },
-    {
-      "source": "code-sym-signet-eval-a9e6aa779575",
-      "target": "code-mod-signet-eval-cc29b449457e",
-      "type": "contains",
-      "direction": "outbound",
-      "weight": 0.6
-    },
-    {
-      "source": "code-sym-signet-eval-3f2f2f9c6bb1",
-      "target": "code-mod-signet-eval-cc29b449457e",
-      "type": "contains",
-      "direction": "outbound",
-      "weight": 0.6
-    },
-    {
-      "source": "code-sym-signet-eval-70d3b6024c38",
-      "target": "code-mod-signet-eval-cc29b449457e",
-      "type": "contains",
-      "direction": "outbound",
-      "weight": 0.6
-    },
-    {
-      "source": "code-sym-signet-eval-acc1cd4ccb16",
-      "target": "code-mod-signet-eval-cc29b449457e",
-      "type": "contains",
-      "direction": "outbound",
-      "weight": 0.6
-    },
-    {
-      "source": "code-sym-signet-eval-a4f4f62165c3",
-      "target": "code-mod-signet-eval-cc29b449457e",
-      "type": "contains",
-      "direction": "outbound",
-      "weight": 0.6
-    },
-    {
-      "source": "code-sym-signet-eval-3f281541792f",
-      "target": "code-mod-signet-eval-cc29b449457e",
-      "type": "contains",
-      "direction": "outbound",
-      "weight": 0.6
-    },
-    {
-      "source": "code-sym-signet-eval-a40063605d39",
-      "target": "code-mod-signet-eval-cc29b449457e",
-      "type": "contains",
-      "direction": "outbound",
-      "weight": 0.6
-    },
-    {
-      "source": "code-sym-signet-eval-275cbe92a8a3",
-      "target": "code-mod-signet-eval-cc29b449457e",
-      "type": "contains",
-      "direction": "outbound",
-      "weight": 0.6
-    },
-    {
-      "source": "code-sym-signet-eval-85f3a75ac3ce",
-      "target": "code-mod-signet-eval-cc29b449457e",
-      "type": "contains",
-      "direction": "outbound",
-      "weight": 0.6
-    },
-    {
-      "source": "code-sym-signet-eval-9ecb2f543b3a",
-      "target": "code-mod-signet-eval-cc29b449457e",
-      "type": "contains",
-      "direction": "outbound",
-      "weight": 0.6
-    },
-    {
-      "source": "code-sym-signet-eval-c1adfe396aa5",
-      "target": "code-mod-signet-eval-016defdf85b9",
-      "type": "contains",
-      "direction": "outbound",
-      "weight": 0.6
-    },
-    {
-      "source": "code-sym-signet-eval-c1adfe396aa5",
-      "target": "code-sym-signet-eval-a2af1ee9ded8",
-      "type": "related",
-      "direction": "outbound",
-      "weight": 0.0108
-    },
-    {
-      "source": "code-sym-signet-eval-c1adfe396aa5",
-      "target": "code-sym-signet-eval-8a03ad4b3fd5",
-      "type": "related",
-      "direction": "outbound",
-      "weight": 0.0107
-    },
-    {
-      "source": "code-sym-signet-eval-8a03ad4b3fd5",
-      "target": "code-mod-signet-eval-78b27d5b9119",
-      "type": "contains",
-      "direction": "outbound",
-      "weight": 0.0108
-    },
-    {
-      "source": "code-sym-signet-eval-8a03ad4b3fd5",
-      "target": "code-sym-signet-eval-c1adfe396aa5",
-      "type": "related",
-      "direction": "outbound",
-      "weight": 0.0108
-    },
-    {
-      "source": "code-sym-signet-eval-8a03ad4b3fd5",
-      "target": "code-sym-signet-eval-a2af1ee9ded8",
-      "type": "related",
-      "direction": "outbound",
-      "weight": 0.0108
-    },
-    {
-      "source": "code-sym-signet-eval-1d27d16584d5",
-      "target": "code-mod-signet-eval-016defdf85b9",
-      "type": "contains",
-      "direction": "outbound",
-      "weight": 0.6
-    },
-    {
-      "source": "code-sym-signet-eval-1d27d16584d5",
-      "target": "code-sym-signet-eval-73ba719e1523",
-      "type": "related",
-      "direction": "outbound",
-      "weight": 0.0108
-    },
-    {
-      "source": "code-sym-signet-eval-1d27d16584d5",
-      "target": "code-sym-signet-eval-0e0d9a9b4521",
-      "type": "related",
-      "direction": "outbound",
-      "weight": 0.0108
-    },
-    {
-      "source": "code-sym-signet-eval-73ba719e1523",
-      "target": "code-mod-signet-eval-65a480e07df8",
-      "type": "contains",
-      "direction": "outbound",
-      "weight": 0.0108
-    },
-    {
-      "source": "code-sym-signet-eval-73ba719e1523",
-      "target": "code-sym-signet-eval-1d27d16584d5",
-      "type": "related",
-      "direction": "outbound",
-      "weight": 0.0108
-    },
-    {
-      "source": "code-sym-signet-eval-73ba719e1523",
-      "target": "code-sym-signet-eval-0e0d9a9b4521",
-      "type": "related",
-      "direction": "outbound",
-      "weight": 0.0108
-    },
-    {
-      "source": "code-sym-signet-eval-0e0d9a9b4521",
-      "target": "code-mod-signet-eval-78b27d5b9119",
-      "type": "contains",
-      "direction": "outbound",
-      "weight": 0.0108
-    },
-    {
-      "source": "code-sym-signet-eval-0e0d9a9b4521",
-      "target": "code-sym-signet-eval-1d27d16584d5",
-      "type": "related",
-      "direction": "outbound",
-      "weight": 0.0108
-    },
-    {
-      "source": "code-sym-signet-eval-0e0d9a9b4521",
-      "target": "code-sym-signet-eval-73ba719e1523",
-      "type": "related",
-      "direction": "outbound",
-      "weight": 0.0108
-    },
-    {
-      "source": "code-sym-signet-eval-28be9fc6dc2d",
-      "target": "code-mod-signet-eval-42cb6807ad74",
-      "type": "contains",
-      "direction": "outbound",
-      "weight": 0.6
-    },
-    {
-      "source": "code-sym-signet-eval-28be9fc6dc2d",
-      "target": "code-sym-signet-eval-c9b650ebd271",
-      "type": "related",
-      "direction": "outbound",
-      "weight": 0.0108
-    },
-    {
-      "source": "code-sym-signet-eval-130673b713c5",
-      "target": "code-mod-signet-eval-016defdf85b9",
-      "type": "contains",
-      "direction": "outbound",
-      "weight": 0.6
-    },
-    {
-      "source": "code-sym-signet-eval-130673b713c5",
-      "target": "code-mod-signet-eval-65a480e07df8",
-      "type": "contains",
-      "direction": "outbound",
-      "weight": 0.0108
-    },
-    {
-      "source": "code-sym-signet-eval-130673b713c5",
-      "target": "code-sym-signet-eval-fdbaba0ce037",
-      "type": "related",
-      "direction": "outbound",
-      "weight": 0.0108
-    },
-    {
       "source": "code-mod-signet-eval-016defdf85b9",
       "target": "code-mod-signet-eval-695264fb0bd2",
       "type": "depends_on",
-      "direction": "outbound",
       "weight": 0.5
     },
     {
-      "source": "code-sym-signet-eval-5a85256144ef",
-      "target": "code-mod-signet-eval-42cb6807ad74",
-      "type": "contains",
       "direction": "outbound",
-      "weight": 0.6
+      "source": "code-mod-signet-eval-33e8367dba2d",
+      "target": "code-mod-signet-eval-016defdf85b9",
+      "type": "depends_on",
+      "weight": 0.5
     },
     {
-      "source": "code-sym-signet-eval-cc19c400db0a",
-      "target": "code-mod-signet-eval-42cb6807ad74",
-      "type": "contains",
       "direction": "outbound",
-      "weight": 0.6
-    },
-    {
-      "source": "code-sym-signet-eval-0561ecd8823e",
+      "source": "code-mod-signet-eval-33e8367dba2d",
       "target": "code-mod-signet-eval-695264fb0bd2",
-      "type": "contains",
-      "direction": "outbound",
-      "weight": 0.6
+      "type": "depends_on",
+      "weight": 0.5
     },
     {
-      "source": "code-sym-signet-eval-3d4678aea139",
+      "direction": "outbound",
+      "source": "code-mod-signet-eval-408baa03c3b1",
+      "target": "code-mod-signet-eval-016defdf85b9",
+      "type": "depends_on",
+      "weight": 0.5
+    },
+    {
+      "direction": "outbound",
+      "source": "code-mod-signet-eval-408baa03c3b1",
       "target": "code-mod-signet-eval-695264fb0bd2",
-      "type": "contains",
-      "direction": "outbound",
-      "weight": 0.6
+      "type": "depends_on",
+      "weight": 0.5
     },
     {
-      "source": "code-sym-signet-eval-2686c4ffeb7a",
+      "direction": "outbound",
+      "source": "code-mod-signet-eval-f016d9507188",
+      "target": "code-mod-signet-eval-016defdf85b9",
+      "type": "depends_on",
+      "weight": 0.5
+    },
+    {
+      "direction": "outbound",
+      "source": "code-mod-signet-eval-f016d9507188",
       "target": "code-mod-signet-eval-695264fb0bd2",
-      "type": "contains",
-      "direction": "outbound",
-      "weight": 0.6
+      "type": "depends_on",
+      "weight": 0.5
     },
     {
-      "source": "code-sym-signet-eval-e73ec591c56b",
-      "target": "code-mod-signet-eval-695264fb0bd2",
-      "type": "contains",
       "direction": "outbound",
-      "weight": 0.6
-    },
-    {
       "source": "code-sym-signet-eval-007f6577f9ca",
       "target": "code-mod-signet-eval-695264fb0bd2",
       "type": "contains",
-      "direction": "outbound",
       "weight": 0.6
     },
     {
-      "source": "code-sym-signet-eval-a4d640bef76e",
+      "direction": "outbound",
+      "source": "code-sym-signet-eval-01e03fb9d5b7",
+      "target": "code-mod-signet-eval-cc29b449457e",
+      "type": "contains",
+      "weight": 0.6
+    },
+    {
+      "direction": "outbound",
+      "source": "code-sym-signet-eval-0561ecd8823e",
       "target": "code-mod-signet-eval-695264fb0bd2",
       "type": "contains",
-      "direction": "outbound",
       "weight": 0.6
     },
     {
-      "source": "code-mod-signet-eval-408baa03c3b1",
-      "target": "code-mod-signet-eval-016defdf85b9",
-      "type": "depends_on",
       "direction": "outbound",
-      "weight": 0.5
-    },
-    {
-      "source": "code-mod-signet-eval-408baa03c3b1",
+      "source": "code-sym-signet-eval-06133aed5d2b",
       "target": "code-mod-signet-eval-695264fb0bd2",
-      "type": "depends_on",
-      "direction": "outbound",
-      "weight": 0.5
-    },
-    {
-      "source": "code-sym-signet-eval-e9b254a7732f",
-      "target": "code-mod-signet-eval-408baa03c3b1",
       "type": "contains",
-      "direction": "outbound",
       "weight": 0.6
     },
     {
-      "source": "code-sym-signet-eval-97431ed7f7e1",
-      "target": "code-mod-signet-eval-408baa03c3b1",
-      "type": "contains",
       "direction": "outbound",
+      "source": "code-sym-signet-eval-081fdc5dbc10",
+      "target": "code-mod-signet-eval-cc29b449457e",
+      "type": "contains",
       "weight": 0.6
     },
     {
-      "source": "code-sym-signet-eval-47c329f4d795",
-      "target": "code-mod-signet-eval-408baa03c3b1",
-      "type": "contains",
       "direction": "outbound",
-      "weight": 0.6
-    },
-    {
-      "source": "code-mod-signet-eval-33e8367dba2d",
-      "target": "code-mod-signet-eval-016defdf85b9",
-      "type": "depends_on",
-      "direction": "outbound",
-      "weight": 0.5
-    },
-    {
-      "source": "code-mod-signet-eval-33e8367dba2d",
-      "target": "code-mod-signet-eval-695264fb0bd2",
-      "type": "depends_on",
-      "direction": "outbound",
-      "weight": 0.5
-    },
-    {
-      "source": "code-sym-signet-eval-7701260b92f6",
-      "target": "code-mod-signet-eval-33e8367dba2d",
-      "type": "contains",
-      "direction": "outbound",
-      "weight": 0.6
-    },
-    {
-      "source": "code-mod-signet-eval-f016d9507188",
-      "target": "code-mod-signet-eval-016defdf85b9",
-      "type": "depends_on",
-      "direction": "outbound",
-      "weight": 0.5
-    },
-    {
-      "source": "code-mod-signet-eval-f016d9507188",
-      "target": "code-mod-signet-eval-695264fb0bd2",
-      "type": "depends_on",
-      "direction": "outbound",
-      "weight": 0.5
-    },
-    {
-      "source": "code-sym-signet-eval-f40e6046d039",
-      "target": "code-mod-signet-eval-f016d9507188",
-      "type": "contains",
-      "direction": "outbound",
-      "weight": 0.6
-    },
-    {
-      "source": "code-sym-signet-eval-b8093564cdf7",
-      "target": "code-mod-signet-eval-f016d9507188",
-      "type": "contains",
-      "direction": "outbound",
-      "weight": 0.6
-    },
-    {
-      "source": "code-sym-signet-eval-66707c4a17a7",
-      "target": "code-mod-signet-eval-f016d9507188",
-      "type": "contains",
-      "direction": "outbound",
-      "weight": 0.6
-    },
-    {
-      "source": "code-sym-signet-eval-9ed6ca35e44f",
-      "target": "code-mod-signet-eval-f016d9507188",
-      "type": "contains",
-      "direction": "outbound",
-      "weight": 0.6
-    },
-    {
-      "source": "code-sym-signet-eval-33132ade651a",
-      "target": "code-mod-signet-eval-016defdf85b9",
-      "type": "contains",
-      "direction": "outbound",
-      "weight": 0.6
-    },
-    {
-      "source": "code-sym-signet-eval-33132ade651a",
-      "target": "code-sym-signet-eval-469c61dc3027",
-      "type": "related",
-      "direction": "outbound",
-      "weight": 0.0108
-    },
-    {
-      "source": "code-sym-signet-eval-33132ade651a",
-      "target": "code-sym-signet-eval-ae5e6f813e40",
-      "type": "related",
-      "direction": "outbound",
-      "weight": 0.0108
-    },
-    {
-      "source": "code-sym-signet-eval-95b76164bcf5",
-      "target": "code-mod-signet-eval-016defdf85b9",
-      "type": "contains",
-      "direction": "outbound",
-      "weight": 0.6
-    },
-    {
-      "source": "code-sym-signet-eval-95b76164bcf5",
-      "target": "code-sym-signet-eval-9836e1885a79",
-      "type": "related",
-      "direction": "outbound",
-      "weight": 0.0108
-    },
-    {
-      "source": "code-sym-signet-eval-95b76164bcf5",
-      "target": "code-sym-signet-eval-a329f20c0dfc",
-      "type": "related",
-      "direction": "outbound",
-      "weight": 0.0108
-    },
-    {
-      "source": "code-sym-signet-eval-b216b235c099",
-      "target": "code-mod-signet-eval-016defdf85b9",
-      "type": "contains",
-      "direction": "outbound",
-      "weight": 0.6
-    },
-    {
-      "source": "code-sym-signet-eval-dd7cf73f4994",
-      "target": "code-mod-signet-eval-016defdf85b9",
-      "type": "contains",
-      "direction": "outbound",
-      "weight": 0.6
-    },
-    {
-      "source": "code-sym-signet-eval-dd7cf73f4994",
-      "target": "code-mod-signet-eval-65a480e07df8",
-      "type": "contains",
-      "direction": "outbound",
-      "weight": 0.0108
-    },
-    {
-      "source": "code-sym-signet-eval-1b0ace137a62",
-      "target": "code-mod-signet-eval-016defdf85b9",
-      "type": "contains",
-      "direction": "outbound",
-      "weight": 0.6
-    },
-    {
-      "source": "code-sym-signet-eval-1b0ace137a62",
-      "target": "code-mod-signet-eval-65a480e07df8",
-      "type": "contains",
-      "direction": "outbound",
-      "weight": 0.0108
-    },
-    {
-      "source": "code-sym-signet-eval-5175fb0751a5",
-      "target": "code-mod-signet-eval-016defdf85b9",
-      "type": "contains",
-      "direction": "outbound",
-      "weight": 0.6
-    },
-    {
-      "source": "code-sym-signet-eval-5175fb0751a5",
-      "target": "code-mod-signet-eval-65a480e07df8",
-      "type": "contains",
-      "direction": "outbound",
-      "weight": 0.0108
-    },
-    {
-      "source": "code-sym-signet-eval-c1c1081e81e5",
-      "target": "code-mod-signet-eval-016defdf85b9",
-      "type": "contains",
-      "direction": "outbound",
-      "weight": 0.6
-    },
-    {
-      "source": "code-sym-signet-eval-ecd4107cdfdf",
-      "target": "code-mod-signet-eval-016defdf85b9",
-      "type": "contains",
-      "direction": "outbound",
-      "weight": 0.6
-    },
-    {
       "source": "code-sym-signet-eval-110e31d36060",
       "target": "code-mod-signet-eval-016defdf85b9",
       "type": "contains",
-      "direction": "outbound",
       "weight": 0.6
     },
     {
-      "source": "code-sym-signet-eval-cee5a46f70f8",
-      "target": "code-mod-signet-eval-78b27d5b9119",
+      "direction": "outbound",
+      "source": "code-sym-signet-eval-130673b713c5",
+      "target": "code-mod-signet-eval-016defdf85b9",
       "type": "contains",
-      "direction": "outbound",
-      "weight": 0.0108
+      "weight": 0.6
     },
     {
-      "source": "code-sym-signet-eval-cee5a46f70f8",
-      "target": "code-mod-signet-eval-f53017d105df",
+      "direction": "outbound",
+      "source": "code-sym-signet-eval-17bf64bc9a3e",
+      "target": "code-mod-signet-eval-016defdf85b9",
       "type": "contains",
-      "direction": "outbound",
-      "weight": 0.0108
+      "weight": 0.6
     },
     {
-      "source": "code-mod-signet-eval-f53017d105df",
-      "target": "code-sym-signet-eval-cee5a46f70f8",
+      "direction": "outbound",
+      "source": "code-sym-signet-eval-1b0ace137a62",
+      "target": "code-mod-signet-eval-016defdf85b9",
       "type": "contains",
-      "direction": "outbound",
-      "weight": 0.0108
+      "weight": 0.6
     },
     {
-      "source": "code-sym-signet-eval-8442832cf738",
-      "target": "code-mod-signet-eval-0b1c85c552b8",
+      "direction": "outbound",
+      "source": "code-sym-signet-eval-1d27d16584d5",
+      "target": "code-mod-signet-eval-016defdf85b9",
       "type": "contains",
-      "direction": "outbound",
-      "weight": 0.0108
+      "weight": 0.6
     },
     {
-      "source": "code-sym-signet-eval-c9b650ebd271",
-      "target": "code-mod-signet-eval-0b1c85c552b8",
+      "direction": "outbound",
+      "source": "code-sym-signet-eval-206a52b7b8e4",
+      "target": "code-mod-signet-eval-cc29b449457e",
       "type": "contains",
-      "direction": "outbound",
-      "weight": 0.0108
+      "weight": 0.6
     },
     {
-      "source": "code-sym-signet-eval-c9b650ebd271",
-      "target": "code-sym-signet-eval-28be9fc6dc2d",
-      "type": "related",
       "direction": "outbound",
-      "weight": 0.0108
-    },
-    {
-      "source": "code-sym-signet-eval-183a0745d780",
-      "target": "code-mod-signet-eval-0b1c85c552b8",
+      "source": "code-sym-signet-eval-24957ac972ef",
+      "target": "code-mod-signet-eval-408baa03c3b1",
       "type": "contains",
-      "direction": "outbound",
-      "weight": 0.0108
+      "weight": 0.6
     },
     {
-      "source": "code-sym-signet-eval-bff8c704354d",
-      "target": "code-mod-signet-eval-f53017d105df",
+      "direction": "outbound",
+      "source": "code-sym-signet-eval-24d0cb9147d4",
+      "target": "code-mod-signet-eval-3c742d80eead",
       "type": "contains",
-      "direction": "outbound",
-      "weight": 0.0108
+      "weight": 0.6
     },
     {
-      "source": "code-sym-signet-eval-8082b0b127db",
-      "target": "code-mod-signet-eval-f53017d105df",
+      "direction": "outbound",
+      "source": "code-sym-signet-eval-2686c4ffeb7a",
+      "target": "code-mod-signet-eval-695264fb0bd2",
       "type": "contains",
-      "direction": "outbound",
-      "weight": 0.0108
+      "weight": 0.6
     },
     {
-      "source": "code-sym-signet-eval-4112a2997e6a",
-      "target": "code-mod-signet-eval-f53017d105df",
+      "direction": "outbound",
+      "source": "code-sym-signet-eval-275cbe92a8a3",
+      "target": "code-mod-signet-eval-cc29b449457e",
       "type": "contains",
-      "direction": "outbound",
-      "weight": 0.0108
+      "weight": 0.6
     },
     {
-      "source": "code-sym-signet-eval-30abea207a45",
-      "target": "code-mod-signet-eval-f53017d105df",
+      "direction": "outbound",
+      "source": "code-sym-signet-eval-28be9fc6dc2d",
+      "target": "code-mod-signet-eval-42cb6807ad74",
       "type": "contains",
-      "direction": "outbound",
-      "weight": 0.0108
+      "weight": 0.6
     },
     {
-      "source": "code-sym-signet-eval-c1ecc27cae9a",
-      "target": "code-mod-signet-eval-f53017d105df",
+      "direction": "outbound",
+      "source": "code-sym-signet-eval-2ca611844f11",
+      "target": "code-mod-signet-eval-408baa03c3b1",
       "type": "contains",
-      "direction": "outbound",
-      "weight": 0.0108
+      "weight": 0.6
     },
     {
-      "source": "code-sym-signet-eval-abd32ae73e3c",
-      "target": "code-mod-signet-eval-f53017d105df",
+      "direction": "outbound",
+      "source": "code-sym-signet-eval-32e60c6afb76",
+      "target": "code-mod-signet-eval-cc29b449457e",
       "type": "contains",
-      "direction": "outbound",
-      "weight": 0.0108
+      "weight": 0.6
     },
     {
-      "source": "code-sym-signet-eval-bd4371a637ca",
-      "target": "code-mod-signet-eval-65a480e07df8",
+      "direction": "outbound",
+      "source": "code-sym-signet-eval-33132ade651a",
+      "target": "code-mod-signet-eval-016defdf85b9",
       "type": "contains",
-      "direction": "outbound",
-      "weight": 0.0108
+      "weight": 0.6
     },
     {
-      "source": "code-sym-signet-eval-a2af1ee9ded8",
-      "target": "code-mod-signet-eval-65a480e07df8",
+      "direction": "outbound",
+      "source": "code-sym-signet-eval-34de3df90ba8",
+      "target": "code-mod-signet-eval-cc29b449457e",
       "type": "contains",
-      "direction": "outbound",
-      "weight": 0.0108
+      "weight": 0.6
     },
     {
-      "source": "code-sym-signet-eval-a2af1ee9ded8",
-      "target": "code-sym-signet-eval-8a03ad4b3fd5",
-      "type": "related",
       "direction": "outbound",
-      "weight": 0.0107
-    },
-    {
-      "source": "code-sym-signet-eval-a2af1ee9ded8",
-      "target": "code-sym-signet-eval-c1adfe396aa5",
-      "type": "related",
-      "direction": "outbound",
-      "weight": 0.0107
-    },
-    {
-      "source": "code-mod-signet-eval-65a480e07df8",
-      "target": "code-sym-signet-eval-dd7cf73f4994",
+      "source": "code-sym-signet-eval-3525ca839e94",
+      "target": "code-mod-signet-eval-016defdf85b9",
       "type": "contains",
-      "direction": "outbound",
-      "weight": 0.0108
+      "weight": 0.6
     },
     {
-      "source": "code-mod-signet-eval-65a480e07df8",
-      "target": "code-sym-signet-eval-130673b713c5",
+      "direction": "outbound",
+      "source": "code-sym-signet-eval-3d4678aea139",
+      "target": "code-mod-signet-eval-695264fb0bd2",
       "type": "contains",
-      "direction": "outbound",
-      "weight": 0.0108
+      "weight": 0.6
     },
     {
-      "source": "code-mod-signet-eval-65a480e07df8",
-      "target": "code-sym-signet-eval-1b0ace137a62",
+      "direction": "outbound",
+      "source": "code-sym-signet-eval-3f281541792f",
+      "target": "code-mod-signet-eval-cc29b449457e",
       "type": "contains",
-      "direction": "outbound",
-      "weight": 0.0108
+      "weight": 0.6
     },
     {
-      "source": "code-mod-signet-eval-65a480e07df8",
-      "target": "code-sym-signet-eval-5175fb0751a5",
+      "direction": "outbound",
+      "source": "code-sym-signet-eval-3f2f2f9c6bb1",
+      "target": "code-mod-signet-eval-cc29b449457e",
       "type": "contains",
-      "direction": "outbound",
-      "weight": 0.0108
+      "weight": 0.6
     },
     {
-      "source": "code-sym-signet-eval-ae5e6f813e40",
-      "target": "code-mod-signet-eval-65a480e07df8",
+      "direction": "outbound",
+      "source": "code-sym-signet-eval-4090c4a9df77",
+      "target": "code-mod-signet-eval-016defdf85b9",
       "type": "contains",
-      "direction": "outbound",
-      "weight": 0.0108
+      "weight": 0.6
     },
     {
-      "source": "code-sym-signet-eval-ae5e6f813e40",
-      "target": "code-sym-signet-eval-469c61dc3027",
-      "type": "related",
       "direction": "outbound",
-      "weight": 0.0108
-    },
-    {
-      "source": "code-sym-signet-eval-ae5e6f813e40",
-      "target": "code-sym-signet-eval-33132ade651a",
-      "type": "related",
-      "direction": "outbound",
-      "weight": 0.0108
-    },
-    {
-      "source": "code-sym-signet-eval-a329f20c0dfc",
-      "target": "code-mod-signet-eval-65a480e07df8",
+      "source": "code-sym-signet-eval-47c329f4d795",
+      "target": "code-mod-signet-eval-408baa03c3b1",
       "type": "contains",
-      "direction": "outbound",
-      "weight": 0.0108
+      "weight": 0.6
     },
     {
-      "source": "code-sym-signet-eval-a329f20c0dfc",
-      "target": "code-sym-signet-eval-9836e1885a79",
-      "type": "related",
       "direction": "outbound",
-      "weight": 0.0108
-    },
-    {
-      "source": "code-sym-signet-eval-a329f20c0dfc",
-      "target": "code-sym-signet-eval-95b76164bcf5",
-      "type": "related",
-      "direction": "outbound",
-      "weight": 0.0108
-    },
-    {
-      "source": "code-sym-signet-eval-739b29099c20",
-      "target": "code-mod-signet-eval-78b27d5b9119",
+      "source": "code-sym-signet-eval-5175fb0751a5",
+      "target": "code-mod-signet-eval-016defdf85b9",
       "type": "contains",
-      "direction": "outbound",
-      "weight": 0.0108
+      "weight": 0.6
     },
     {
-      "source": "code-sym-signet-eval-fdbaba0ce037",
-      "target": "code-mod-signet-eval-78b27d5b9119",
+      "direction": "outbound",
+      "source": "code-sym-signet-eval-5240bf0328b8",
+      "target": "code-mod-signet-eval-016defdf85b9",
       "type": "contains",
-      "direction": "outbound",
-      "weight": 0.0108
+      "weight": 0.6
     },
     {
-      "source": "code-sym-signet-eval-fdbaba0ce037",
-      "target": "code-sym-signet-eval-130673b713c5",
-      "type": "related",
       "direction": "outbound",
-      "weight": 0.0107
-    },
-    {
-      "source": "code-sym-signet-eval-469c61dc3027",
-      "target": "code-mod-signet-eval-78b27d5b9119",
+      "source": "code-sym-signet-eval-5a85256144ef",
+      "target": "code-mod-signet-eval-42cb6807ad74",
       "type": "contains",
-      "direction": "outbound",
-      "weight": 0.0108
+      "weight": 0.6
     },
     {
-      "source": "code-sym-signet-eval-469c61dc3027",
-      "target": "code-sym-signet-eval-33132ade651a",
-      "type": "related",
       "direction": "outbound",
-      "weight": 0.0108
-    },
-    {
-      "source": "code-sym-signet-eval-469c61dc3027",
-      "target": "code-sym-signet-eval-ae5e6f813e40",
-      "type": "related",
-      "direction": "outbound",
-      "weight": 0.0108
-    },
-    {
-      "source": "code-sym-signet-eval-9836e1885a79",
-      "target": "code-mod-signet-eval-78b27d5b9119",
+      "source": "code-sym-signet-eval-6622fa4726b7",
+      "target": "code-mod-signet-eval-3c742d80eead",
       "type": "contains",
-      "direction": "outbound",
-      "weight": 0.0108
+      "weight": 0.6
     },
     {
-      "source": "code-sym-signet-eval-9836e1885a79",
-      "target": "code-sym-signet-eval-95b76164bcf5",
-      "type": "related",
       "direction": "outbound",
-      "weight": 0.0108
-    },
-    {
-      "source": "code-sym-signet-eval-9836e1885a79",
-      "target": "code-sym-signet-eval-a329f20c0dfc",
-      "type": "related",
-      "direction": "outbound",
-      "weight": 0.0108
-    },
-    {
-      "source": "code-sym-signet-eval-4abaf2ed93da",
-      "target": "code-mod-signet-eval-78b27d5b9119",
+      "source": "code-sym-signet-eval-66707c4a17a7",
+      "target": "code-mod-signet-eval-f016d9507188",
       "type": "contains",
-      "direction": "outbound",
-      "weight": 0.0108
+      "weight": 0.6
     },
     {
-      "source": "code-sym-signet-eval-324ce5c5f43e",
-      "target": "code-mod-signet-eval-78b27d5b9119",
-      "type": "contains",
       "direction": "outbound",
-      "weight": 0.0108
+      "source": "code-sym-signet-eval-69d94fc188a1",
+      "target": "code-mod-signet-eval-408baa03c3b1",
+      "type": "contains",
+      "weight": 0.6
     },
     {
-      "source": "code-sym-signet-eval-6b8cdca65ee0",
-      "target": "code-mod-signet-eval-65a480e07df8",
-      "type": "contains",
       "direction": "outbound",
-      "weight": 0.0108
+      "source": "code-sym-signet-eval-70d3b6024c38",
+      "target": "code-mod-signet-eval-cc29b449457e",
+      "type": "contains",
+      "weight": 0.6
     },
     {
-      "source": "code-sym-signet-eval-70f1420cb7a4",
-      "target": "code-mod-signet-eval-65a480e07df8",
-      "type": "contains",
       "direction": "outbound",
-      "weight": 0.0108
+      "source": "code-sym-signet-eval-710bbcc9bcff",
+      "target": "code-mod-signet-eval-016defdf85b9",
+      "type": "contains",
+      "weight": 0.6
     },
     {
-      "source": "code-sym-signet-eval-1d7e4feb477e",
-      "target": "code-mod-signet-eval-65a480e07df8",
-      "type": "contains",
       "direction": "outbound",
-      "weight": 0.0108
+      "source": "code-sym-signet-eval-7701260b92f6",
+      "target": "code-mod-signet-eval-33e8367dba2d",
+      "type": "contains",
+      "weight": 0.6
     },
     {
-      "source": "code-sym-signet-eval-9e351bf035d5",
-      "target": "code-mod-signet-eval-65a480e07df8",
-      "type": "contains",
       "direction": "outbound",
-      "weight": 0.0108
+      "source": "code-sym-signet-eval-85f3a75ac3ce",
+      "target": "code-mod-signet-eval-cc29b449457e",
+      "type": "contains",
+      "weight": 0.6
     },
     {
-      "source": "code-sym-signet-eval-e39fad7a8fe7",
-      "target": "code-mod-signet-eval-f53017d105df",
-      "type": "contains",
       "direction": "outbound",
-      "weight": 0.0108
+      "source": "code-sym-signet-eval-8f28884c29da",
+      "target": "code-mod-signet-eval-3c742d80eead",
+      "type": "contains",
+      "weight": 0.6
+    },
+    {
+      "direction": "outbound",
+      "source": "code-sym-signet-eval-95b76164bcf5",
+      "target": "code-mod-signet-eval-016defdf85b9",
+      "type": "contains",
+      "weight": 0.6
+    },
+    {
+      "direction": "outbound",
+      "source": "code-sym-signet-eval-97431ed7f7e1",
+      "target": "code-mod-signet-eval-408baa03c3b1",
+      "type": "contains",
+      "weight": 0.6
+    },
+    {
+      "direction": "outbound",
+      "source": "code-sym-signet-eval-9a18de66b132",
+      "target": "code-mod-signet-eval-cc29b449457e",
+      "type": "contains",
+      "weight": 0.6
+    },
+    {
+      "direction": "outbound",
+      "source": "code-sym-signet-eval-9ecb2f543b3a",
+      "target": "code-mod-signet-eval-cc29b449457e",
+      "type": "contains",
+      "weight": 0.6
+    },
+    {
+      "direction": "outbound",
+      "source": "code-sym-signet-eval-9ed6ca35e44f",
+      "target": "code-mod-signet-eval-f016d9507188",
+      "type": "contains",
+      "weight": 0.6
+    },
+    {
+      "direction": "outbound",
+      "source": "code-sym-signet-eval-a3dc2bec41f8",
+      "target": "code-mod-signet-eval-3c742d80eead",
+      "type": "contains",
+      "weight": 0.6
+    },
+    {
+      "direction": "outbound",
+      "source": "code-sym-signet-eval-a40063605d39",
+      "target": "code-mod-signet-eval-cc29b449457e",
+      "type": "contains",
+      "weight": 0.6
+    },
+    {
+      "direction": "outbound",
+      "source": "code-sym-signet-eval-a4011e89af72",
+      "target": "code-mod-signet-eval-408baa03c3b1",
+      "type": "contains",
+      "weight": 0.6
+    },
+    {
+      "direction": "outbound",
+      "source": "code-sym-signet-eval-a4d42b39ff74",
+      "target": "code-mod-signet-eval-3c742d80eead",
+      "type": "contains",
+      "weight": 0.6
+    },
+    {
+      "direction": "outbound",
+      "source": "code-sym-signet-eval-a4d640bef76e",
+      "target": "code-mod-signet-eval-695264fb0bd2",
+      "type": "contains",
+      "weight": 0.6
+    },
+    {
+      "direction": "outbound",
+      "source": "code-sym-signet-eval-a4f4f62165c3",
+      "target": "code-mod-signet-eval-cc29b449457e",
+      "type": "contains",
+      "weight": 0.6
+    },
+    {
+      "direction": "outbound",
+      "source": "code-sym-signet-eval-a7cd1eb88eed",
+      "target": "code-mod-signet-eval-3c742d80eead",
+      "type": "contains",
+      "weight": 0.6
+    },
+    {
+      "direction": "outbound",
+      "source": "code-sym-signet-eval-a9e6aa779575",
+      "target": "code-mod-signet-eval-cc29b449457e",
+      "type": "contains",
+      "weight": 0.6
+    },
+    {
+      "direction": "outbound",
+      "source": "code-sym-signet-eval-acc1cd4ccb16",
+      "target": "code-mod-signet-eval-cc29b449457e",
+      "type": "contains",
+      "weight": 0.6
+    },
+    {
+      "direction": "outbound",
+      "source": "code-sym-signet-eval-b216b235c099",
+      "target": "code-mod-signet-eval-016defdf85b9",
+      "type": "contains",
+      "weight": 0.6
+    },
+    {
+      "direction": "outbound",
+      "source": "code-sym-signet-eval-b2bffbf5a472",
+      "target": "code-mod-signet-eval-408baa03c3b1",
+      "type": "contains",
+      "weight": 0.6
+    },
+    {
+      "direction": "outbound",
+      "source": "code-sym-signet-eval-b8093564cdf7",
+      "target": "code-mod-signet-eval-f016d9507188",
+      "type": "contains",
+      "weight": 0.6
+    },
+    {
+      "direction": "outbound",
+      "source": "code-sym-signet-eval-b97f23b7a608",
+      "target": "code-mod-signet-eval-016defdf85b9",
+      "type": "contains",
+      "weight": 0.6
+    },
+    {
+      "direction": "outbound",
+      "source": "code-sym-signet-eval-c1adfe396aa5",
+      "target": "code-mod-signet-eval-016defdf85b9",
+      "type": "contains",
+      "weight": 0.6
+    },
+    {
+      "direction": "outbound",
+      "source": "code-sym-signet-eval-c1c1081e81e5",
+      "target": "code-mod-signet-eval-016defdf85b9",
+      "type": "contains",
+      "weight": 0.6
+    },
+    {
+      "direction": "outbound",
+      "source": "code-sym-signet-eval-c4d1c56e06de",
+      "target": "code-mod-signet-eval-cc29b449457e",
+      "type": "contains",
+      "weight": 0.6
+    },
+    {
+      "direction": "outbound",
+      "source": "code-sym-signet-eval-cc19c400db0a",
+      "target": "code-mod-signet-eval-42cb6807ad74",
+      "type": "contains",
+      "weight": 0.6
+    },
+    {
+      "direction": "outbound",
+      "source": "code-sym-signet-eval-d5c70c95aac4",
+      "target": "code-mod-signet-eval-cc29b449457e",
+      "type": "contains",
+      "weight": 0.6
+    },
+    {
+      "direction": "outbound",
+      "source": "code-sym-signet-eval-d96983c01a37",
+      "target": "code-mod-signet-eval-cc29b449457e",
+      "type": "contains",
+      "weight": 0.6
+    },
+    {
+      "direction": "outbound",
+      "source": "code-sym-signet-eval-dd7cf73f4994",
+      "target": "code-mod-signet-eval-016defdf85b9",
+      "type": "contains",
+      "weight": 0.6
+    },
+    {
+      "direction": "outbound",
+      "source": "code-sym-signet-eval-e73ec591c56b",
+      "target": "code-mod-signet-eval-695264fb0bd2",
+      "type": "contains",
+      "weight": 0.6
+    },
+    {
+      "direction": "outbound",
+      "source": "code-sym-signet-eval-e9b254a7732f",
+      "target": "code-mod-signet-eval-408baa03c3b1",
+      "type": "contains",
+      "weight": 0.6
+    },
+    {
+      "direction": "outbound",
+      "source": "code-sym-signet-eval-ecd4107cdfdf",
+      "target": "code-mod-signet-eval-016defdf85b9",
+      "type": "contains",
+      "weight": 0.6
+    },
+    {
+      "direction": "outbound",
+      "source": "code-sym-signet-eval-f34cd53a8b6f",
+      "target": "code-mod-signet-eval-016defdf85b9",
+      "type": "contains",
+      "weight": 0.6
+    },
+    {
+      "direction": "outbound",
+      "source": "code-sym-signet-eval-f40e6046d039",
+      "target": "code-mod-signet-eval-f016d9507188",
+      "type": "contains",
+      "weight": 0.6
+    },
+    {
+      "direction": "outbound",
+      "source": "code-sym-signet-eval-fdb86c4342e9",
+      "target": "code-mod-signet-eval-3c742d80eead",
+      "type": "contains",
+      "weight": 0.6
     }
   ],
   "layers": [
     {
+      "description": "Kindex-inferred core layer.",
       "id": "core",
       "name": "Core",
-      "description": "Kindex-inferred core layer.",
       "nodeIds": [
         "code-mod-signet-eval-016defdf85b9",
-        "code-mod-signet-eval-0b1c85c552b8",
         "code-mod-signet-eval-33e8367dba2d",
         "code-mod-signet-eval-3c742d80eead",
         "code-mod-signet-eval-408baa03c3b1",
         "code-mod-signet-eval-42cb6807ad74",
-        "code-mod-signet-eval-65a480e07df8",
         "code-mod-signet-eval-695264fb0bd2",
-        "code-mod-signet-eval-78b27d5b9119",
-        "code-mod-signet-eval-ba1f97205bea",
         "code-mod-signet-eval-cc29b449457e",
-        "code-mod-signet-eval-f016d9507188",
-        "code-mod-signet-eval-f53017d105df",
-        "code-sym-signet-eval-1d7e4feb477e",
-        "code-sym-signet-eval-6b8cdca65ee0",
-        "code-sym-signet-eval-70f1420cb7a4",
-        "code-sym-signet-eval-9e351bf035d5",
-        "code-sym-signet-eval-e39fad7a8fe7"
+        "code-mod-signet-eval-f016d9507188"
       ]
     },
     {
+      "description": "Kindex-inferred domain layer.",
       "id": "domain",
       "name": "Domain",
-      "description": "Kindex-inferred domain layer.",
       "nodeIds": [
         "code-sym-signet-eval-007f6577f9ca",
         "code-sym-signet-eval-01e03fb9d5b7",
         "code-sym-signet-eval-0561ecd8823e",
         "code-sym-signet-eval-06133aed5d2b",
         "code-sym-signet-eval-081fdc5dbc10",
-        "code-sym-signet-eval-0e0d9a9b4521",
         "code-sym-signet-eval-110e31d36060",
         "code-sym-signet-eval-130673b713c5",
         "code-sym-signet-eval-17bf64bc9a3e",
-        "code-sym-signet-eval-183a0745d780",
         "code-sym-signet-eval-1b0ace137a62",
         "code-sym-signet-eval-1d27d16584d5",
         "code-sym-signet-eval-206a52b7b8e4",
@@ -2907,8 +564,6 @@
         "code-sym-signet-eval-275cbe92a8a3",
         "code-sym-signet-eval-28be9fc6dc2d",
         "code-sym-signet-eval-2ca611844f11",
-        "code-sym-signet-eval-30abea207a45",
-        "code-sym-signet-eval-324ce5c5f43e",
         "code-sym-signet-eval-32e60c6afb76",
         "code-sym-signet-eval-33132ade651a",
         "code-sym-signet-eval-34de3df90ba8",
@@ -2917,10 +572,7 @@
         "code-sym-signet-eval-3f281541792f",
         "code-sym-signet-eval-3f2f2f9c6bb1",
         "code-sym-signet-eval-4090c4a9df77",
-        "code-sym-signet-eval-4112a2997e6a",
-        "code-sym-signet-eval-469c61dc3027",
         "code-sym-signet-eval-47c329f4d795",
-        "code-sym-signet-eval-4abaf2ed93da",
         "code-sym-signet-eval-5175fb0751a5",
         "code-sym-signet-eval-5240bf0328b8",
         "code-sym-signet-eval-5a85256144ef",
@@ -2929,22 +581,14 @@
         "code-sym-signet-eval-69d94fc188a1",
         "code-sym-signet-eval-70d3b6024c38",
         "code-sym-signet-eval-710bbcc9bcff",
-        "code-sym-signet-eval-739b29099c20",
-        "code-sym-signet-eval-73ba719e1523",
         "code-sym-signet-eval-7701260b92f6",
-        "code-sym-signet-eval-8082b0b127db",
-        "code-sym-signet-eval-8442832cf738",
         "code-sym-signet-eval-85f3a75ac3ce",
-        "code-sym-signet-eval-8a03ad4b3fd5",
         "code-sym-signet-eval-8f28884c29da",
         "code-sym-signet-eval-95b76164bcf5",
         "code-sym-signet-eval-97431ed7f7e1",
-        "code-sym-signet-eval-9836e1885a79",
         "code-sym-signet-eval-9a18de66b132",
         "code-sym-signet-eval-9ecb2f543b3a",
         "code-sym-signet-eval-9ed6ca35e44f",
-        "code-sym-signet-eval-a2af1ee9ded8",
-        "code-sym-signet-eval-a329f20c0dfc",
         "code-sym-signet-eval-a3dc2bec41f8",
         "code-sym-signet-eval-a40063605d39",
         "code-sym-signet-eval-a4011e89af72",
@@ -2953,22 +597,15 @@
         "code-sym-signet-eval-a4f4f62165c3",
         "code-sym-signet-eval-a7cd1eb88eed",
         "code-sym-signet-eval-a9e6aa779575",
-        "code-sym-signet-eval-abd32ae73e3c",
         "code-sym-signet-eval-acc1cd4ccb16",
-        "code-sym-signet-eval-ae5e6f813e40",
         "code-sym-signet-eval-b216b235c099",
         "code-sym-signet-eval-b2bffbf5a472",
         "code-sym-signet-eval-b8093564cdf7",
         "code-sym-signet-eval-b97f23b7a608",
-        "code-sym-signet-eval-bd4371a637ca",
-        "code-sym-signet-eval-bff8c704354d",
         "code-sym-signet-eval-c1adfe396aa5",
         "code-sym-signet-eval-c1c1081e81e5",
-        "code-sym-signet-eval-c1ecc27cae9a",
         "code-sym-signet-eval-c4d1c56e06de",
-        "code-sym-signet-eval-c9b650ebd271",
         "code-sym-signet-eval-cc19c400db0a",
-        "code-sym-signet-eval-cee5a46f70f8",
         "code-sym-signet-eval-d5c70c95aac4",
         "code-sym-signet-eval-d96983c01a37",
         "code-sym-signet-eval-dd7cf73f4994",
@@ -2977,52 +614,1342 @@
         "code-sym-signet-eval-ecd4107cdfdf",
         "code-sym-signet-eval-f34cd53a8b6f",
         "code-sym-signet-eval-f40e6046d039",
-        "code-sym-signet-eval-fdb86c4342e9",
-        "code-sym-signet-eval-fdbaba0ce037"
+        "code-sym-signet-eval-fdb86c4342e9"
       ]
     }
   ],
+  "nodes": [
+    {
+      "complexity": 1,
+      "filePath": "contracts/cli_observability_and_fix/interface.py",
+      "id": "code-sym-signet-eval-01e03fb9d5b7",
+      "languageNotes": {
+        "kindexType": "concept",
+        "language": "Python",
+        "toolTier": ""
+      },
+      "name": "EnableResult",
+      "summary": "class EnableResult (contracts/cli_observability_and_fix/interface.py:102)",
+      "tags": [
+        "code",
+        "python"
+      ],
+      "type": "class"
+    },
+    {
+      "complexity": 1,
+      "filePath": "contracts/cli_observability_and_fix/interface.py",
+      "id": "code-sym-signet-eval-081fdc5dbc10",
+      "languageNotes": {
+        "kindexType": "concept",
+        "language": "Python",
+        "toolTier": ""
+      },
+      "name": "DiagnosticSeverity",
+      "summary": "class DiagnosticSeverity(Enum) (contracts/cli_observability_and_fix/interface.py:56)",
+      "tags": [
+        "code",
+        "python"
+      ],
+      "type": "class"
+    },
+    {
+      "complexity": 1,
+      "filePath": "contracts/cli_observability_and_fix/interface.py",
+      "id": "code-sym-signet-eval-206a52b7b8e4",
+      "languageNotes": {
+        "kindexType": "concept",
+        "language": "Python",
+        "toolTier": ""
+      },
+      "name": "CliExitCode",
+      "summary": "class CliExitCode(Enum) (contracts/cli_observability_and_fix/interface.py:43)",
+      "tags": [
+        "code",
+        "python"
+      ],
+      "type": "class"
+    },
+    {
+      "complexity": 1,
+      "filePath": "contracts/cli_observability_and_fix/interface.py",
+      "id": "code-sym-signet-eval-275cbe92a8a3",
+      "languageNotes": {
+        "kindexType": "concept",
+        "language": "Python",
+        "toolTier": ""
+      },
+      "name": "RuleId",
+      "summary": "class RuleId (contracts/cli_observability_and_fix/interface.py:25)",
+      "tags": [
+        "code",
+        "python"
+      ],
+      "type": "class"
+    },
+    {
+      "complexity": 1,
+      "filePath": "contracts/cli_observability_and_fix/interface.py",
+      "id": "code-sym-signet-eval-32e60c6afb76",
+      "languageNotes": {
+        "kindexType": "concept",
+        "language": "Python",
+        "toolTier": ""
+      },
+      "name": "FieldPath",
+      "summary": "class FieldPath (contracts/cli_observability_and_fix/interface.py:29)",
+      "tags": [
+        "code",
+        "python"
+      ],
+      "type": "class"
+    },
+    {
+      "complexity": 1,
+      "filePath": "contracts/cli_observability_and_fix/interface.py",
+      "id": "code-sym-signet-eval-34de3df90ba8",
+      "languageNotes": {
+        "kindexType": "concept",
+        "language": "Python",
+        "toolTier": ""
+      },
+      "name": "EnforcementState",
+      "summary": "class EnforcementState (contracts/cli_observability_and_fix/interface.py:127)",
+      "tags": [
+        "code",
+        "python"
+      ],
+      "type": "class"
+    },
+    {
+      "complexity": 1,
+      "filePath": "contracts/cli_observability_and_fix/interface.py",
+      "id": "code-sym-signet-eval-3f281541792f",
+      "languageNotes": {
+        "kindexType": "concept",
+        "language": "Python",
+        "toolTier": ""
+      },
+      "name": "PolicyPath",
+      "summary": "class PolicyPath (contracts/cli_observability_and_fix/interface.py:19)",
+      "tags": [
+        "code",
+        "python"
+      ],
+      "type": "class"
+    },
+    {
+      "complexity": 1,
+      "filePath": "contracts/cli_observability_and_fix/interface.py",
+      "id": "code-sym-signet-eval-3f2f2f9c6bb1",
+      "languageNotes": {
+        "kindexType": "concept",
+        "language": "Python",
+        "toolTier": ""
+      },
+      "name": "FixResult",
+      "summary": "class FixResult (contracts/cli_observability_and_fix/interface.py:82)",
+      "tags": [
+        "code",
+        "python"
+      ],
+      "type": "class"
+    },
+    {
+      "complexity": 1,
+      "filePath": "contracts/cli_observability_and_fix/interface.py",
+      "id": "code-sym-signet-eval-70d3b6024c38",
+      "languageNotes": {
+        "kindexType": "concept",
+        "language": "Python",
+        "toolTier": ""
+      },
+      "name": "PauseEntry",
+      "summary": "class PauseEntry (contracts/cli_observability_and_fix/interface.py:117)",
+      "tags": [
+        "code",
+        "python"
+      ],
+      "type": "class"
+    },
+    {
+      "complexity": 1,
+      "filePath": "contracts/cli_observability_and_fix/interface.py",
+      "id": "code-sym-signet-eval-85f3a75ac3ce",
+      "languageNotes": {
+        "kindexType": "concept",
+        "language": "Python",
+        "toolTier": ""
+      },
+      "name": "Timestamp",
+      "summary": "class Timestamp (contracts/cli_observability_and_fix/interface.py:33)",
+      "tags": [
+        "code",
+        "python"
+      ],
+      "type": "class"
+    },
+    {
+      "complexity": 1,
+      "filePath": "contracts/cli_observability_and_fix/interface.py",
+      "id": "code-sym-signet-eval-9a18de66b132",
+      "languageNotes": {
+        "kindexType": "concept",
+        "language": "Python",
+        "toolTier": ""
+      },
+      "name": "Diagnostic",
+      "summary": "class Diagnostic (contracts/cli_observability_and_fix/interface.py:62)",
+      "tags": [
+        "code",
+        "python"
+      ],
+      "type": "class"
+    },
+    {
+      "complexity": 1,
+      "filePath": "contracts/cli_observability_and_fix/interface.py",
+      "id": "code-sym-signet-eval-9ecb2f543b3a",
+      "languageNotes": {
+        "kindexType": "concept",
+        "language": "Python",
+        "toolTier": ""
+      },
+      "name": "ValidateMode",
+      "summary": "class ValidateMode(Enum) (contracts/cli_observability_and_fix/interface.py:37)",
+      "tags": [
+        "code",
+        "python"
+      ],
+      "type": "class"
+    },
+    {
+      "complexity": 1,
+      "filePath": "contracts/cli_observability_and_fix/interface.py",
+      "id": "code-sym-signet-eval-a40063605d39",
+      "languageNotes": {
+        "kindexType": "concept",
+        "language": "Python",
+        "toolTier": ""
+      },
+      "name": "PolicyRule",
+      "summary": "class PolicyRule (contracts/cli_observability_and_fix/interface.py:159)",
+      "tags": [
+        "code",
+        "python"
+      ],
+      "type": "class"
+    },
+    {
+      "complexity": 1,
+      "filePath": "contracts/cli_observability_and_fix/interface.py",
+      "id": "code-sym-signet-eval-a4f4f62165c3",
+      "languageNotes": {
+        "kindexType": "concept",
+        "language": "Python",
+        "toolTier": ""
+      },
+      "name": "Policy",
+      "summary": "class Policy (contracts/cli_observability_and_fix/interface.py:50)",
+      "tags": [
+        "code",
+        "python"
+      ],
+      "type": "class"
+    },
+    {
+      "complexity": 1,
+      "filePath": "contracts/cli_observability_and_fix/interface.py",
+      "id": "code-sym-signet-eval-a9e6aa779575",
+      "languageNotes": {
+        "kindexType": "concept",
+        "language": "Python",
+        "toolTier": ""
+      },
+      "name": "FixChange",
+      "summary": "class FixChange (contracts/cli_observability_and_fix/interface.py:72)",
+      "tags": [
+        "code",
+        "python"
+      ],
+      "type": "class"
+    },
+    {
+      "complexity": 1,
+      "filePath": "contracts/cli_observability_and_fix/interface.py",
+      "id": "code-sym-signet-eval-acc1cd4ccb16",
+      "languageNotes": {
+        "kindexType": "concept",
+        "language": "Python",
+        "toolTier": ""
+      },
+      "name": "PauseScope",
+      "summary": "class PauseScope(Enum) (contracts/cli_observability_and_fix/interface.py:110)",
+      "tags": [
+        "code",
+        "python"
+      ],
+      "type": "class"
+    },
+    {
+      "complexity": 1,
+      "filePath": "contracts/cli_observability_and_fix/interface.py",
+      "id": "code-sym-signet-eval-c4d1c56e06de",
+      "languageNotes": {
+        "kindexType": "concept",
+        "language": "Python",
+        "toolTier": ""
+      },
+      "name": "DiffLine",
+      "summary": "class DiffLine (contracts/cli_observability_and_fix/interface.py:135)",
+      "tags": [
+        "code",
+        "python"
+      ],
+      "type": "class"
+    },
+    {
+      "complexity": 1,
+      "filePath": "contracts/cli_observability_and_fix/interface.py",
+      "id": "code-sym-signet-eval-d5c70c95aac4",
+      "languageNotes": {
+        "kindexType": "concept",
+        "language": "Python",
+        "toolTier": ""
+      },
+      "name": "ClearedOverride",
+      "summary": "class ClearedOverride (contracts/cli_observability_and_fix/interface.py:94)",
+      "tags": [
+        "code",
+        "python"
+      ],
+      "type": "class"
+    },
+    {
+      "complexity": 1,
+      "filePath": "contracts/cli_observability_and_fix/interface.py",
+      "id": "code-sym-signet-eval-d96983c01a37",
+      "languageNotes": {
+        "kindexType": "concept",
+        "language": "Python",
+        "toolTier": ""
+      },
+      "name": "ClearedOverrideKind",
+      "summary": "class ClearedOverrideKind(Enum) (contracts/cli_observability_and_fix/interface.py:89)",
+      "tags": [
+        "code",
+        "python"
+      ],
+      "type": "class"
+    },
+    {
+      "complexity": 28,
+      "filePath": "contracts/cli_observability_and_fix/interface.py",
+      "id": "code-mod-signet-eval-cc29b449457e",
+      "languageNotes": {
+        "kindexType": "artifact",
+        "language": "Python",
+        "toolTier": "C"
+      },
+      "name": "contracts/cli_observability_and_fix/interface.py",
+      "summary": "Language: Python | Path: contracts/cli_observability_and_fix/interface.py | ~351 lines ## Classes - ClearedOverride",
+      "tags": [
+        "code",
+        "python"
+      ],
+      "type": "file"
+    },
+    {
+      "complexity": 1,
+      "filePath": "contracts/root/interface.py",
+      "id": "code-sym-signet-eval-24d0cb9147d4",
+      "languageNotes": {
+        "kindexType": "concept",
+        "language": "Python",
+        "toolTier": ""
+      },
+      "name": "Preflight",
+      "summary": "class Preflight (contracts/root/interface.py:33)",
+      "tags": [
+        "code",
+        "python"
+      ],
+      "type": "class"
+    },
+    {
+      "complexity": 1,
+      "filePath": "contracts/root/interface.py",
+      "id": "code-sym-signet-eval-6622fa4726b7",
+      "languageNotes": {
+        "kindexType": "concept",
+        "language": "Python",
+        "toolTier": ""
+      },
+      "name": "PreflightError",
+      "summary": "class PreflightError(Enum) (contracts/root/interface.py:65)",
+      "tags": [
+        "code",
+        "python"
+      ],
+      "type": "class"
+    },
+    {
+      "complexity": 1,
+      "filePath": "contracts/root/interface.py",
+      "id": "code-sym-signet-eval-8f28884c29da",
+      "languageNotes": {
+        "kindexType": "concept",
+        "language": "Python",
+        "toolTier": ""
+      },
+      "name": "PreflightHistoryFilter",
+      "summary": "class PreflightHistoryFilter (contracts/root/interface.py:46)",
+      "tags": [
+        "code",
+        "python"
+      ],
+      "type": "class"
+    },
+    {
+      "complexity": 1,
+      "filePath": "contracts/root/interface.py",
+      "id": "code-sym-signet-eval-a3dc2bec41f8",
+      "languageNotes": {
+        "kindexType": "concept",
+        "language": "Python",
+        "toolTier": ""
+      },
+      "name": "McpToolResponse",
+      "summary": "class McpToolResponse (contracts/root/interface.py:52)",
+      "tags": [
+        "code",
+        "python"
+      ],
+      "type": "class"
+    },
+    {
+      "complexity": 1,
+      "filePath": "contracts/root/interface.py",
+      "id": "code-sym-signet-eval-a4d42b39ff74",
+      "languageNotes": {
+        "kindexType": "concept",
+        "language": "Python",
+        "toolTier": ""
+      },
+      "name": "PreflightSessionFilter",
+      "summary": "class PreflightSessionFilter(Enum) (contracts/root/interface.py:23)",
+      "tags": [
+        "code",
+        "python"
+      ],
+      "type": "class"
+    },
+    {
+      "complexity": 1,
+      "filePath": "contracts/root/interface.py",
+      "id": "code-sym-signet-eval-a7cd1eb88eed",
+      "languageNotes": {
+        "kindexType": "concept",
+        "language": "Python",
+        "toolTier": ""
+      },
+      "name": "MigrationResult",
+      "summary": "class MigrationResult(Enum) (contracts/root/interface.py:59)",
+      "tags": [
+        "code",
+        "python"
+      ],
+      "type": "class"
+    },
+    {
+      "complexity": 1,
+      "filePath": "contracts/root/interface.py",
+      "id": "code-sym-signet-eval-fdb86c4342e9",
+      "languageNotes": {
+        "kindexType": "concept",
+        "language": "Python",
+        "toolTier": ""
+      },
+      "name": "PreflightDeactivationScope",
+      "summary": "class PreflightDeactivationScope(Enum) (contracts/root/interface.py:28)",
+      "tags": [
+        "code",
+        "python"
+      ],
+      "type": "class"
+    },
+    {
+      "complexity": 17,
+      "filePath": "contracts/root/interface.py",
+      "id": "code-mod-signet-eval-3c742d80eead",
+      "languageNotes": {
+        "kindexType": "artifact",
+        "language": "Python",
+        "toolTier": "C"
+      },
+      "name": "contracts/root/interface.py",
+      "summary": "Language: Python | Path: contracts/root/interface.py | ~296 lines ## Classes - McpToolResponse",
+      "tags": [
+        "code",
+        "python"
+      ],
+      "type": "file"
+    },
+    {
+      "complexity": 1,
+      "filePath": "src/hook.rs",
+      "id": "code-sym-signet-eval-24957ac972ef",
+      "languageNotes": {
+        "kindexType": "concept",
+        "language": "Rust",
+        "toolTier": ""
+      },
+      "name": "CodexPermissionResponse",
+      "summary": "class CodexPermissionResponse (src/hook.rs:140)",
+      "tags": [
+        "code",
+        "rust"
+      ],
+      "type": "class"
+    },
+    {
+      "complexity": 1,
+      "filePath": "src/hook.rs",
+      "id": "code-sym-signet-eval-2ca611844f11",
+      "languageNotes": {
+        "kindexType": "concept",
+        "language": "Rust",
+        "toolTier": ""
+      },
+      "name": "HookAdapter",
+      "summary": "class HookAdapter (src/hook.rs:81)",
+      "tags": [
+        "code",
+        "rust"
+      ],
+      "type": "class"
+    },
+    {
+      "complexity": 1,
+      "filePath": "src/hook.rs",
+      "id": "code-sym-signet-eval-47c329f4d795",
+      "languageNotes": {
+        "kindexType": "concept",
+        "language": "Rust",
+        "toolTier": ""
+      },
+      "name": "HookResponse",
+      "summary": "class HookResponse (src/hook.rs:119)",
+      "tags": [
+        "code",
+        "rust"
+      ],
+      "type": "class"
+    },
+    {
+      "complexity": 1,
+      "filePath": "src/hook.rs",
+      "id": "code-sym-signet-eval-69d94fc188a1",
+      "languageNotes": {
+        "kindexType": "concept",
+        "language": "Rust",
+        "toolTier": ""
+      },
+      "name": "CodexPermissionDecision",
+      "summary": "class CodexPermissionDecision (src/hook.rs:153)",
+      "tags": [
+        "code",
+        "rust"
+      ],
+      "type": "class"
+    },
+    {
+      "complexity": 1,
+      "filePath": "src/hook.rs",
+      "id": "code-sym-signet-eval-97431ed7f7e1",
+      "languageNotes": {
+        "kindexType": "concept",
+        "language": "Rust",
+        "toolTier": ""
+      },
+      "name": "HookOutput",
+      "summary": "class HookOutput (src/hook.rs:125)",
+      "tags": [
+        "code",
+        "rust"
+      ],
+      "type": "class"
+    },
+    {
+      "complexity": 1,
+      "filePath": "src/hook.rs",
+      "id": "code-sym-signet-eval-a4011e89af72",
+      "languageNotes": {
+        "kindexType": "concept",
+        "language": "Rust",
+        "toolTier": ""
+      },
+      "name": "HookEvent",
+      "summary": "class HookEvent (src/hook.rs:112)",
+      "tags": [
+        "code",
+        "rust"
+      ],
+      "type": "class"
+    },
+    {
+      "complexity": 1,
+      "filePath": "src/hook.rs",
+      "id": "code-sym-signet-eval-b2bffbf5a472",
+      "languageNotes": {
+        "kindexType": "concept",
+        "language": "Rust",
+        "toolTier": ""
+      },
+      "name": "CodexPermissionOutput",
+      "summary": "class CodexPermissionOutput (src/hook.rs:146)",
+      "tags": [
+        "code",
+        "rust"
+      ],
+      "type": "class"
+    },
+    {
+      "complexity": 1,
+      "filePath": "src/hook.rs",
+      "id": "code-sym-signet-eval-e9b254a7732f",
+      "languageNotes": {
+        "kindexType": "concept",
+        "language": "Rust",
+        "toolTier": ""
+      },
+      "name": "HookInput",
+      "summary": "class HookInput (src/hook.rs:14)",
+      "tags": [
+        "code",
+        "rust"
+      ],
+      "type": "class"
+    },
+    {
+      "complexity": 20,
+      "filePath": "src/hook.rs",
+      "id": "code-mod-signet-eval-408baa03c3b1",
+      "languageNotes": {
+        "kindexType": "artifact",
+        "language": "Rust",
+        "toolTier": "C"
+      },
+      "name": "src/hook.rs",
+      "summary": "Language: Rust | Path: src/hook.rs | ~648 lines ## Classes - CodexPermissionDecision",
+      "tags": [
+        "code",
+        "rust"
+      ],
+      "type": "file"
+    },
+    {
+      "complexity": 1,
+      "filePath": "src/main.rs",
+      "id": "code-sym-signet-eval-28be9fc6dc2d",
+      "languageNotes": {
+        "kindexType": "concept",
+        "language": "Rust",
+        "toolTier": ""
+      },
+      "name": "Command",
+      "summary": "class Command (src/main.rs:37)",
+      "tags": [
+        "code",
+        "rust"
+      ],
+      "type": "class"
+    },
+    {
+      "complexity": 1,
+      "filePath": "src/main.rs",
+      "id": "code-sym-signet-eval-5a85256144ef",
+      "languageNotes": {
+        "kindexType": "concept",
+        "language": "Rust",
+        "toolTier": ""
+      },
+      "name": "Cli",
+      "summary": "class Cli (src/main.rs:19)",
+      "tags": [
+        "code",
+        "rust"
+      ],
+      "type": "class"
+    },
+    {
+      "complexity": 1,
+      "filePath": "src/main.rs",
+      "id": "code-sym-signet-eval-cc19c400db0a",
+      "languageNotes": {
+        "kindexType": "concept",
+        "language": "Rust",
+        "toolTier": ""
+      },
+      "name": "run.TestInput",
+      "summary": "class TestInput (src/main.rs:430)",
+      "tags": [
+        "code",
+        "rust"
+      ],
+      "type": "class"
+    },
+    {
+      "complexity": 6,
+      "filePath": "src/main.rs",
+      "id": "code-mod-signet-eval-42cb6807ad74",
+      "languageNotes": {
+        "kindexType": "artifact",
+        "language": "Rust",
+        "toolTier": "C"
+      },
+      "name": "src/main.rs",
+      "summary": "Language: Rust | Path: src/main.rs | ~1003 lines ## Classes - Cli",
+      "tags": [
+        "code",
+        "rust"
+      ],
+      "type": "file"
+    },
+    {
+      "complexity": 1,
+      "filePath": "src/mcp_proxy.rs",
+      "id": "code-sym-signet-eval-66707c4a17a7",
+      "languageNotes": {
+        "kindexType": "concept",
+        "language": "Rust",
+        "toolTier": ""
+      },
+      "name": "UpstreamConfig",
+      "summary": "class UpstreamConfig (src/mcp_proxy.rs:28)",
+      "tags": [
+        "code",
+        "rust"
+      ],
+      "type": "class"
+    },
+    {
+      "complexity": 1,
+      "filePath": "src/mcp_proxy.rs",
+      "id": "code-sym-signet-eval-9ed6ca35e44f",
+      "languageNotes": {
+        "kindexType": "concept",
+        "language": "Rust",
+        "toolTier": ""
+      },
+      "name": "UpstreamConnection",
+      "summary": "class UpstreamConnection (src/mcp_proxy.rs:36)",
+      "tags": [
+        "code",
+        "rust"
+      ],
+      "type": "class"
+    },
+    {
+      "complexity": 1,
+      "filePath": "src/mcp_proxy.rs",
+      "id": "code-sym-signet-eval-b8093564cdf7",
+      "languageNotes": {
+        "kindexType": "concept",
+        "language": "Rust",
+        "toolTier": ""
+      },
+      "name": "ProxyServer",
+      "summary": "class ProxyServer (src/mcp_proxy.rs:42)",
+      "tags": [
+        "code",
+        "rust"
+      ],
+      "type": "class"
+    },
+    {
+      "complexity": 1,
+      "filePath": "src/mcp_proxy.rs",
+      "id": "code-sym-signet-eval-f40e6046d039",
+      "languageNotes": {
+        "kindexType": "concept",
+        "language": "Rust",
+        "toolTier": ""
+      },
+      "name": "ProxyConfig",
+      "summary": "class ProxyConfig (src/mcp_proxy.rs:22)",
+      "tags": [
+        "code",
+        "rust"
+      ],
+      "type": "class"
+    },
+    {
+      "complexity": 7,
+      "filePath": "src/mcp_proxy.rs",
+      "id": "code-mod-signet-eval-f016d9507188",
+      "languageNotes": {
+        "kindexType": "artifact",
+        "language": "Rust",
+        "toolTier": "C"
+      },
+      "name": "src/mcp_proxy.rs",
+      "summary": "Language: Rust | Path: src/mcp_proxy.rs | ~263 lines ## Classes - ProxyConfig",
+      "tags": [
+        "code",
+        "rust"
+      ],
+      "type": "file"
+    },
+    {
+      "complexity": 1,
+      "filePath": "src/mcp_server.rs",
+      "id": "code-sym-signet-eval-7701260b92f6",
+      "languageNotes": {
+        "kindexType": "concept",
+        "language": "Rust",
+        "toolTier": ""
+      },
+      "name": "SignetMcpServer",
+      "summary": "class SignetMcpServer (src/mcp_server.rs:86)",
+      "tags": [
+        "code",
+        "rust"
+      ],
+      "type": "class"
+    },
+    {
+      "complexity": 33,
+      "filePath": "src/mcp_server.rs",
+      "id": "code-mod-signet-eval-33e8367dba2d",
+      "languageNotes": {
+        "kindexType": "artifact",
+        "language": "Rust",
+        "toolTier": "C"
+      },
+      "name": "src/mcp_server.rs",
+      "summary": "Language: Rust | Path: src/mcp_server.rs | ~1324 lines ## Classes - SignetMcpServer",
+      "tags": [
+        "code",
+        "rust"
+      ],
+      "type": "file"
+    },
+    {
+      "complexity": 1,
+      "filePath": "src/policy.rs",
+      "id": "code-sym-signet-eval-110e31d36060",
+      "languageNotes": {
+        "kindexType": "concept",
+        "language": "Rust",
+        "toolTier": ""
+      },
+      "name": "ValidationDiagnostic",
+      "summary": "class ValidationDiagnostic (src/policy.rs:188)",
+      "tags": [
+        "code",
+        "rust"
+      ],
+      "type": "class"
+    },
+    {
+      "complexity": 1,
+      "filePath": "src/policy.rs",
+      "id": "code-sym-signet-eval-130673b713c5",
+      "languageNotes": {
+        "kindexType": "concept",
+        "language": "Rust",
+        "toolTier": ""
+      },
+      "name": "PolicyRule",
+      "summary": "class PolicyRule (src/policy.rs:144)",
+      "tags": [
+        "code",
+        "rust"
+      ],
+      "type": "class"
+    },
+    {
+      "complexity": 1,
+      "filePath": "src/policy.rs",
+      "id": "code-sym-signet-eval-17bf64bc9a3e",
+      "languageNotes": {
+        "kindexType": "concept",
+        "language": "Rust",
+        "toolTier": ""
+      },
+      "name": "InjectTrigger",
+      "summary": "class InjectTrigger (src/policy.rs:57)",
+      "tags": [
+        "code",
+        "rust"
+      ],
+      "type": "class"
+    },
+    {
+      "complexity": 1,
+      "filePath": "src/policy.rs",
+      "id": "code-sym-signet-eval-1b0ace137a62",
+      "languageNotes": {
+        "kindexType": "concept",
+        "language": "Rust",
+        "toolTier": ""
+      },
+      "name": "EnsureConfig",
+      "summary": "class EnsureConfig (src/policy.rs:131)",
+      "tags": [
+        "code",
+        "rust"
+      ],
+      "type": "class"
+    },
+    {
+      "complexity": 1,
+      "filePath": "src/policy.rs",
+      "id": "code-sym-signet-eval-1d27d16584d5",
+      "languageNotes": {
+        "kindexType": "concept",
+        "language": "Rust",
+        "toolTier": ""
+      },
+      "name": "ToolCall",
+      "summary": "class ToolCall (src/policy.rs:236)",
+      "tags": [
+        "code",
+        "rust"
+      ],
+      "type": "class"
+    },
+    {
+      "complexity": 1,
+      "filePath": "src/policy.rs",
+      "id": "code-sym-signet-eval-33132ade651a",
+      "languageNotes": {
+        "kindexType": "concept",
+        "language": "Rust",
+        "toolTier": ""
+      },
+      "name": "CompiledPolicy",
+      "summary": "class CompiledPolicy (src/policy.rs:217)",
+      "tags": [
+        "code",
+        "rust"
+      ],
+      "type": "class"
+    },
+    {
+      "complexity": 1,
+      "filePath": "src/policy.rs",
+      "id": "code-sym-signet-eval-3525ca839e94",
+      "languageNotes": {
+        "kindexType": "concept",
+        "language": "Rust",
+        "toolTier": ""
+      },
+      "name": "InjectCommandAllowlist",
+      "summary": "class InjectCommandAllowlist (src/policy.rs:904)",
+      "tags": [
+        "code",
+        "rust"
+      ],
+      "type": "class"
+    },
+    {
+      "complexity": 1,
+      "filePath": "src/policy.rs",
+      "id": "code-sym-signet-eval-4090c4a9df77",
+      "languageNotes": {
+        "kindexType": "concept",
+        "language": "Rust",
+        "toolTier": ""
+      },
+      "name": "InjectCommandEntry",
+      "summary": "class InjectCommandEntry (src/policy.rs:910)",
+      "tags": [
+        "code",
+        "rust"
+      ],
+      "type": "class"
+    },
+    {
+      "complexity": 1,
+      "filePath": "src/policy.rs",
+      "id": "code-sym-signet-eval-5175fb0751a5",
+      "languageNotes": {
+        "kindexType": "concept",
+        "language": "Rust",
+        "toolTier": ""
+      },
+      "name": "GateConfig",
+      "summary": "class GateConfig (src/policy.rs:120)",
+      "tags": [
+        "code",
+        "rust"
+      ],
+      "type": "class"
+    },
+    {
+      "complexity": 1,
+      "filePath": "src/policy.rs",
+      "id": "code-sym-signet-eval-5240bf0328b8",
+      "languageNotes": {
+        "kindexType": "concept",
+        "language": "Rust",
+        "toolTier": ""
+      },
+      "name": "InjectConfig",
+      "summary": "class InjectConfig (src/policy.rs:105)",
+      "tags": [
+        "code",
+        "rust"
+      ],
+      "type": "class"
+    },
+    {
+      "complexity": 1,
+      "filePath": "src/policy.rs",
+      "id": "code-sym-signet-eval-710bbcc9bcff",
+      "languageNotes": {
+        "kindexType": "concept",
+        "language": "Rust",
+        "toolTier": ""
+      },
+      "name": "InjectMode",
+      "summary": "class InjectMode (src/policy.rs:48)",
+      "tags": [
+        "code",
+        "rust"
+      ],
+      "type": "class"
+    },
+    {
+      "complexity": 1,
+      "filePath": "src/policy.rs",
+      "id": "code-sym-signet-eval-95b76164bcf5",
+      "languageNotes": {
+        "kindexType": "concept",
+        "language": "Rust",
+        "toolTier": ""
+      },
+      "name": "CompiledRule",
+      "summary": "class CompiledRule (src/policy.rs:203)",
+      "tags": [
+        "code",
+        "rust"
+      ],
+      "type": "class"
+    },
+    {
+      "complexity": 1,
+      "filePath": "src/policy.rs",
+      "id": "code-sym-signet-eval-b216b235c099",
+      "languageNotes": {
+        "kindexType": "concept",
+        "language": "Rust",
+        "toolTier": ""
+      },
+      "name": "Decision",
+      "summary": "class Decision (src/policy.rs:15)",
+      "tags": [
+        "code",
+        "rust"
+      ],
+      "type": "class"
+    },
+    {
+      "complexity": 1,
+      "filePath": "src/policy.rs",
+      "id": "code-sym-signet-eval-b97f23b7a608",
+      "languageNotes": {
+        "kindexType": "concept",
+        "language": "Rust",
+        "toolTier": ""
+      },
+      "name": "InjectPayload",
+      "summary": "class InjectPayload (src/policy.rs:85)",
+      "tags": [
+        "code",
+        "rust"
+      ],
+      "type": "class"
+    },
+    {
+      "complexity": 1,
+      "filePath": "src/policy.rs",
+      "id": "code-sym-signet-eval-c1adfe396aa5",
+      "languageNotes": {
+        "kindexType": "concept",
+        "language": "Rust",
+        "toolTier": ""
+      },
+      "name": "EvaluationResult",
+      "summary": "class EvaluationResult (src/policy.rs:224)",
+      "tags": [
+        "code",
+        "rust"
+      ],
+      "type": "class"
+    },
+    {
+      "complexity": 1,
+      "filePath": "src/policy.rs",
+      "id": "code-sym-signet-eval-c1c1081e81e5",
+      "languageNotes": {
+        "kindexType": "concept",
+        "language": "Rust",
+        "toolTier": ""
+      },
+      "name": "DiagnosticSeverity",
+      "summary": "class DiagnosticSeverity (src/policy.rs:182)",
+      "tags": [
+        "code",
+        "rust"
+      ],
+      "type": "class"
+    },
+    {
+      "complexity": 1,
+      "filePath": "src/policy.rs",
+      "id": "code-sym-signet-eval-dd7cf73f4994",
+      "languageNotes": {
+        "kindexType": "concept",
+        "language": "Rust",
+        "toolTier": ""
+      },
+      "name": "PolicyConfig",
+      "summary": "class PolicyConfig (src/policy.rs:165)",
+      "tags": [
+        "code",
+        "rust"
+      ],
+      "type": "class"
+    },
+    {
+      "complexity": 1,
+      "filePath": "src/policy.rs",
+      "id": "code-sym-signet-eval-ecd4107cdfdf",
+      "languageNotes": {
+        "kindexType": "concept",
+        "language": "Rust",
+        "toolTier": ""
+      },
+      "name": "PolicyFix",
+      "summary": "class PolicyFix (src/policy.rs:196)",
+      "tags": [
+        "code",
+        "rust"
+      ],
+      "type": "class"
+    },
+    {
+      "complexity": 1,
+      "filePath": "src/policy.rs",
+      "id": "code-sym-signet-eval-f34cd53a8b6f",
+      "languageNotes": {
+        "kindexType": "concept",
+        "language": "Rust",
+        "toolTier": ""
+      },
+      "name": "FromCommandSpec",
+      "summary": "class FromCommandSpec (src/policy.rs:78)",
+      "tags": [
+        "code",
+        "rust"
+      ],
+      "type": "class"
+    },
+    {
+      "complexity": 57,
+      "filePath": "src/policy.rs",
+      "id": "code-mod-signet-eval-016defdf85b9",
+      "languageNotes": {
+        "kindexType": "artifact",
+        "language": "Rust",
+        "toolTier": "C"
+      },
+      "name": "src/policy.rs",
+      "summary": "Language: Rust | Path: src/policy.rs | ~4905 lines ## Classes - CompiledPolicy",
+      "tags": [
+        "code",
+        "rust"
+      ],
+      "type": "file"
+    },
+    {
+      "complexity": 1,
+      "filePath": "src/vault.rs",
+      "id": "code-sym-signet-eval-007f6577f9ca",
+      "languageNotes": {
+        "kindexType": "concept",
+        "language": "Rust",
+        "toolTier": ""
+      },
+      "name": "Vault",
+      "summary": "class Vault (src/vault.rs:228)",
+      "tags": [
+        "code",
+        "rust"
+      ],
+      "type": "class"
+    },
+    {
+      "complexity": 1,
+      "filePath": "src/vault.rs",
+      "id": "code-sym-signet-eval-0561ecd8823e",
+      "languageNotes": {
+        "kindexType": "concept",
+        "language": "Rust",
+        "toolTier": ""
+      },
+      "name": "CredentialMeta",
+      "summary": "class CredentialMeta (src/vault.rs:177)",
+      "tags": [
+        "code",
+        "rust"
+      ],
+      "type": "class"
+    },
+    {
+      "complexity": 1,
+      "filePath": "src/vault.rs",
+      "id": "code-sym-signet-eval-06133aed5d2b",
+      "languageNotes": {
+        "kindexType": "concept",
+        "language": "Rust",
+        "toolTier": ""
+      },
+      "name": "PauseEntry",
+      "summary": "class PauseEntry (src/vault.rs:1205)",
+      "tags": [
+        "code",
+        "rust"
+      ],
+      "type": "class"
+    },
+    {
+      "complexity": 1,
+      "filePath": "src/vault.rs",
+      "id": "code-sym-signet-eval-2686c4ffeb7a",
+      "languageNotes": {
+        "kindexType": "concept",
+        "language": "Rust",
+        "toolTier": ""
+      },
+      "name": "PreflightViolation",
+      "summary": "class PreflightViolation (src/vault.rs:217)",
+      "tags": [
+        "code",
+        "rust"
+      ],
+      "type": "class"
+    },
+    {
+      "complexity": 1,
+      "filePath": "src/vault.rs",
+      "id": "code-sym-signet-eval-3d4678aea139",
+      "languageNotes": {
+        "kindexType": "concept",
+        "language": "Rust",
+        "toolTier": ""
+      },
+      "name": "Preflight",
+      "summary": "class Preflight (src/vault.rs:193)",
+      "tags": [
+        "code",
+        "rust"
+      ],
+      "type": "class"
+    },
+    {
+      "complexity": 1,
+      "filePath": "src/vault.rs",
+      "id": "code-sym-signet-eval-a4d640bef76e",
+      "languageNotes": {
+        "kindexType": "concept",
+        "language": "Rust",
+        "toolTier": ""
+      },
+      "name": "VaultMeta",
+      "summary": "class VaultMeta (src/vault.rs:125)",
+      "tags": [
+        "code",
+        "rust"
+      ],
+      "type": "class"
+    },
+    {
+      "complexity": 1,
+      "filePath": "src/vault.rs",
+      "id": "code-sym-signet-eval-e73ec591c56b",
+      "languageNotes": {
+        "kindexType": "concept",
+        "language": "Rust",
+        "toolTier": ""
+      },
+      "name": "SoftConstraint",
+      "summary": "class SoftConstraint (src/vault.rs:207)",
+      "tags": [
+        "code",
+        "rust"
+      ],
+      "type": "class"
+    },
+    {
+      "complexity": 55,
+      "filePath": "src/vault.rs",
+      "id": "code-mod-signet-eval-695264fb0bd2",
+      "languageNotes": {
+        "kindexType": "artifact",
+        "language": "Rust",
+        "toolTier": "C"
+      },
+      "name": "src/vault.rs",
+      "summary": "Language: Rust | Path: src/vault.rs | ~1810 lines ## Classes - CredentialMeta",
+      "tags": [
+        "code",
+        "rust"
+      ],
+      "type": "file"
+    }
+  ],
+  "project": {
+    "analyzedAt": "2026-05-28T20:12:29-05:00",
+    "description": "Code map exported from Kindex for signet-eval.",
+    "frameworks": [],
+    "gitCommitHash": "3e1564b86f70b41b38fc47d16a94a903c4474967",
+    "languages": [
+      "Python",
+      "Rust"
+    ],
+    "name": "signet-eval"
+  },
   "tour": [
     {
-      "order": 1,
-      "title": "Core",
-      "description": "Review 18 node(s) in the Core layer.",
+      "description": "Review 8 node(s) in the Core layer.",
       "nodeIds": [
         "code-mod-signet-eval-016defdf85b9",
-        "code-mod-signet-eval-0b1c85c552b8",
         "code-mod-signet-eval-33e8367dba2d",
         "code-mod-signet-eval-3c742d80eead",
         "code-mod-signet-eval-408baa03c3b1",
         "code-mod-signet-eval-42cb6807ad74",
-        "code-mod-signet-eval-65a480e07df8",
         "code-mod-signet-eval-695264fb0bd2",
-        "code-mod-signet-eval-78b27d5b9119",
-        "code-mod-signet-eval-ba1f97205bea",
         "code-mod-signet-eval-cc29b449457e",
-        "code-mod-signet-eval-f016d9507188",
-        "code-mod-signet-eval-f53017d105df",
-        "code-sym-signet-eval-1d7e4feb477e",
-        "code-sym-signet-eval-6b8cdca65ee0",
-        "code-sym-signet-eval-70f1420cb7a4",
-        "code-sym-signet-eval-9e351bf035d5",
-        "code-sym-signet-eval-e39fad7a8fe7"
-      ]
+        "code-mod-signet-eval-f016d9507188"
+      ],
+      "order": 1,
+      "title": "Core"
     },
     {
-      "order": 2,
-      "title": "Domain",
-      "description": "Review 91 node(s) in the Domain layer.",
+      "description": "Review 68 node(s) in the Domain layer.",
       "nodeIds": [
         "code-sym-signet-eval-007f6577f9ca",
         "code-sym-signet-eval-01e03fb9d5b7",
         "code-sym-signet-eval-0561ecd8823e",
         "code-sym-signet-eval-06133aed5d2b",
         "code-sym-signet-eval-081fdc5dbc10",
-        "code-sym-signet-eval-0e0d9a9b4521",
         "code-sym-signet-eval-110e31d36060",
         "code-sym-signet-eval-130673b713c5",
         "code-sym-signet-eval-17bf64bc9a3e",
-        "code-sym-signet-eval-183a0745d780",
         "code-sym-signet-eval-1b0ace137a62",
         "code-sym-signet-eval-1d27d16584d5",
         "code-sym-signet-eval-206a52b7b8e4",
@@ -3032,13 +1959,18 @@
         "code-sym-signet-eval-275cbe92a8a3",
         "code-sym-signet-eval-28be9fc6dc2d",
         "code-sym-signet-eval-2ca611844f11",
-        "code-sym-signet-eval-30abea207a45",
-        "code-sym-signet-eval-324ce5c5f43e",
         "code-sym-signet-eval-32e60c6afb76",
         "code-sym-signet-eval-33132ade651a",
         "code-sym-signet-eval-34de3df90ba8",
-        "code-sym-signet-eval-3525ca839e94"
-      ]
+        "code-sym-signet-eval-3525ca839e94",
+        "code-sym-signet-eval-3d4678aea139",
+        "code-sym-signet-eval-3f281541792f",
+        "code-sym-signet-eval-3f2f2f9c6bb1",
+        "code-sym-signet-eval-4090c4a9df77"
+      ],
+      "order": 2,
+      "title": "Domain"
     }
-  ]
+  ],
+  "version": "1.0.0"
 }
