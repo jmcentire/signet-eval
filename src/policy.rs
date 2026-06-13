@@ -1634,7 +1634,7 @@ pub fn self_protection_rules() -> Vec<PolicyRule> {
             name: "prefer_persistent_task_store".into(),
             tool_pattern: "Task*".into(),
             conditions: vec!["true".into()],
-            action: Decision::Deny,
+            action: Decision::Ask,
             locked: true,
             reason: Some(
                 "Anthropic's Task* tools (TaskCreate / TaskUpdate / TaskList / TaskGet / \
@@ -4227,22 +4227,22 @@ rules:
         }
     }
 
-    /// The shipped locked rule must deny every Task* harness tool by default and
+    /// The shipped locked rule must ask on every Task* harness tool by default and
     /// must not catch unrelated tools (Bash, kindex's task tools).
     #[test]
-    fn test_prefer_persistent_task_store_denies_anthropic_task_family() {
+    fn test_prefer_persistent_task_store_asks_on_anthropic_task_family() {
         let policy = default_policy();
 
-        // Rule must be present, locked, and DENY.
+        // Rule must be present, locked, and ASK.
         let rule = policy
             .rules
             .iter()
             .find(|r| r.name == "prefer_persistent_task_store")
             .expect("prefer_persistent_task_store must be a baked-in default rule");
         assert!(rule.locked, "prefer_persistent_task_store must be locked");
-        assert_eq!(rule.action, Decision::Deny);
+        assert_eq!(rule.action, Decision::Ask);
 
-        // All Anthropic Task* variants must be denied.
+        // All Anthropic Task* variants must ask.
         for tool in &[
             "TaskCreate",
             "TaskUpdate",
@@ -4256,8 +4256,8 @@ rules:
             let result = evaluate(&call, &policy, None);
             assert_eq!(
                 result.decision,
-                Decision::Deny,
-                "{} must be denied by default policy",
+                Decision::Ask,
+                "{} must be asked by default policy",
                 tool
             );
             assert_eq!(

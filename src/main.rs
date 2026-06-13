@@ -28,7 +28,7 @@ struct Cli {
     #[arg(long, default_value = "~/.signet/rules.yaml")]
     rules_path: String,
 
-    /// Hook protocol adapter: claude, codex, or codex-permission
+    /// Hook protocol adapter: claude, codex, codex-permission, antigravity, or opencode
     #[arg(long, default_value = "claude")]
     adapter: String,
 }

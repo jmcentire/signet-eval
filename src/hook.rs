@@ -82,6 +82,8 @@ pub enum HookAdapter {
     Claude,
     Codex,
     CodexPermission,
+    Antigravity,
+    OpenCode,
 }
 
 impl HookAdapter {
@@ -90,15 +92,17 @@ impl HookAdapter {
             "claude" | "claude-code" => Ok(Self::Claude),
             "codex" => Ok(Self::Codex),
             "codex-permission" | "codex-permission-request" => Ok(Self::CodexPermission),
+            "antigravity" => Ok(Self::Antigravity),
+            "opencode" => Ok(Self::OpenCode),
             _ => Err(format!(
-                "unknown adapter '{s}' (expected claude, codex, or codex-permission)"
+                "unknown adapter '{s}' (expected claude, codex, codex-permission, antigravity, or opencode)"
             )),
         }
     }
 
     fn event_name(self, input_event: Option<&str>) -> HookEvent {
         match self {
-            Self::Claude => HookEvent::PreToolUse,
+            Self::Claude | Self::Antigravity | Self::OpenCode => HookEvent::PreToolUse,
             Self::CodexPermission => HookEvent::PermissionRequest,
             Self::Codex => match input_event {
                 Some("PermissionRequest") => HookEvent::PermissionRequest,
@@ -487,7 +491,7 @@ fn emit_decision(
     additional_context: Option<String>,
 ) {
     match (adapter, event) {
-        (HookAdapter::Claude, _) => {
+        (HookAdapter::Claude | HookAdapter::Antigravity | HookAdapter::OpenCode, _) => {
             emit_pre_tool_use_decision("PreToolUse", decision, reason, additional_context)
         }
         (HookAdapter::Codex | HookAdapter::CodexPermission, HookEvent::PreToolUse) => {
