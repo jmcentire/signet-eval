@@ -1,3 +1,4 @@
+mod embedded_checks;
 mod hook;
 mod policy;
 mod vault;

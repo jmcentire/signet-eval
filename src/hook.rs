@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::io::{self, Read};
+use std::io::{self, Read, Write};
 use std::process::{Command, Stdio};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use wait_timeout::ChildExt;
@@ -248,7 +248,7 @@ pub fn run_hook_with_adapter(
         }
         if result.decision == Decision::Ensure && result.matched_locked {
             // Self-protection: locked ensure (e.g., identity guard) enforced during pause
-            let resolved = resolve_ensure_result(result);
+            let resolved = resolve_ensure_result(result, &call);
             if resolved.decision == Decision::Deny {
                 emit_decision(adapter, event, "deny", resolved.reason, None);
                 return 0;
@@ -264,7 +264,7 @@ pub fn run_hook_with_adapter(
 
     // Resolve Ensure: run check script, convert to Allow/Deny
     let result = if result.decision == Decision::Ensure {
-        resolve_ensure_result(result)
+        resolve_ensure_result(result, &call)
     } else {
         result
     };
@@ -582,7 +582,11 @@ fn emit_deny(adapter: HookAdapter, event: HookEvent, reason: &str) {
 /// Run an ensure check script and return (passed, stderr_output).
 /// For unlocked rules, missing scripts resolve gracefully (allow).
 /// For locked rules, missing scripts fail closed (deny).
-fn resolve_ensure(config: &EnsureConfig, locked: bool) -> (bool, String) {
+fn resolve_ensure(config: &EnsureConfig, locked: bool, call: &ToolCall) -> (bool, String) {
+    if let Err(error) = crate::embedded_checks::install_if_builtin(&config.check) {
+        return (false, error);
+    }
+
     let script_path = match policy::resolve_ensure_script_path(&config.check) {
         Ok(p) => p,
         Err(e) => {
@@ -609,15 +613,48 @@ fn resolve_ensure(config: &EnsureConfig, locked: bool) -> (bool, String) {
 
     let timeout_secs = config.timeout.max(1).min(30) as u64;
 
-    let mut child = match Command::new(&script_path)
-        .stdin(Stdio::inherit())
+    let normalized_input = serde_json::json!({
+        "tool_name": call.tool_name,
+        "tool_input": call.parameters,
+    })
+    .to_string();
+    const CHECK_INPUT_MAX_BYTES: usize = 32 * 1024;
+    if normalized_input.len() > CHECK_INPUT_MAX_BYTES {
+        return (
+            false,
+            format!("Ensure check input exceeds the {CHECK_INPUT_MAX_BYTES}-byte safety limit"),
+        );
+    }
+
+    let mut command = Command::new(&script_path);
+    command
+        .stdin(Stdio::piped())
         .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .spawn()
-    {
+        .stderr(Stdio::piped());
+    if config.check == crate::embedded_checks::GITHUB_IDENTITY_CHECK {
+        if let Some(command_text) = call.parameters.get("command").and_then(|v| v.as_str()) {
+            command.env("SIGNET_TOOL_COMMAND", command_text);
+        }
+        if let Some(call_cwd) = call
+            .parameters
+            .get("workdir")
+            .or_else(|| call.parameters.get("cwd"))
+            .and_then(|v| v.as_str())
+        {
+            command.env("SIGNET_TOOL_CWD", call_cwd);
+        }
+    }
+
+    let mut child = match command.spawn() {
         Ok(c) => c,
         Err(e) => return (false, format!("Failed to spawn check script: {e}")),
     };
+    if let Some(mut child_stdin) = child.stdin.take() {
+        // Some checks do not consume stdin and may exit before this write. Their
+        // exit status remains authoritative, so a broken pipe is intentionally
+        // ignored.
+        let _ = child_stdin.write_all(normalized_input.as_bytes());
+    }
 
     match child.wait_timeout(Duration::from_secs(timeout_secs)) {
         Ok(Some(status)) => {
@@ -649,9 +686,9 @@ fn resolve_ensure(config: &EnsureConfig, locked: bool) -> (bool, String) {
 }
 
 /// Resolve an Ensure evaluation result by running the check script.
-fn resolve_ensure_result(result: EvaluationResult) -> EvaluationResult {
+fn resolve_ensure_result(result: EvaluationResult, call: &ToolCall) -> EvaluationResult {
     if let Some(ref ensure_config) = result.ensure_config {
-        let (passed, stderr) = resolve_ensure(ensure_config, result.matched_locked);
+        let (passed, stderr) = resolve_ensure(ensure_config, result.matched_locked, call);
         if passed {
             EvaluationResult {
                 decision: Decision::Allow,

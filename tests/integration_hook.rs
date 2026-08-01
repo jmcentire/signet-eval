@@ -81,13 +81,225 @@ fn test_hook_asks_force_push() {
     assert_eq!(parse_decision(&out), "ask");
 }
 
+fn run_identity_hook(input: &str) -> (tempfile::TempDir, String, i32) {
+    run_identity_hook_with_env(input, &[])
+}
+
+fn run_identity_hook_with_env(
+    input: &str,
+    extra_env: &[(&str, &str)],
+) -> (tempfile::TempDir, String, i32) {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path().join("home");
+    let shim_dir = home.join(".gh-shim");
+    let fake_bin = dir.path().join("bin");
+    let state_dir = dir.path().join("state");
+    std::fs::create_dir_all(&shim_dir).unwrap();
+    std::fs::create_dir_all(&fake_bin).unwrap();
+
+    let shim = shim_dir.join("gh");
+    std::fs::write(&shim, "#!/bin/sh\nexit 99\n").unwrap();
+    let fake_gh = fake_bin.join("gh");
+    std::fs::write(
+        &fake_gh,
+        r#"#!/bin/sh
+if [ -n "${FAKE_GH_LOG:-}" ]; then
+  printf 'command=%s\n' "${SIGNET_TOOL_COMMAND:-}" >> "$FAKE_GH_LOG"
+  printf 'cwd=%s\n' "${SIGNET_TOOL_CWD:-}" >> "$FAKE_GH_LOG"
+  printf '%s\n' "$*" >> "$FAKE_GH_LOG"
+fi
+if [ "$1 $2 $3 $4" = "auth token --user jmcentire" ]; then
+  printf 'token-jmcentire\n'
+  exit 0
+fi
+if [ "$1 $2 $3" = "api user -q" ] && [ "$4" = ".login" ]; then
+  if [ "${GH_TOKEN:-}" = "token-wander" ]; then
+    printf 'jmc-wander\n'
+  else
+    printf 'jmcentire\n'
+  fi
+  exit 0
+fi
+exit 1
+"#,
+    )
+    .unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&shim, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::fs::set_permissions(&fake_gh, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+
+    let path = format!(
+        "{}:{}:/usr/bin:/bin",
+        shim_dir.display(),
+        fake_bin.display()
+    );
+    let missing_policy = dir.path().join("missing-policy.yaml");
+    let missing_rules = dir.path().join("missing-rules.yaml");
+    let mut command = Command::new(env!(concat!("CARGO_BIN_EXE_", "signet", "-", "eval")));
+    command
+        .args([
+            "--policy-path",
+            missing_policy.to_str().unwrap(),
+            "--rules-path",
+            missing_rules.to_str().unwrap(),
+        ])
+        .env("HOME", &home)
+        .env("PATH", path)
+        .env("SIGNET_DIR", &state_dir)
+        .env("FAKE_GH_LOG", state_dir.join("fake-gh.log"))
+        .env_remove("GH_AS")
+        .env_remove("GH_TOKEN")
+        .env_remove("GITHUB_TOKEN")
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null());
+    for (key, value) in extra_env {
+        command.env(key, value);
+    }
+    let mut child = command.spawn().expect("failed to start permissions hook");
+    child
+        .stdin
+        .as_mut()
+        .unwrap()
+        .write_all(input.as_bytes())
+        .unwrap();
+    let output = child.wait_with_output().unwrap();
+    (
+        dir,
+        String::from_utf8_lossy(&output.stdout).to_string(),
+        output.status.code().unwrap_or(-1),
+    )
+}
+
 #[test]
-fn test_hook_allows_git_push() {
-    // github_identity_guard moved to user rules — default policy allows git push.
-    let (out, code) =
-        run_hook(r#"{"tool_name":"Bash","tool_input":{"command":"git push origin main"}}"#);
+fn test_hook_installs_identity_check_before_allowing_git_push() {
+    let (dir, out, code) = run_identity_hook(
+        r#"{"tool_name":"Bash","tool_input":{"command":"git push origin main"}}"#,
+    );
     assert_eq!(code, 0);
-    assert_eq!(parse_decision(&out), "allow");
+    assert_eq!(parse_decision(&out), "allow", "output: {out}");
+    let installed = dir
+        .path()
+        .join("state")
+        .join("checks")
+        .join("gh-identity-matches-remote");
+    assert!(
+        installed.is_file(),
+        "built-in identity check was not installed"
+    );
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        assert_ne!(
+            std::fs::metadata(installed).unwrap().permissions().mode() & 0o100,
+            0
+        );
+    }
+}
+
+#[test]
+fn test_hook_identity_check_uses_explicit_target_not_current_checkout() {
+    let (_dir, out, code) = run_identity_hook(
+        r#"{"tool_name":"Bash","tool_input":{"command":"git clone https://github.com/wandercom/example.git"}}"#,
+    );
+    assert_eq!(code, 0);
+    assert_eq!(parse_decision(&out), "deny", "output: {out}");
+    assert!(out.contains("jmc-wander"), "output: {out}");
+}
+
+#[test]
+fn test_hook_identity_check_uses_git_c_and_named_remote() {
+    let target = tempfile::tempdir().unwrap();
+    assert!(Command::new("git")
+        .args(["init", "-q"])
+        .arg(target.path())
+        .status()
+        .unwrap()
+        .success());
+    assert!(Command::new("git")
+        .args(["-C"])
+        .arg(target.path())
+        .args([
+            "remote",
+            "add",
+            "upstream",
+            "https://github.com/wandercom/example.git",
+        ])
+        .status()
+        .unwrap()
+        .success());
+    let command = format!("git -C {} fetch upstream", target.path().display());
+    let input = serde_json::json!({
+        "tool_name": "Bash",
+        "tool_input": { "command": command },
+    })
+    .to_string();
+
+    let (dir, out, code) = run_identity_hook(&input);
+    let gh_log = std::fs::read_to_string(dir.path().join("state/fake-gh.log"))
+        .unwrap_or_else(|_| "<no gh calls>".into());
+    assert_eq!(code, 0);
+    assert_eq!(
+        parse_decision(&out),
+        "deny",
+        "output: {out}; gh calls: {gh_log}"
+    );
+    assert!(out.contains("jmc-wander"), "output: {out}");
+}
+
+#[test]
+fn test_hook_identity_check_understands_full_github_api_urls() {
+    let (_dir, out, code) = run_identity_hook(
+        r#"{"tool_name":"Bash","tool_input":{"command":"gh api https://api.github.com/repos/wandercom/example"}}"#,
+    );
+    assert_eq!(code, 0);
+    assert_eq!(parse_decision(&out), "deny", "output: {out}");
+    assert!(out.contains("jmc-wander"), "output: {out}");
+}
+
+#[test]
+fn test_hook_identity_check_does_not_treat_gh_argument_as_git_operation() {
+    let target = tempfile::tempdir().unwrap();
+    assert!(Command::new("git")
+        .args(["init", "-q"])
+        .arg(target.path())
+        .status()
+        .unwrap()
+        .success());
+    assert!(Command::new("git")
+        .args(["-C"])
+        .arg(target.path())
+        .args(["config", "user.email", "jeremy@wander.com"])
+        .status()
+        .unwrap()
+        .success());
+    let input = serde_json::json!({
+        "tool_name": "Bash",
+        "tool_input": {
+            "command": "gh workflow run push --repo jmcentire/example",
+            "workdir": target.path(),
+        },
+    })
+    .to_string();
+
+    let (_dir, out, code) = run_identity_hook(&input);
+    assert_eq!(code, 0);
+    assert_eq!(parse_decision(&out), "allow", "output: {out}");
+}
+
+#[test]
+fn test_hook_identity_check_rejects_conflicting_inherited_github_token() {
+    let (_dir, out, code) = run_identity_hook_with_env(
+        r#"{"tool_name":"Bash","tool_input":{"command":"git push origin main"}}"#,
+        &[("GITHUB_TOKEN", "token-wander")],
+    );
+    assert_eq!(code, 0);
+    assert_eq!(parse_decision(&out), "deny", "output: {out}");
+    assert!(out.contains("inherited GITHUB_TOKEN"), "output: {out}");
 }
 
 #[test]
@@ -396,6 +608,44 @@ rules:
 }
 
 #[test]
+fn test_hook_forwards_normalized_tool_call_to_ensure_stdin() {
+    let dir = tempfile::tempdir().unwrap();
+    let scripts_dir = dir.path().join("checks");
+    std::fs::create_dir_all(&scripts_dir).unwrap();
+    let script = scripts_dir.join("inspect-input");
+    std::fs::write(
+        &script,
+        "#!/bin/sh\npayload=\"$(cat)\"\nprintf '%s' \"$payload\" | grep -q '\"command\":\"deploy app\"'\n",
+    )
+    .unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+
+    let policy = r#"
+version: 1
+default_action: ALLOW
+rules:
+  - name: inspect_input
+    tool_pattern: "Bash"
+    action: ENSURE
+    ensure:
+      check: inspect-input
+      timeout: 5
+      message: Missing normalized input
+"#;
+    let (out, code) = run_hook_with_policy(
+        r#"{"tool_name":"Bash","tool_input":{"command":"deploy app"}}"#,
+        policy,
+        dir.path(),
+    );
+    assert_eq!(code, 0);
+    assert_eq!(parse_decision(&out), "allow", "output: {out}");
+}
+
+#[test]
 fn test_hook_ensure_fail() {
     let dir = tempfile::tempdir().unwrap();
     let checks_dir = dir.path().join("checks");
@@ -564,7 +814,7 @@ version: 1
 default_action: ALLOW
 rules:
   - name: nudge_always
-    tool_pattern: "Edit"
+    tool_pattern: "Read"
     action: INJECT
     inject:
       trigger:
@@ -576,7 +826,7 @@ rules:
         substitutions: false
 "#;
     let (out, code) = run_hook_with_policy(
-        r#"{"tool_name":"Edit","tool_input":{"file_path":"/tmp/x"}}"#,
+        r#"{"tool_name":"Read","tool_input":{"file_path":"/tmp/x"}}"#,
         policy,
         dir.path(),
     );
@@ -659,10 +909,10 @@ fn test_hook_inject_does_not_override_deny() {
 version: 1
 default_action: ALLOW
 rules:
-  - name: block_rm
+  - name: custom_block
     tool_pattern: "Bash"
     conditions:
-      - "contains(parameters, 'rm ')"
+      - "contains(parameters, 'dangerous-delete')"
     action: DENY
     reason: "blocked"
   - name: nudge
@@ -673,7 +923,7 @@ rules:
       payload: { text: "nudge" }
 "#;
     let (out, code) = run_hook_with_policy(
-        r#"{"tool_name":"Bash","tool_input":{"command":"rm foo"}}"#,
+        r#"{"tool_name":"Bash","tool_input":{"command":"dangerous-delete foo"}}"#,
         policy,
         dir.path(),
     );
@@ -691,10 +941,10 @@ fn test_hook_inject_codex_permission_appends_to_message() {
 version: 1
 default_action: ALLOW
 rules:
-  - name: block_rm
+  - name: custom_block
     tool_pattern: "Bash"
     conditions:
-      - "contains(parameters, 'rm ')"
+      - "contains(parameters, 'dangerous-delete')"
     action: DENY
     reason: "blocked by policy"
   - name: nudge
@@ -705,7 +955,7 @@ rules:
       payload: { text: "remember to ask first" }
 "#;
     let (out, code) = run_hook_with_args_and_signet_dir(
-        r#"{"hook_event_name":"PermissionRequest","tool_name":"Bash","tool_input":{"command":"rm foo"}}"#,
+        r#"{"hook_event_name":"PermissionRequest","tool_name":"Bash","tool_input":{"command":"dangerous-delete foo"}}"#,
         &[
             "--adapter",
             "codex",

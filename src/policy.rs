@@ -414,6 +414,13 @@ pub(crate) fn evaluate_condition(
         }
     }
 
+    // has_current_session() — the hook host supplied an identifiable chat/session.
+    // A working-directory fallback may group multiple agent windows, so callers that
+    // need strict same-session evidence should require this alongside ledger recency.
+    if strip_fn(cond, "has_current_session").is_some() {
+        return Ok(crate::vault::current_client_session_id().is_some());
+    }
+
     // not(condition) — negate any condition
     if let Some(inner) = strip_fn(cond, "not") {
         let result = evaluate_condition(inner, call, vault)?;
@@ -1012,11 +1019,12 @@ pub fn load_merged_policy(policy_path: &Path, rules_path: &Path) -> CompiledPoli
     // System policy: missing file is benign (no per-host system rules installed) — fall back to
     // the hardcoded baseline (self-protection + system defaults) and STILL load user rules.
     // Malformed YAML also falls back to baseline rather than dropping user rules silently.
-    let system_config = match std::fs::read_to_string(policy_path) {
+    let installed_system_config = match std::fs::read_to_string(policy_path) {
         Ok(content) => serde_yaml::from_str::<PolicyConfig>(&content)
             .unwrap_or_else(|_| baseline_system_config()),
         Err(_) => baseline_system_config(),
     };
+    let system_config = overlay_current_system_rules(installed_system_config);
 
     let user_rules = match std::fs::read_to_string(rules_path) {
         Ok(content) => {
@@ -1041,6 +1049,34 @@ pub fn load_merged_policy(policy_path: &Path, rules_path: &Path) -> CompiledPoli
         rules: merged,
     };
     CompiledPolicy::from_config(&config)
+}
+
+/// Reconcile a serialized system policy with the rules compiled into this binary.
+///
+/// `policy.yaml` is a snapshot written by `init`. Without this overlay, installing
+/// a newer binary would leave old locked rules in force and omit newly shipped
+/// protections until a human happened to run `init` again. Current built-ins win
+/// by name; additional human-authored system rules are preserved.
+fn overlay_current_system_rules(installed: PolicyConfig) -> PolicyConfig {
+    let baseline = baseline_system_config();
+    let built_in_names: std::collections::HashSet<String> = baseline
+        .rules
+        .iter()
+        .map(|rule| rule.name.clone())
+        .collect();
+    let mut rules = baseline.rules;
+    rules.extend(
+        installed
+            .rules
+            .into_iter()
+            .filter(|rule| !built_in_names.contains(rule.name.as_str())),
+    );
+
+    PolicyConfig {
+        version: installed.version.max(baseline.version),
+        default_action: installed.default_action,
+        rules,
+    }
 }
 
 /// Merge system rules and user rules: locked first, then user rules, then unlocked system defaults.
@@ -1105,6 +1141,7 @@ const KNOWN_CONDITION_FNS: &[&str] = &[
     "any_of",
     "has_credential",
     "has_recent_action",
+    "has_current_session",
     "not",
     "or",
 ];
@@ -1627,14 +1664,40 @@ pub fn self_protection_rules() -> Vec<PolicyRule> {
             gate: None, ensure: None,
         inject: None,
     },
+        // Require durable project context before any host's direct edit tools run.
+        // This is a DENY-on-missing rule rather than GATE-on-present: after Kindex
+        // engagement it stops matching, so later credential and user rules still
+        // evaluate instead of being accidentally authorized by a passing gate.
+        PolicyRule {
+            name: "require_kindex_engagement_before_edits".into(),
+            tool_pattern: "^(Edit|Write|NotebookEdit|apply_patch|write_to_file|replace_file_content|multi_replace_file_content|edit|write|patch)$".into(),
+            conditions: vec![
+                "or(not(has_current_session()), not(has_recent_action('mcp__kindex__tag_start|mcp__kindex__tag_resume|mcp__kindex__search|mcp__kindex__context|mcp__kindex__ask', 200)))".into(),
+            ],
+            action: Decision::Deny,
+            locked: true,
+            reason: Some(
+                "No Kindex session engagement is recorded in the last 200 allowed tool calls."
+                    .into(),
+            ),
+            alternative: Some(
+                "Start or resume a Kindex tag, then use Kindex search or context before editing. \
+                 If the durable permissions ledger is unavailable, ask the user to initialize or \
+                 unlock it; do not edit without a recorded engagement."
+                    .into(),
+            ),
+            gate: None,
+            ensure: None,
+            inject: None,
+        },
         // Routes Anthropic's session-local Task* tool family to a persistent task store.
         // Locked because the user has elected to enforce this universally — the agent
         // should not silently fall back to ephemeral Anthropic task tracking.
         PolicyRule {
             name: "prefer_persistent_task_store".into(),
-            tool_pattern: "Task*".into(),
+            tool_pattern: "^Task.*$".into(),
             conditions: vec!["true".into()],
-            action: Decision::Ask,
+            action: Decision::Deny,
             locked: true,
             reason: Some(
                 "Anthropic's Task* tools (TaskCreate / TaskUpdate / TaskList / TaskGet / \
@@ -1728,6 +1791,34 @@ pub fn system_default_rules() -> Vec<PolicyRule> {
             gate: None, ensure: None,
         inject: None,
     },
+        // Identity enforcement is an unlocked system default placed after the
+        // other Bash safety rules. A passing ENSURE therefore cannot authorize a
+        // force-push, rm, or other command that an earlier rule would stop.
+        PolicyRule {
+            name: "github_identity_guard".into(),
+            tool_pattern: "^Bash$".into(),
+            conditions: vec![
+                r"matches(parameters, '\bgit\b[^\n]*\b(push|pull|fetch|clone)\b|(^|[^[:alnum:]_-])gh[[:space:]]')".into(),
+            ],
+            action: Decision::Ensure,
+            locked: false,
+            reason: Some(
+                "GitHub operations must use the identity mapped from the target repository owner."
+                    .into(),
+            ),
+            alternative: Some(
+                "Use the configured per-process gh or Git credential shim for the target owner; \
+                 never switch the global gh account."
+                    .into(),
+            ),
+            gate: None,
+            ensure: Some(EnsureConfig {
+                check: "gh-identity-matches-remote".into(),
+                timeout: 15,
+                message: "GitHub identity does not match the target repository owner.".into(),
+            }),
+            inject: None,
+        },
     ]
 }
 
@@ -1774,20 +1865,21 @@ pub fn sample_yaml() -> String {
   reason: Core/DSL file modification requires confirmation.
   alternative: Work on net-new files only, or confirm core changes are in scope.
 
-# GitHub identity enforcement (ENSURE example)
+# GitHub identity enforcement (already shipped; shown for customization only)
+# The binary installs its trusted check on the first matching evaluation.
 # Requires a check script at ~/.signet/checks/gh-identity-matches-remote
 # The script inspects the git remote URL and compares to the active gh user.
 - name: github_identity_guard
   tool_pattern: "^Bash$"
   conditions:
-    - "any_of(parameters, 'git push', 'git pull', 'git fetch', 'git clone')"
+    - "matches(parameters, '\\bgit\\b[^\\n]*\\b(push|pull|fetch|clone)\\b|(^|[^[:alnum:]_-])gh[[:space:]]')"
   action: ENSURE
-  reason: Git remote operations must use the correct GitHub identity.
-  alternative: "Run 'gh auth switch --user <correct_user>' to match the remote's org."
+  reason: GitHub operations must use the identity mapped from the target repository owner.
+  alternative: Use the configured per-process identity shim; never switch the global gh account.
   ensure:
     check: gh-identity-matches-remote
     timeout: 15
-    message: "GitHub identity mismatch. Run: gh auth switch --user <correct_user>"
+    message: GitHub identity does not match the target repository owner.
 "#.to_string()
 }
 
@@ -2356,13 +2448,15 @@ mod tests {
 
     #[test]
     fn test_default_policy_blocks_credential_writes() {
-        // Without vault/plan, require_plan_before_code fires first (ASK).
-        // With a vault that has a plan logged, credential writes hit block_credential_writes (DENY).
+        // With same-session Kindex engagement, credential writes continue to the
+        // later block_credential_writes rule rather than being authorized.
+        crate::vault::set_test_session_id(Some("credential-write-test"));
         let dir = tempfile::tempdir().unwrap();
         let db = dir.path().join("state.db");
         let key = crate::vault::derive_master_key("testpass", &[0u8; 16]);
         let vault = crate::vault::Vault::new(key, db);
         vault.log_action("EnterPlanMode", "allow", "", 0.0, "{}");
+        vault.log_action("mcp__kindex__tag_start", "allow", "", 0.0, "{}");
 
         let policy = default_policy();
         let call = make_call("Write", serde_json::json!({"file_path": "/app/.env"}));
@@ -2372,6 +2466,7 @@ mod tests {
             result.matched_rule.as_deref(),
             Some("block_credential_writes")
         );
+        crate::vault::clear_test_session_id();
     }
 
     #[test]
@@ -2602,13 +2697,16 @@ mod self_protection_tests {
     #[test]
     fn test_default_policy_has_locked_rules() {
         let rules = self_protection_rules();
-        assert_eq!(rules.len(), 9);
+        assert_eq!(rules.len(), 10);
         assert!(rules.iter().all(|r| r.locked));
         // github_identity_guard should NOT be in self-protection rules
         assert!(!rules.iter().any(|r| r.name == "github_identity_guard"));
         assert!(rules
             .iter()
             .any(|r| r.name == "prefer_persistent_task_store"));
+        assert!(rules
+            .iter()
+            .any(|r| r.name == "require_kindex_engagement_before_edits"));
     }
 
     #[test]
@@ -2813,7 +2911,7 @@ mod self_protection_tests {
         // Normal Bash
         let call = make_call("Bash", serde_json::json!({"command": "ls -la"}));
         assert_eq!(evaluate(&call, &policy, None).decision, Decision::Allow);
-        // Normal Write — allowed (require_plan_before_code moved to sample/user rules)
+        // Direct edits fail closed until this session has durable Kindex context.
         let call = make_call(
             "Write",
             serde_json::json!({
@@ -2821,7 +2919,12 @@ mod self_protection_tests {
                 "content": "fn main() {}"
             }),
         );
-        assert_eq!(evaluate(&call, &policy, None).decision, Decision::Allow);
+        let result = evaluate(&call, &policy, None);
+        assert_eq!(result.decision, Decision::Deny);
+        assert_eq!(
+            result.matched_rule.as_deref(),
+            Some("require_kindex_engagement_before_edits")
+        );
         // Normal Read — not matched by Write/Edit/Bash patterns
         let call = make_call("Read", serde_json::json!({"file_path": "/tmp/foo"}));
         assert_eq!(evaluate(&call, &policy, None).decision, Decision::Allow);
@@ -3704,16 +3807,21 @@ mod gate_ensure_tests {
     }
 
     #[test]
-    fn test_github_identity_guard_not_in_default() {
-        // github_identity_guard was moved to sample.yaml (user rule, not system default)
+    fn test_github_identity_guard_is_shipped_unlocked_default() {
         let policy = default_policy();
         let guard = policy
             .rules
             .iter()
             .find(|r| r.name == "github_identity_guard");
+        let guard = guard.expect("github_identity_guard must ship in default_policy");
         assert!(
-            guard.is_none(),
-            "github_identity_guard should NOT be in default_policy"
+            !guard.locked,
+            "human user rules must remain able to override it"
+        );
+        assert_eq!(guard.action, Decision::Ensure);
+        assert_eq!(
+            guard.ensure.as_ref().map(|config| config.check.as_str()),
+            Some("gh-identity-matches-remote")
         );
     }
 
@@ -4085,8 +4193,14 @@ rules:
         };
         std::fs::write(&policy_path, serde_yaml::to_string(&config).unwrap()).unwrap();
         let merged = load_merged_policy(&policy_path, &rules_path);
-        assert_eq!(merged.rules.len(), 1);
-        assert_eq!(merged.rules[0].name, "test");
+        assert!(merged.rules.iter().any(|rule| rule.name == "test"));
+        for built_in in baseline_system_config().rules {
+            assert!(
+                merged.rules.iter().any(|rule| rule.name == built_in.name),
+                "current built-in '{}' must overlay an older policy snapshot",
+                built_in.name
+            );
+        }
     }
 
     #[test]
@@ -4144,10 +4258,57 @@ rules:
         std::fs::write(&rules_path, serde_yaml::to_string(&user_rules).unwrap()).unwrap();
 
         let merged = load_merged_policy(&policy_path, &rules_path);
-        assert_eq!(merged.rules.len(), 3);
-        assert_eq!(merged.rules[0].name, "locked"); // locked first
-        assert_eq!(merged.rules[1].name, "my_rule"); // user second
-        assert_eq!(merged.rules[2].name, "sys"); // system last
+        let names: Vec<&str> = merged.rules.iter().map(|rule| rule.name.as_str()).collect();
+        let locked_position = names.iter().position(|name| *name == "locked").unwrap();
+        let user_position = names.iter().position(|name| *name == "my_rule").unwrap();
+        let system_position = names.iter().position(|name| *name == "sys").unwrap();
+        assert!(
+            locked_position < user_position,
+            "locked system rules must come first"
+        );
+        assert!(
+            user_position < system_position,
+            "user rules must precede unlocked defaults"
+        );
+        assert!(names.contains(&"github_identity_guard"));
+    }
+
+    #[test]
+    fn test_load_merged_policy_replaces_stale_built_in_by_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let policy_path = dir.path().join("policy.yaml");
+        let rules_path = dir.path().join("rules.yaml");
+        let stale = PolicyConfig {
+            version: 1,
+            default_action: Decision::Allow,
+            rules: vec![PolicyRule {
+                name: "prefer_persistent_task_store".into(),
+                tool_pattern: "^Task.*$".into(),
+                conditions: vec!["true".into()],
+                action: Decision::Ask,
+                reason: Some("stale snapshot".into()),
+                alternative: None,
+                locked: true,
+                gate: None,
+                ensure: None,
+                inject: None,
+            }],
+        };
+        std::fs::write(&policy_path, serde_yaml::to_string(&stale).unwrap()).unwrap();
+
+        let merged = load_merged_policy(&policy_path, &rules_path);
+        let matching: Vec<&CompiledRule> = merged
+            .rules
+            .iter()
+            .filter(|rule| rule.name == "prefer_persistent_task_store")
+            .collect();
+        assert_eq!(matching.len(), 1, "built-in names must not be duplicated");
+        assert_eq!(matching[0].action, Decision::Deny);
+        assert!(matching[0].locked);
+        assert!(merged
+            .rules
+            .iter()
+            .any(|rule| rule.name == "require_kindex_engagement_before_edits"));
     }
 
     /// Regression: when policy.yaml does not exist, load_merged_policy must still load
@@ -4227,22 +4388,22 @@ rules:
         }
     }
 
-    /// The shipped locked rule must ask on every Task* harness tool by default and
+    /// The shipped locked rule must deny every Task* harness tool by default and
     /// must not catch unrelated tools (Bash, kindex's task tools).
     #[test]
-    fn test_prefer_persistent_task_store_asks_on_anthropic_task_family() {
+    fn test_prefer_persistent_task_store_denies_anthropic_task_family() {
         let policy = default_policy();
 
-        // Rule must be present, locked, and ASK.
+        // Rule must be present, locked, and DENY.
         let rule = policy
             .rules
             .iter()
             .find(|r| r.name == "prefer_persistent_task_store")
             .expect("prefer_persistent_task_store must be a baked-in default rule");
         assert!(rule.locked, "prefer_persistent_task_store must be locked");
-        assert_eq!(rule.action, Decision::Ask);
+        assert_eq!(rule.action, Decision::Deny);
 
-        // All Anthropic Task* variants must ask.
+        // All Anthropic Task* variants must deny.
         for tool in &[
             "TaskCreate",
             "TaskUpdate",
@@ -4256,8 +4417,8 @@ rules:
             let result = evaluate(&call, &policy, None);
             assert_eq!(
                 result.decision,
-                Decision::Ask,
-                "{} must be asked by default policy",
+                Decision::Deny,
+                "{} must be denied by default policy",
                 tool
             );
             assert_eq!(
@@ -4282,6 +4443,81 @@ rules:
             kindex_result.matched_rule.as_deref(),
             Some("prefer_persistent_task_store")
         );
+    }
+
+    #[test]
+    fn test_kindex_engagement_rule_fails_closed_then_yields_to_later_rules() {
+        crate::vault::set_test_session_id(None);
+        let policy = default_policy();
+        let edit = make_call(
+            "apply_patch",
+            serde_json::json!({"patch": "update an ordinary source file"}),
+        );
+
+        let without_ledger = evaluate(&edit, &policy, None);
+        assert_eq!(without_ledger.decision, Decision::Deny);
+        assert_eq!(
+            without_ledger.matched_rule.as_deref(),
+            Some("require_kindex_engagement_before_edits")
+        );
+
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("state.db");
+        let key = crate::vault::derive_master_key("testpass", &[0u8; 16]);
+        let vault = crate::vault::Vault::new(key, db);
+        vault.log_action_for_session("mcp__kindex__tag_start", "allow", "", 0.0, "{}", None);
+        let null_session_engagement = evaluate(&edit, &policy, Some(&vault));
+        assert_eq!(null_session_engagement.decision, Decision::Deny);
+        assert_eq!(
+            null_session_engagement.matched_rule.as_deref(),
+            Some("require_kindex_engagement_before_edits")
+        );
+
+        crate::vault::set_test_session_id(Some("kindex-rule-test"));
+        vault.log_action("mcp__kindex__tag_start", "allow", "", 0.0, "{}");
+
+        let after_engagement = evaluate(&edit, &policy, Some(&vault));
+        assert_eq!(after_engagement.decision, Decision::Allow);
+        assert_ne!(
+            after_engagement.matched_rule.as_deref(),
+            Some("require_kindex_engagement_before_edits")
+        );
+
+        let secret_write = make_call(
+            "Write",
+            serde_json::json!({"file_path": "/app/production.env"}),
+        );
+        let composed = evaluate(&secret_write, &policy, Some(&vault));
+        assert_eq!(composed.decision, Decision::Deny);
+        assert_eq!(
+            composed.matched_rule.as_deref(),
+            Some("block_credential_writes"),
+            "a successful Kindex precondition must not authorize the edit"
+        );
+        crate::vault::clear_test_session_id();
+    }
+
+    #[test]
+    fn test_identity_guard_catches_git_options_and_gh_targets() {
+        let policy = default_policy();
+        for command in [
+            "git -c credential.helper= push origin main",
+            "git -C /tmp/example fetch upstream",
+            "gh pr view --repo wandercom/example",
+            "/opt/homebrew/bin/gh api repos/meacjis/example",
+        ] {
+            let call = make_call("Bash", serde_json::json!({"command": command}));
+            let result = evaluate(&call, &policy, None);
+            assert_eq!(
+                result.decision,
+                Decision::Ensure,
+                "identity check did not match: {command}"
+            );
+            assert_eq!(
+                result.matched_rule.as_deref(),
+                Some("github_identity_guard")
+            );
+        }
     }
 
     /// Malformed system policy.yaml must not silently drop user rules either.
@@ -4319,8 +4555,8 @@ rules:
         let defaults = system_default_rules();
         assert_eq!(
             defaults.len(),
-            6,
-            "Should have exactly 6 universal safe defaults"
+            7,
+            "Should have exactly 7 universal safe defaults"
         );
         assert!(
             defaults.iter().all(|r| !r.locked),
@@ -4342,13 +4578,12 @@ rules:
             policy.rules.iter().all(|r| r.name != "protect_core_files"),
             "protect_core_files should not be in defaults"
         );
-        assert!(
-            policy
-                .rules
-                .iter()
-                .all(|r| r.name != "github_identity_guard"),
-            "github_identity_guard should not be in defaults"
-        );
+        let identity = policy
+            .rules
+            .iter()
+            .find(|rule| rule.name == "github_identity_guard")
+            .expect("github_identity_guard should be a shipped default");
+        assert!(!identity.locked);
     }
 
     #[test]

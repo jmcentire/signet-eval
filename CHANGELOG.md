@@ -2,6 +2,30 @@
 
 ## [Unreleased]
 
+## [3.12.1] - 2026-08-01
+
+### Added
+- Restored `github_identity_guard` as a shipped default covering Git remote operations (including option-bearing commands) and `gh` commands. Its trusted `gh-identity-matches-remote` script is embedded in the binary and installed atomically on first matching evaluation.
+- Added locked `require_kindex_engagement_before_edits`, which denies direct edit tools unless tag/search/context engagement appears in the last 200 allowed ledger actions. It is a deny-on-missing precondition so successful engagement cannot bypass later safety or user rules.
+
+### Changed
+- Restored locked `prefer_persistent_task_store` to hard denial with Kindex task tools as the durable alternative.
+- Existing system-policy snapshots are reconciled with current compiled defaults by rule name on every load. New protections therefore apply after a binary upgrade without rewriting human-authored extra system rules.
+- The identity guard uses the remote-owner keyed, per-process GitHub account model and explicitly rejects global account switching as remediation.
+
+### Fixed
+- ENSURE checks now receive the normalized tool call on stdin and the shipped identity check receives command/workdir context directly. Explicit clone URLs and `--repo` targets can no longer silently fall back to the current checkout's remote.
+- The identity guard remains after destructive Bash defaults, preventing a passing identity check from authorizing a force-push or another command blocked earlier in the policy.
+- Allowed-action ledger entries now carry the client session identifier, and `has_recent_action` prerequisites only inspect that same session. The locked Kindex edit prerequisite additionally requires a distinct host-supplied session identifier, failing closed when only the legacy working-directory fallback or no identifier is available; an orientation action from another concurrent agent window can no longer satisfy it.
+
+## [3.12.0] - 2026-06-13
+
+### Added
+- Added Antigravity and OpenCode hook adapters.
+
+### Changed
+- Changed the persistent-task-store rule from deny to ask. Version 3.12.1 restores the intended hard denial.
+
 ## [3.11.1] - 2026-05-29
 
 ### Fixed
