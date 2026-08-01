@@ -23,6 +23,11 @@ use sha2::Sha256;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+#[cfg(test)]
+thread_local! {
+    static TEST_SESSION_ID: std::cell::RefCell<Option<Option<String>>> = const { std::cell::RefCell::new(None) };
+}
+
 const SALT_LEN: usize = 32;
 const KEY_LEN: usize = 32;
 const NONCE_LEN: usize = 12;
@@ -33,6 +38,19 @@ const MAX_PREFLIGHT_CONSTRAINTS: usize = 20;
 const DEFAULT_VIOLATION_THRESHOLD: u32 = 5;
 
 type HmacSha256 = Hmac<Sha256>;
+
+const CLIENT_SESSION_KEYS: &[&str] = &[
+    "SIGNET_CHAT_ID",
+    "KIN_CHAT_ID",
+    "KIN_CONVERSATION_ID",
+    "CLAUDE_SESSION_ID",
+    "CODEX_SESSION_ID",
+    "CODEX_CONVERSATION_ID",
+    "OPENCODE_SESSION_ID",
+    "OPENCODE_CHAT_ID",
+    "CURSOR_SESSION_ID",
+    "CURSOR_CHAT_ID",
+];
 
 fn now_epoch() -> f64 {
     SystemTime::now()
@@ -47,22 +65,44 @@ fn now_epoch() -> f64 {
 /// fallback because SIGNET_SESSION was commonly set to $PWD, which crosses chat
 /// boundaries when two windows are open in the same repo.
 pub fn current_session_id() -> Option<String> {
-    const KEYS: &[&str] = &[
-        "SIGNET_CHAT_ID",
-        "KIN_CHAT_ID",
-        "KIN_CONVERSATION_ID",
-        "CLAUDE_SESSION_ID",
-        "CODEX_SESSION_ID",
-        "CODEX_CONVERSATION_ID",
-        "OPENCODE_SESSION_ID",
-        "OPENCODE_CHAT_ID",
-        "CURSOR_SESSION_ID",
-        "CURSOR_CHAT_ID",
-        "SIGNET_SESSION",
-    ];
-    KEYS.iter()
+    #[cfg(test)]
+    if let Some(session_id) = TEST_SESSION_ID.with(|value| value.borrow().clone()) {
+        return session_id;
+    }
+
+    current_client_session_id().or_else(|| {
+        std::env::var("SIGNET_SESSION")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+    })
+}
+
+/// A distinct session identifier supplied by the hook host, excluding the
+/// legacy working-directory SIGNET_SESSION fallback.
+pub fn current_client_session_id() -> Option<String> {
+    #[cfg(test)]
+    if let Some(session_id) = TEST_SESSION_ID.with(|value| value.borrow().clone()) {
+        return session_id;
+    }
+
+    CLIENT_SESSION_KEYS
+        .iter()
         .filter_map(|key| std::env::var(key).ok())
         .find(|s| !s.trim().is_empty())
+}
+
+#[cfg(test)]
+pub(crate) fn set_test_session_id(session_id: Option<&str>) {
+    TEST_SESSION_ID.with(|value| {
+        *value.borrow_mut() = Some(session_id.map(str::to_owned));
+    });
+}
+
+#[cfg(test)]
+pub(crate) fn clear_test_session_id() {
+    TEST_SESSION_ID.with(|value| {
+        *value.borrow_mut() = None;
+    });
 }
 
 pub(crate) fn random_hex_id() -> String {
@@ -273,7 +313,8 @@ impl Vault {
                 category TEXT NOT NULL DEFAULT '',
                 amount REAL NOT NULL DEFAULT 0.0,
                 decision TEXT NOT NULL,
-                detail TEXT NOT NULL DEFAULT ''
+                detail TEXT NOT NULL DEFAULT '',
+                session_id TEXT
             );
             CREATE TABLE IF NOT EXISTS credentials (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -322,6 +363,13 @@ impl Vault {
         ",
         )
         .expect("init db");
+
+        // Migration: scope prerequisite lookups to the actual hook session.
+        let _ = conn.execute("ALTER TABLE ledger ADD COLUMN session_id TEXT", []);
+        let _ = conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_ledger_session ON ledger(session_id)",
+            [],
+        );
 
         // Migration: add session_id column to preflights (idempotent)
         let _ = conn.execute("ALTER TABLE preflights ADD COLUMN session_id TEXT", []);
@@ -384,10 +432,30 @@ impl Vault {
         amount: f64,
         detail: &str,
     ) {
+        let session_id = current_session_id();
+        self.log_action_for_session(
+            tool,
+            decision,
+            category,
+            amount,
+            detail,
+            session_id.as_deref(),
+        );
+    }
+
+    pub(crate) fn log_action_for_session(
+        &self,
+        tool: &str,
+        decision: &str,
+        category: &str,
+        amount: f64,
+        detail: &str,
+        session_id: Option<&str>,
+    ) {
         if let Ok(conn) = Connection::open(&self.db_path) {
             let _ = conn.execute(
-                "INSERT INTO ledger (timestamp, tool, category, amount, decision, detail) VALUES (?1,?2,?3,?4,?5,?6)",
-                params![now_epoch(), tool, category, amount, decision, detail],
+                "INSERT INTO ledger (timestamp, tool, category, amount, decision, detail, session_id) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+                params![now_epoch(), tool, category, amount, decision, detail, session_id],
             );
         }
     }
@@ -509,7 +577,7 @@ impl Vault {
             Err(_) => return vec![],
         };
         let mut stmt = conn.prepare(
-            "SELECT timestamp, tool, category, amount, decision, detail FROM ledger ORDER BY id DESC LIMIT ?1"
+            "SELECT timestamp, tool, category, amount, decision, detail, session_id FROM ledger ORDER BY id DESC LIMIT ?1"
         ).unwrap();
         stmt.query_map(params![limit], |row| {
             Ok(serde_json::json!({
@@ -519,6 +587,7 @@ impl Vault {
                 "amount": row.get::<_, f64>(3)?,
                 "decision": row.get::<_, String>(4)?,
                 "detail": row.get::<_, String>(5)?,
+                "session_id": row.get::<_, Option<String>>(6)?,
             }))
         })
         .unwrap()
@@ -531,6 +600,16 @@ impl Vault {
     /// Supports pipe-delimited OR: "EnterPlanMode|TaskCreate" matches either.
     /// Used by Gate action to verify a prerequisite was recently executed.
     pub fn has_recent_allowed_action(&self, search: &str, within: u32) -> bool {
+        let session_id = current_session_id();
+        self.has_recent_allowed_action_for_session(search, within, session_id.as_deref())
+    }
+
+    fn has_recent_allowed_action_for_session(
+        &self,
+        search: &str,
+        within: u32,
+        session_id: Option<&str>,
+    ) -> bool {
         let conn = match Connection::open(&self.db_path) {
             Ok(c) => c,
             Err(_) => return false,
@@ -548,7 +627,7 @@ impl Vault {
             .iter()
             .enumerate()
             .flat_map(|(i, _)| {
-                let p = i * 2 + 2; // params start at ?2 (within is ?1)
+                let p = i * 2 + 3; // ?1=within, ?2=session, terms start at ?3
                 vec![format!(
                     "tool LIKE '%' || ?{p} || '%' OR detail LIKE '%' || ?{} || '%'",
                     p + 1
@@ -557,12 +636,13 @@ impl Vault {
             .collect();
         let where_clause = placeholders.join(" OR ");
         let sql = format!(
-            "SELECT COUNT(*) FROM (SELECT tool, detail FROM ledger WHERE decision = 'allow' ORDER BY id DESC LIMIT ?1) WHERE {where_clause}"
+            "SELECT COUNT(*) FROM (SELECT tool, detail FROM ledger WHERE decision = 'allow' AND session_id IS ?2 ORDER BY id DESC LIMIT ?1) WHERE {where_clause}"
         );
         let limit = within.min(500).max(1);
-        // Build parameter vector: [limit, term1, term1, term2, term2, ...]
+        // Build parameter vector: [limit, session, term1, term1, term2, term2, ...]
         let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
         param_values.push(Box::new(limit));
+        param_values.push(Box::new(session_id.map(str::to_owned)));
         for term in &terms {
             param_values.push(Box::new(term.to_string()));
             param_values.push(Box::new(term.to_string())); // once for tool, once for detail
@@ -1524,6 +1604,21 @@ mod tests {
     }
 
     #[test]
+    fn test_current_client_session_id_ignores_legacy_workdir_fallback() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        clear_session_env();
+        std::env::set_var("SIGNET_SESSION", "/tmp/shared-checkout");
+
+        assert_eq!(
+            current_session_id().as_deref(),
+            Some("/tmp/shared-checkout")
+        );
+        assert_eq!(current_client_session_id(), None);
+
+        clear_session_env();
+    }
+
+    #[test]
     fn test_active_preflight_prefers_matching_session_then_global() {
         let _guard = ENV_LOCK.lock().unwrap();
         clear_session_env();
@@ -1675,6 +1770,83 @@ mod tests {
         assert!(vault.has_recent_allowed_action("EnterPlanMode|TaskCreate", 10));
         // Neither present
         assert!(!vault.has_recent_allowed_action("FooTool|BarTool", 10));
+    }
+
+    #[test]
+    fn test_has_recent_allowed_action_is_scoped_to_session() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault = make_test_vault(dir.path(), "testpass123");
+        vault.log_action_for_session(
+            "mcp__kindex__tag_start",
+            "allow",
+            "",
+            0.0,
+            "{}",
+            Some("chat-a"),
+        );
+        vault.log_action_for_session("Read", "allow", "", 0.0, "{}", Some("chat-b"));
+
+        assert!(vault.has_recent_allowed_action_for_session(
+            "mcp__kindex__tag_start",
+            10,
+            Some("chat-a")
+        ));
+        assert!(!vault.has_recent_allowed_action_for_session(
+            "mcp__kindex__tag_start",
+            10,
+            Some("chat-b")
+        ));
+        assert!(!vault.has_recent_allowed_action_for_session("mcp__kindex__tag_start", 10, None));
+    }
+
+    #[test]
+    fn test_ledger_session_id_migrates_existing_database() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("state.db");
+        let conn = Connection::open(&db_path).unwrap();
+        conn.execute_batch(
+            "
+            CREATE TABLE ledger (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp REAL NOT NULL,
+                tool TEXT NOT NULL,
+                category TEXT NOT NULL DEFAULT '',
+                amount REAL NOT NULL DEFAULT 0.0,
+                decision TEXT NOT NULL,
+                detail TEXT NOT NULL DEFAULT ''
+            );
+            ",
+        )
+        .unwrap();
+        drop(conn);
+
+        let mut salt = [0u8; SALT_LEN];
+        rand::thread_rng().fill_bytes(&mut salt);
+        let master_key = derive_master_key("testpass123", &salt);
+        let vault = Vault::new(master_key, db_path.clone());
+        vault.log_action_for_session(
+            "mcp__kindex__search",
+            "allow",
+            "",
+            0.0,
+            "{}",
+            Some("migrated-chat"),
+        );
+
+        let conn = Connection::open(db_path).unwrap();
+        let migrated_columns: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('ledger') WHERE name = 'session_id'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(migrated_columns, 1);
+        assert!(vault.has_recent_allowed_action_for_session(
+            "mcp__kindex__search",
+            10,
+            Some("migrated-chat")
+        ));
     }
 
     #[test]

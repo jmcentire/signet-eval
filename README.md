@@ -88,10 +88,11 @@ Self-protection rules are **locked** — they cannot be removed, edited, or reor
 | Write/Edit/Bash touching `signet-eval` binary | **deny** | yes |
 | Write/Edit `settings.json` / `settings.local.json` | **ask** | yes |
 | Bash `kill`/`pkill`/`killall` + `signet` | **deny** | yes |
-| Edit/Write/NotebookEdit without recent plan | **ask** | |
-| Edit/Write on core/DSL/schema paths | **ask** | |
+| Direct edit tools without recent Kindex tag/search/context | **deny** | yes |
+| Claude `Task*` tools (ephemeral task state) | **deny** | yes |
 | `rm`, `rmdir` | **deny** | |
 | `git push --force` | **ask** | |
+| Git remote and `gh` operations with mismatched target-owner identity | **deny** | |
 | `mkfs`, `format`, `dd if=` | **deny** | |
 | `curl \| sh`, `wget \| sh` | **deny** | |
 | Everything else | **allow** | |
@@ -196,6 +197,7 @@ and `{matched_param.X}`. See `examples/inject_examples.yaml`.
 | `not(condition)` | Negate condition | `not(param_eq(format, 'json'))` |
 | `or(A \|\| B)` | Either condition | `or(contains(parameters, '-f') \|\| contains(parameters, '--force'))` |
 | `has_recent_action('search', N)` | Recent allowed action matches in tool name or detail; pipe-delimited OR | `has_recent_action('EnterPlanMode\|TaskCreate', 500)` |
+| `has_current_session()` | Hook host supplied a distinct chat/session identifier | `has_current_session()` |
 | `true` / `false` | Literal | `true` |
 
 ## Encrypted Vault
@@ -229,10 +231,19 @@ signet-eval ships with locked rules that prevent an AI agent from disabling its 
 3. **protect_hook_config** — Requires user confirmation before modifying `settings.json` (where the hook is configured)
 4. **protect_signet_process** — Denies kill/pkill/killall commands targeting signet processes
 
+5. **protect_preflight_storage** — Denies agent-side mutation of preflight records
+6. **require_kindex_engagement_before_edits** — Denies direct edit tools until durable session context is recorded
+7. **prefer_persistent_task_store** — Denies ephemeral `Task*` state and points agents to Kindex tasks
+8. **protect_checks_dir** — Denies agent-side replacement of trusted ENSURE scripts
+9. **protect_vault_passphrase** — Reserves vault setup and unlock operations for the human
+10. **protect_signet_symlink** — Denies symlink bypasses targeting protected enforcement surfaces
+
 These rules are:
 - **Locked** — MCP tools refuse to remove, edit, or reorder them
 - **Position-protected** — Unlocked rules cannot be reordered above locked rules (first-match-wins)
 - **Hardcoded in defaults** — If the policy file is corrupted or missing, the binary falls back to hardcoded defaults that include self-protection
+- **Version-reconciled** — Current compiled defaults overlay stale system-policy snapshots by rule name, so an upgrade does not require rerunning `init`
+- **Reserved-name reconciled** — Built-in rule names are owned by the binary; host-specific system rules must use distinct names, while user rules remain the supported override layer for unlocked defaults
 - **HMAC-backed** — Direct file edits break the policy signature, triggering fallback to safe defaults
 
 ## MCP Management Server

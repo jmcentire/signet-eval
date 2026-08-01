@@ -6,7 +6,7 @@ Deterministic policy enforcement for AI agent tool calls. Rust. Single binary.
 
 ```bash
 cargo build --release          # build
-cargo test                     # 199 tests (unit, integration, adversarial, self-protection, inject)
+cargo test                     # 218 tests (unit, integration, adversarial, self-protection, inject)
 cargo install --path .         # install to ~/.cargo/bin
 
 # Hook mode (default — reads stdin, writes stdout)
@@ -39,6 +39,7 @@ signet-eval proxy              # MCP proxy
 
 ```
 src/
+  embedded_checks.rs — trusted ENSURE scripts installed atomically on first use
   main.rs          — CLI entry point (clap), 24 subcommands
   policy.rs        — Policy engine, condition functions, first-match-wins auth + advisory inject pass
   vault.rs         — Encrypted vault (Argon2id + AES-256-GCM), 3-tier, spending ledger, scoped credentials
@@ -59,14 +60,16 @@ examples/
 
 - **Locked rules**: `locked: true` field on PolicyRule. MCP tools refuse to remove/edit/reorder locked rules. Unlocked rules cannot be reordered above locked rules. Self-protection rules ship locked by default.
 - **Split policy files**: System rules in `~/.signet/policy.yaml` (managed by `init`), user rules in `~/.signet/rules.yaml` (never touched by `init`). Eval order: locked self-protection → user rules → system defaults. MCP tools operate on rules.yaml only.
-- **Self-protection**: 8 locked rules in `self_protection_rules()` (policy.rs) protect .signet/ directory, checks/, vault ops, signet-eval binary, settings.json hook config, symlinks, signet processes, and preflight storage. Hardcoded in `default_policy()` so even a missing/corrupted policy.yaml falls back to protected defaults.
+- **Self-protection**: 10 locked rules in `self_protection_rules()` (policy.rs) protect .signet/ directory, checks/, vault ops, signet-eval binary, settings.json hook config, symlinks, signet processes, and preflight storage. Hardcoded in `default_policy()` so even a missing/corrupted policy.yaml falls back to protected defaults.
+- **Compiled-default reconciliation**: Current built-ins overlay stale system-policy snapshots by rule name on every load. Additional human-authored system rules remain intact.
+- **Reserved built-in names**: Names returned by `baseline_system_config()` are binary-owned. Host-specific system rules use distinct names; user rules are the supported override layer for unlocked defaults.
 - **Advisory injection**: `INJECT` rules are a separate post-auth pass. They can probabilistically emit context through hook output, but they never authorize or deny tool calls. Authorization remains deterministic.
 - **Session key file encrypted** with device-specific key (machine ID + username via HKDF)
 - **Brute-force protection**: 5 attempts then 5-minute lockout (vault.rs)
 - **Policy HMAC integrity**: `signet-eval sign` writes HMAC sidecars for both policy.yaml and rules.yaml, verified on every hook eval when vault exists. MCP mutations auto-sign after every change.
 - **Tier 3 credentials** use compartment key (separate from session key, derived via HKDF)
 - **Scoped credential access**: `request_capability()` enforces domain, purpose, amount cap, and one-time constraints
-- **No NLP, no network, no eval() in authorization** — regex and string comparison only. `INJECT` may run allowlisted commands for advisory payloads, but those never affect authorization.
+- **No NLP or eval() in core authorization** — regex and string comparison only. `ENSURE` may run a trusted external check (including the shipped GitHub identity check), and `INJECT` may run allowlisted commands for advisory payloads.
 
 ## Condition Functions
 
