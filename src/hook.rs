@@ -1,7 +1,7 @@
 //! Hook I/O — reads agent hook JSON from stdin, returns an adapter-specific decision on stdout.
 
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Map, Value};
 use std::io::{self, Read, Write};
 use std::process::{Command, Stdio};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -12,11 +12,19 @@ use crate::vault::{Preflight, PreflightViolation, SoftConstraint, Vault};
 
 #[derive(Deserialize)]
 struct HookInput {
-    tool_name: String,
-    #[serde(default)]
-    hook_event_name: Option<String>,
-    #[serde(alias = "tool_input")]
+    #[serde(default, alias = "toolName")]
+    tool_name: Option<String>,
+    #[serde(default, alias = "tool_input", alias = "arguments", alias = "args")]
     parameters: Option<Value>,
+    #[serde(rename = "toolCall", default)]
+    tool_call: Option<AntigravityToolCall>,
+}
+
+#[derive(Deserialize)]
+struct AntigravityToolCall {
+    name: String,
+    #[serde(default)]
+    args: Option<Value>,
 }
 
 fn string_field(value: &Value, key: &str) -> Option<String> {
@@ -160,6 +168,125 @@ struct CodexPermissionDecision {
     message: Option<String>,
 }
 
+#[derive(Serialize)]
+struct AntigravityResponse {
+    decision: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+impl HookInput {
+    fn into_tool_call(self, adapter: HookAdapter) -> Result<ToolCall, String> {
+        if let Some(tool_call) = self.tool_call {
+            if adapter == HookAdapter::Antigravity {
+                return normalize_antigravity_tool_call(tool_call);
+            }
+
+            return Ok(ToolCall {
+                tool_name: tool_call.name,
+                parameters: tool_call.args.unwrap_or(Value::Object(Default::default())),
+            });
+        }
+
+        let Some(tool_name) = self.tool_name else {
+            return Err("missing tool name".into());
+        };
+
+        Ok(ToolCall {
+            tool_name,
+            parameters: self.parameters.unwrap_or(Value::Object(Default::default())),
+        })
+    }
+}
+
+pub(crate) fn parse_tool_call_input(
+    raw_input: Value,
+    adapter: HookAdapter,
+) -> Result<ToolCall, String> {
+    let hook_input: HookInput =
+        serde_json::from_value(raw_input).map_err(|_| "Malformed hook input".to_string())?;
+    hook_input.into_tool_call(adapter)
+}
+
+fn copy_argument(map: &mut Map<String, Value>, source: &str, target: &str) {
+    if let Some(value) = map.get(source).cloned() {
+        map.insert(target.into(), value);
+    }
+}
+
+fn required_string_argument(map: &Map<String, Value>, key: &str) -> Result<String, String> {
+    map.get(key)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned)
+        .ok_or_else(|| format!("Antigravity {key} must be a non-empty string"))
+}
+
+fn normalize_antigravity_tool_call(tool_call: AntigravityToolCall) -> Result<ToolCall, String> {
+    let tool_name = tool_call.name;
+    let mut parameters = match tool_call.args.unwrap_or(Value::Object(Default::default())) {
+        Value::Object(map) => map,
+        _ => return Err("Antigravity toolCall.args must be an object".into()),
+    };
+
+    let canonical_tool_name = match tool_name.as_str() {
+        "run_command" => {
+            copy_argument(&mut parameters, "CommandLine", "command");
+            copy_argument(&mut parameters, "Cwd", "cwd");
+            "Bash".to_owned()
+        }
+        "write_to_file" => {
+            copy_argument(&mut parameters, "TargetFile", "file_path");
+            copy_argument(&mut parameters, "CodeContent", "content");
+            "Write".to_owned()
+        }
+        "replace_file_content" => {
+            copy_argument(&mut parameters, "TargetFile", "file_path");
+            copy_argument(&mut parameters, "ReplacementContent", "content");
+            "Edit".to_owned()
+        }
+        "multi_replace_file_content" => {
+            copy_argument(&mut parameters, "TargetFile", "file_path");
+            "MultiEdit".to_owned()
+        }
+        "view_file" => {
+            copy_argument(&mut parameters, "AbsolutePath", "file_path");
+            "Read".to_owned()
+        }
+        "call_mcp_tool" => {
+            let server_name = required_string_argument(&parameters, "ServerName")?;
+            let mcp_tool_name = required_string_argument(&parameters, "ToolName")?;
+            let mut mcp_parameters = match parameters.remove("Arguments") {
+                Some(Value::Object(map)) => map,
+                _ => return Err("Antigravity Arguments must be an object".into()),
+            };
+
+            // The native wrapper is authoritative. Overwrite lookalike fields from
+            // Arguments so an MCP caller cannot spoof the identity Signet evaluates.
+            mcp_parameters.insert(
+                "agent_tool_name".into(),
+                Value::String("call_mcp_tool".into()),
+            );
+            mcp_parameters.insert("mcp_server_name".into(), Value::String(server_name.clone()));
+            mcp_parameters.insert("mcp_tool_name".into(), Value::String(mcp_tool_name.clone()));
+
+            return Ok(ToolCall {
+                tool_name: format!("mcp__{server_name}__{mcp_tool_name}"),
+                parameters: Value::Object(mcp_parameters),
+            });
+        }
+        _ => tool_name.clone(),
+    };
+
+    parameters.insert("agent_tool_name".into(), Value::String(tool_name));
+
+    Ok(ToolCall {
+        tool_name: canonical_tool_name,
+        parameters: Value::Object(parameters),
+    })
+}
+
 /// Evaluate a tool call against preflight soft constraints.
 /// Returns the first matching constraint (if any).
 fn evaluate_preflight_constraint(
@@ -221,20 +348,19 @@ pub fn run_hook_with_adapter(
         return 0;
     }
 
-    let hook_input: HookInput = match serde_json::from_value(raw_input) {
-        Ok(h) => h,
+    let event = adapter.event_name(
+        raw_input
+            .get("hook_event_name")
+            .or_else(|| raw_input.get("hookEventName"))
+            .and_then(|value| value.as_str()),
+    );
+
+    let call = match parse_tool_call_input(raw_input, adapter) {
+        Ok(call) => call,
         Err(_) => {
-            emit_deny(adapter, HookEvent::PreToolUse, "Malformed hook input");
+            emit_deny(adapter, event, "Malformed hook input");
             return 0;
         }
-    };
-    let event = adapter.event_name(hook_input.hook_event_name.as_deref());
-
-    let call = ToolCall {
-        tool_name: hook_input.tool_name.clone(),
-        parameters: hook_input
-            .parameters
-            .unwrap_or(Value::Object(Default::default())),
     };
 
     // Check if paused — if so, only enforce locked (self-protection) rules
@@ -491,8 +617,29 @@ fn emit_decision(
     additional_context: Option<String>,
 ) {
     match (adapter, event) {
-        (HookAdapter::Claude | HookAdapter::Antigravity | HookAdapter::OpenCode, _) => {
+        (HookAdapter::Claude | HookAdapter::OpenCode, _) => {
             emit_pre_tool_use_decision("PreToolUse", decision, reason, additional_context)
+        }
+        (HookAdapter::Antigravity, _) => {
+            let message = match (reason, additional_context) {
+                (Some(r), Some(ctx)) => format!("{}\n\n{}", r, ctx),
+                (Some(r), None) => r,
+                (None, Some(ctx)) => ctx,
+                (None, None) => String::new(),
+            };
+            let response = AntigravityResponse {
+                decision: decision.into(),
+                reason: if message.is_empty() {
+                    if decision == "allow" {
+                        None
+                    } else {
+                        Some("Blocked by Signet policy.".into())
+                    }
+                } else {
+                    Some(message)
+                },
+            };
+            println!("{}", serde_json::to_string(&response).unwrap());
         }
         (HookAdapter::Codex | HookAdapter::CodexPermission, HookEvent::PreToolUse) => {
             // Codex PreToolUse currently only supports deny as an enforcing decision.
@@ -721,5 +868,68 @@ fn resolve_ensure_result(result: EvaluationResult, call: &ToolCall) -> Evaluatio
             ensure_config: None,
             ..result
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse_antigravity(input: Value) -> ToolCall {
+        parse_tool_call_input(input, HookAdapter::Antigravity).unwrap()
+    }
+
+    #[test]
+    fn antigravity_native_file_tools_normalize_to_canonical_policy_fields() {
+        let write = parse_antigravity(serde_json::json!({
+            "toolCall": {
+                "name": "write_to_file",
+                "args": {
+                    "TargetFile": "/app/.env",
+                    "CodeContent": "SECRET=x",
+                    "file_path": "/spoofed",
+                    "content": "spoofed"
+                }
+            }
+        }));
+        assert_eq!(write.tool_name, "Write");
+        assert_eq!(write.parameters["file_path"], "/app/.env");
+        assert_eq!(write.parameters["content"], "SECRET=x");
+        assert_eq!(write.parameters["agent_tool_name"], "write_to_file");
+
+        let multi_edit = parse_antigravity(serde_json::json!({
+            "toolCall": {
+                "name": "multi_replace_file_content",
+                "args": {"TargetFile": "/app/.env", "file_path": "/spoofed"}
+            }
+        }));
+        assert_eq!(multi_edit.tool_name, "MultiEdit");
+        assert_eq!(multi_edit.parameters["file_path"], "/app/.env");
+    }
+
+    #[test]
+    fn antigravity_mcp_wrapper_normalizes_identity_and_unwraps_arguments() {
+        let call = parse_antigravity(serde_json::json!({
+            "toolCall": {
+                "name": "call_mcp_tool",
+                "args": {
+                    "ServerName": "danger",
+                    "ToolName": "delete",
+                    "Arguments": {
+                        "target": "production",
+                        "agent_tool_name": "spoofed",
+                        "mcp_server_name": "safe",
+                        "mcp_tool_name": "read"
+                    }
+                }
+            }
+        }));
+
+        assert_eq!(call.tool_name, "mcp__danger__delete");
+        assert_eq!(call.parameters["target"], "production");
+        assert_eq!(call.parameters["agent_tool_name"], "call_mcp_tool");
+        assert_eq!(call.parameters["mcp_server_name"], "danger");
+        assert_eq!(call.parameters["mcp_tool_name"], "delete");
+        assert!(call.parameters.get("Arguments").is_none());
     }
 }

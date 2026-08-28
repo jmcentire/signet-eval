@@ -329,6 +329,19 @@ fn test_hook_denies_credential_write() {
 }
 
 #[test]
+fn test_hook_denies_claude_task_tools_with_kindex_hint() {
+    let (out, code) = run_hook(
+        r#"{"tool_name":"TaskCreate","tool_input":{"description":"follow up","prompt":"do later"}}"#,
+    );
+    assert_eq!(code, 0);
+    assert_eq!(parse_decision(&out), "deny");
+    assert!(out.contains("Claude Task* tools"));
+    assert!(out.contains("Use Kindex tasks"));
+    assert!(out.contains("mcp__kindex__task_add"));
+    assert!(out.contains("durability"));
+}
+
+#[test]
 fn test_hook_asks_chmod_777() {
     let (out, code) =
         run_hook(r#"{"tool_name":"Bash","tool_input":{"command":"chmod 777 /tmp/foo"}}"#);
@@ -471,6 +484,168 @@ fn test_codex_permission_adapter_forces_permission_event() {
     let output = hook_specific_output(&out);
     assert_eq!(output["hookEventName"], "PermissionRequest");
     assert_eq!(output["decision"]["behavior"], "allow");
+}
+
+#[test]
+fn test_antigravity_nested_run_command_denies_rm() {
+    let (out, code) = run_hook_with_args(
+        r#"{"toolCall":{"name":"run_command","args":{"CommandLine":"rm -rf /tmp","Cwd":"/tmp"}},"stepIdx":19,"conversationId":"ec33ebf9-0cba-4100-8142-c61503f6c587","workspacePaths":["/tmp"],"transcriptPath":"/tmp/transcript.jsonl","artifactDirectoryPath":"/tmp/artifacts"}"#,
+        &["--adapter", "antigravity"],
+    );
+    assert_eq!(code, 0);
+
+    let output = serde_json::from_str::<serde_json::Value>(&out).unwrap();
+    assert_eq!(output["decision"], "deny");
+    assert!(output["reason"]
+        .as_str()
+        .unwrap()
+        .contains("File deletion blocked"));
+    assert!(output.get("hookSpecificOutput").is_none());
+}
+
+#[test]
+fn test_antigravity_native_arguments_override_spoofed_canonical_fields() {
+    let (out, code) = run_hook_with_args(
+        r#"{"toolCall":{"name":"run_command","args":{"CommandLine":"rm -rf /tmp","command":"ls -la","Cwd":"/tmp"}},"stepIdx":19,"conversationId":"ec33ebf9-0cba-4100-8142-c61503f6c587","workspacePaths":["/tmp"],"transcriptPath":"/tmp/transcript.jsonl","artifactDirectoryPath":"/tmp/artifacts"}"#,
+        &["--adapter", "antigravity"],
+    );
+    assert_eq!(code, 0);
+
+    let output = serde_json::from_str::<serde_json::Value>(&out).unwrap();
+    assert_eq!(output["decision"], "deny");
+    assert!(output["reason"]
+        .as_str()
+        .unwrap()
+        .contains("File deletion blocked"));
+}
+
+#[test]
+fn test_antigravity_nested_write_maps_to_write_rules() {
+    let (out, code) = run_hook_with_args(
+        r#"{"toolCall":{"name":"write_to_file","args":{"TargetFile":"/app/.env","CodeContent":"SECRET=x","Overwrite":true}},"stepIdx":20,"conversationId":"ec33ebf9-0cba-4100-8142-c61503f6c587","workspacePaths":["/tmp"],"transcriptPath":"/tmp/transcript.jsonl","artifactDirectoryPath":"/tmp/artifacts"}"#,
+        &["--adapter", "antigravity"],
+    );
+    assert_eq!(code, 0);
+
+    let output = serde_json::from_str::<serde_json::Value>(&out).unwrap();
+    assert_eq!(output["decision"], "deny");
+    let reason = output["reason"].as_str().unwrap();
+    assert!(
+        reason.contains("credential/secret files")
+            || reason.contains("No Kindex session engagement"),
+        "unexpected Write denial reason: {reason}"
+    );
+}
+
+#[test]
+fn test_antigravity_nested_multi_edit_maps_to_multiedit_rules() {
+    let (out, code) = run_hook_with_args(
+        r#"{"toolCall":{"name":"multi_replace_file_content","args":{"TargetFile":"/app/.env","Instruction":"update secret","ReplacementChunks":[{"TargetContent":"OLD","ReplacementContent":"NEW"}]}},"stepIdx":20,"conversationId":"ec33ebf9-0cba-4100-8142-c61503f6c587","workspacePaths":["/tmp"],"transcriptPath":"/tmp/transcript.jsonl","artifactDirectoryPath":"/tmp/artifacts"}"#,
+        &["--adapter", "antigravity"],
+    );
+    assert_eq!(code, 0);
+
+    let output = serde_json::from_str::<serde_json::Value>(&out).unwrap();
+    assert_eq!(output["decision"], "deny");
+    let reason = output["reason"].as_str().unwrap();
+    assert!(
+        reason.contains("credential/secret files")
+            || reason.contains("No Kindex session engagement"),
+        "unexpected MultiEdit denial reason: {reason}"
+    );
+}
+
+#[test]
+fn test_antigravity_nested_allow_uses_documented_shape() {
+    let (out, code) = run_hook_with_args(
+        r#"{"toolCall":{"name":"run_command","args":{"CommandLine":"ls -la","Cwd":"/tmp"}},"stepIdx":21,"conversationId":"ec33ebf9-0cba-4100-8142-c61503f6c587","workspacePaths":["/tmp"],"transcriptPath":"/tmp/transcript.jsonl","artifactDirectoryPath":"/tmp/artifacts"}"#,
+        &["--adapter", "antigravity"],
+    );
+    assert_eq!(code, 0);
+
+    let output = serde_json::from_str::<serde_json::Value>(&out).unwrap();
+    assert_eq!(output["decision"], "allow");
+    assert!(output.get("reason").is_none());
+    assert!(output.get("hookSpecificOutput").is_none());
+}
+
+#[test]
+fn test_antigravity_live_mcp_payload_uses_documented_shape() {
+    let (out, code) = run_hook_with_args(
+        r#"{"artifactDirectoryPath":"/tmp/artifacts","conversationId":"4989a389-5729-4c84-9e4f-44bb9044633a","modelName":"gemini-pro-agent","stepIdx":20,"toolCall":{"args":{"Arguments":{},"ServerName":"kindex","ToolName":"status","toolAction":"Checking kindex status","toolSummary":"Check kindex status"},"name":"call_mcp_tool"},"transcriptPath":"/tmp/transcript_full.jsonl","workspacePaths":["/tmp/workspace"]}"#,
+        &["--adapter", "antigravity"],
+    );
+    assert_eq!(code, 0);
+
+    let output = serde_json::from_str::<serde_json::Value>(&out).unwrap();
+    assert_eq!(output, serde_json::json!({"decision": "allow"}));
+}
+
+#[test]
+fn test_antigravity_mcp_wrapper_maps_identity_and_arguments_to_policy() {
+    let dir = tempfile::tempdir().unwrap();
+    let policy_path = dir.path().join("policy.yaml");
+    let rules_path = dir.path().join("rules.yaml");
+    let policy = r#"
+version: 1
+default_action: ALLOW
+rules:
+  - name: block_dangerous_mcp_delete
+    tool_pattern: "^mcp__danger__delete$"
+    conditions:
+      - "param_eq(target, 'production')"
+      - "param_eq(mcp_server_name, 'danger')"
+      - "param_eq(mcp_tool_name, 'delete')"
+      - "param_eq(agent_tool_name, 'call_mcp_tool')"
+    action: DENY
+    reason: "dangerous MCP delete blocked"
+"#;
+
+    let (out, code) = run_hook_with_args_and_signet_dir(
+        r#"{"toolCall":{"name":"call_mcp_tool","args":{"ServerName":"danger","ToolName":"delete","Arguments":{"target":"production","agent_tool_name":"spoofed","mcp_server_name":"safe","mcp_tool_name":"read"}}}}"#,
+        &[
+            "--adapter",
+            "antigravity",
+            "--policy-path",
+            policy_path.to_str().unwrap(),
+            "--rules-path",
+            rules_path.to_str().unwrap(),
+        ],
+        dir.path(),
+        policy,
+    );
+    assert_eq!(code, 0);
+
+    let output = serde_json::from_str::<serde_json::Value>(&out).unwrap();
+    assert_eq!(output["decision"], "deny");
+    assert_eq!(output["reason"], "dangerous MCP delete blocked");
+}
+
+#[test]
+fn test_antigravity_malformed_mcp_wrapper_denies_with_native_json() {
+    for input in [
+        r#"{"toolCall":{"name":"call_mcp_tool","args":{"ToolName":"status","Arguments":{}}}}"#,
+        r#"{"toolCall":{"name":"call_mcp_tool","args":{"ServerName":"kindex","Arguments":{}}}}"#,
+        r#"{"toolCall":{"name":"call_mcp_tool","args":{"ServerName":"kindex","ToolName":"status","Arguments":"spoofed"}}}"#,
+    ] {
+        let (out, code) = run_hook_with_args(input, &["--adapter", "antigravity"]);
+        assert_eq!(code, 0);
+
+        let output = serde_json::from_str::<serde_json::Value>(&out).unwrap();
+        assert_eq!(output["decision"], "deny");
+        assert!(output["reason"].as_str().unwrap().contains("Malformed"));
+        assert!(output.get("hookSpecificOutput").is_none());
+    }
+}
+
+#[test]
+fn test_antigravity_malformed_input_denies_with_json() {
+    let (out, code) = run_hook_with_args("{}", &["--adapter", "antigravity"]);
+    assert_eq!(code, 0);
+
+    let output = serde_json::from_str::<serde_json::Value>(&out).unwrap();
+    assert_eq!(output["decision"], "deny");
+    assert!(output["reason"].as_str().unwrap().contains("Malformed"));
 }
 
 // --- Self-protection integration tests ---

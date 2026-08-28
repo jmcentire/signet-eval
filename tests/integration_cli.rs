@@ -212,6 +212,33 @@ fn test_test_command() {
 }
 
 #[test]
+fn test_test_command_accepts_antigravity_payload() {
+    let dir = tempfile::tempdir().unwrap();
+    let policy_path = dir.path().join("policy.yaml");
+    let rules_path = dir.path().join("rules.yaml");
+    let path_str = policy_path.to_str().unwrap();
+    let rules_str = rules_path.to_str().unwrap();
+
+    signet_eval(&["--policy-path", path_str, "--rules-path", rules_str, "init"]);
+
+    let (stdout, stderr, code) = signet_eval(&[
+        "--adapter",
+        "antigravity",
+        "--policy-path",
+        path_str,
+        "--rules-path",
+        rules_str,
+        "test",
+        r#"{"toolCall":{"name":"run_command","args":{"CommandLine":"rm foo","Cwd":"/tmp"}},"stepIdx":19,"conversationId":"ec33ebf9-0cba-4100-8142-c61503f6c587","workspacePaths":["/tmp"],"transcriptPath":"/tmp/transcript.jsonl","artifactDirectoryPath":"/tmp/artifacts"}"#,
+    ]);
+    assert_eq!(code, 0, "test failed: {stderr}");
+    assert!(
+        stdout.contains("Deny"),
+        "stdout should contain Deny: {stdout}"
+    );
+}
+
+#[test]
 fn test_status_no_vault() {
     let (stdout, stderr, code) = signet_eval(&["status"]);
     // Without a vault, should tell user to set up (error goes to stderr)

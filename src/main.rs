@@ -427,13 +427,7 @@ fn run() -> i32 {
             }
         },
         Some(Command::Test { json }) => {
-            #[derive(serde::Deserialize)]
-            struct TestInput {
-                tool_name: String,
-                #[serde(alias = "tool_input")]
-                parameters: Option<serde_json::Value>,
-            }
-            let input: TestInput = match serde_json::from_str(&json) {
+            let input: serde_json::Value = match serde_json::from_str(&json) {
                 Ok(v) => v,
                 Err(e) => {
                     eprintln!("Invalid JSON: {e}");
@@ -442,11 +436,12 @@ fn run() -> i32 {
             };
             let compiled = policy::load_merged_policy(&policy_path, &rules_path);
             let v = vault::try_load_vault();
-            let call = policy::ToolCall {
-                tool_name: input.tool_name,
-                parameters: input
-                    .parameters
-                    .unwrap_or(serde_json::Value::Object(Default::default())),
+            let call = match hook::parse_tool_call_input(input, adapter) {
+                Ok(call) => call,
+                Err(e) => {
+                    eprintln!("{e}");
+                    std::process::exit(1);
+                }
             };
             let result = policy::evaluate(&call, &compiled, v.as_ref());
             println!("Decision:     {:?}", result.decision);

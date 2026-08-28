@@ -1700,16 +1700,17 @@ pub fn self_protection_rules() -> Vec<PolicyRule> {
             action: Decision::Deny,
             locked: true,
             reason: Some(
-                "Anthropic's Task* tools (TaskCreate / TaskUpdate / TaskList / TaskGet / \
-                 TaskOutput / TaskStop) are session-local and disappear when the conversation ends. \
-                 A persistent task store should be used instead."
+                "Claude Task* tools (TaskCreate / TaskUpdate / TaskList / TaskGet / \
+                 TaskOutput / TaskStop) are denied by default because they are session-local \
+                 and disappear when the conversation ends."
                     .into(),
             ),
             alternative: Some(
-                "If kindex MCP is available, call mcp__kindex__task_add (with link_to to relate \
-                 the task to graph concepts), mcp__kindex__task_list, and mcp__kindex__task_done. \
-                 If no persistent task tool is available, do not silently fall back to Anthropic's \
-                 Task* — instead state plainly that you cannot persist tasks and ask the user."
+                "Use Kindex tasks for improved visibility and durability: call \
+                 mcp__kindex__task_add with link_to to relate the task to graph concepts, \
+                 mcp__kindex__task_list to inspect open work, and mcp__kindex__task_done \
+                 to complete tasks. If Kindex is unavailable, state plainly that durable \
+                 task storage is unavailable and ask the user how to proceed."
                     .into(),
             ),
             gate: None, ensure: None,
@@ -1771,7 +1772,7 @@ pub fn system_default_rules() -> Vec<PolicyRule> {
     },
         PolicyRule {
             name: "block_credential_writes".into(),
-            tool_pattern: "^(Write|Edit)$".into(),
+            tool_pattern: "^(Write|Edit|MultiEdit)$".into(),
             conditions: vec!["matches(file_path, '\\.(env|pem|key|secret|credentials)$')".into()],
             action: Decision::Deny,
             locked: false,
@@ -4427,6 +4428,9 @@ rules:
                 "{} should match prefer_persistent_task_store",
                 tool
             );
+            let reason = result.reason.as_deref().unwrap_or_default();
+            assert!(reason.contains("Use Kindex tasks"));
+            assert!(reason.contains("durability"));
         }
 
         // Unrelated tools must NOT be matched by this rule.

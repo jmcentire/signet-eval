@@ -4,7 +4,7 @@
     "python",
     "rust"
   ],
-  "node_count": 76,
+  "node_count": 104,
   "nodes": [
     {
       "domains": [
@@ -14,8 +14,19 @@
       "id": "code-mod-signet-eval-016defdf85b9",
       "title": "src/policy.rs",
       "type": "artifact",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-24T15:04:46",
+      "weight": 0.01
+    },
+    {
+      "domains": [
+        "code",
+        "python"
+      ],
+      "id": "code-mod-signet-eval-0b1c85c552b8",
+      "title": "contracts/src_main.rs/interface.py",
+      "type": "artifact",
+      "updated_at": "2026-04-02T00:37:45",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -25,8 +36,8 @@
       "id": "code-mod-signet-eval-33e8367dba2d",
       "title": "src/mcp_server.rs",
       "type": "artifact",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-24T15:04:46",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -36,8 +47,8 @@
       "id": "code-mod-signet-eval-3c742d80eead",
       "title": "contracts/root/interface.py",
       "type": "artifact",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-12T02:10:33",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -47,8 +58,8 @@
       "id": "code-mod-signet-eval-408baa03c3b1",
       "title": "src/hook.rs",
       "type": "artifact",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-24T15:04:46",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -58,8 +69,19 @@
       "id": "code-mod-signet-eval-42cb6807ad74",
       "title": "src/main.rs",
       "type": "artifact",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-24T15:04:46",
+      "weight": 0.01
+    },
+    {
+      "domains": [
+        "code",
+        "rust"
+      ],
+      "id": "code-mod-signet-eval-65a480e07df8",
+      "title": "src/src_policy.rs/policy.rs",
+      "type": "artifact",
+      "updated_at": "2026-04-02T00:37:39",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -69,8 +91,30 @@
       "id": "code-mod-signet-eval-695264fb0bd2",
       "title": "src/vault.rs",
       "type": "artifact",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-24T15:04:46",
+      "weight": 0.01
+    },
+    {
+      "domains": [
+        "code",
+        "python"
+      ],
+      "id": "code-mod-signet-eval-78b27d5b9119",
+      "title": "contracts/src_policy.rs/interface.py",
+      "type": "artifact",
+      "updated_at": "2026-04-02T00:37:45",
+      "weight": 0.01
+    },
+    {
+      "domains": [
+        "code",
+        "rust"
+      ],
+      "id": "code-mod-signet-eval-ba1f97205bea",
+      "title": "src/src_main.rs/main.rs",
+      "type": "artifact",
+      "updated_at": "2026-04-02T00:37:45",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -80,8 +124,8 @@
       "id": "code-mod-signet-eval-cc29b449457e",
       "title": "contracts/cli_observability_and_fix/interface.py",
       "type": "artifact",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-12T02:10:33",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -91,8 +135,19 @@
       "id": "code-mod-signet-eval-f016d9507188",
       "title": "src/mcp_proxy.rs",
       "type": "artifact",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-24T15:04:46",
+      "weight": 0.01
+    },
+    {
+      "domains": [
+        "code",
+        "python"
+      ],
+      "id": "code-mod-signet-eval-f53017d105df",
+      "title": "contracts/src_mcp_server.rs/interface.py",
+      "type": "artifact",
+      "updated_at": "2026-04-02T00:37:45",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -102,8 +157,8 @@
       "id": "code-sym-signet-eval-007f6577f9ca",
       "title": "Vault",
       "type": "concept",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-24T15:04:46",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -113,8 +168,8 @@
       "id": "code-sym-signet-eval-01e03fb9d5b7",
       "title": "EnableResult",
       "type": "concept",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-12T02:10:33",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -124,8 +179,8 @@
       "id": "code-sym-signet-eval-0561ecd8823e",
       "title": "CredentialMeta",
       "type": "concept",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-24T15:04:46",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -135,8 +190,8 @@
       "id": "code-sym-signet-eval-06133aed5d2b",
       "title": "PauseEntry",
       "type": "concept",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-24T15:04:46",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -146,8 +201,19 @@
       "id": "code-sym-signet-eval-081fdc5dbc10",
       "title": "DiagnosticSeverity",
       "type": "concept",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-12T02:10:33",
+      "weight": 0.01
+    },
+    {
+      "domains": [
+        "code",
+        "python"
+      ],
+      "id": "code-sym-signet-eval-0e0d9a9b4521",
+      "title": "ToolCall",
+      "type": "concept",
+      "updated_at": "2026-04-02T00:37:38",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -157,8 +223,8 @@
       "id": "code-sym-signet-eval-110e31d36060",
       "title": "ValidationDiagnostic",
       "type": "concept",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-24T15:04:45",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -168,8 +234,8 @@
       "id": "code-sym-signet-eval-130673b713c5",
       "title": "PolicyRule",
       "type": "concept",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-24T15:04:45",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -179,8 +245,19 @@
       "id": "code-sym-signet-eval-17bf64bc9a3e",
       "title": "InjectTrigger",
       "type": "concept",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-24T15:04:45",
+      "weight": 0.01
+    },
+    {
+      "domains": [
+        "code",
+        "python"
+      ],
+      "id": "code-sym-signet-eval-183a0745d780",
+      "title": "TestInput",
+      "type": "concept",
+      "updated_at": "2026-04-02T00:37:44",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -190,8 +267,8 @@
       "id": "code-sym-signet-eval-1b0ace137a62",
       "title": "EnsureConfig",
       "type": "concept",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-24T15:04:45",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -201,8 +278,8 @@
       "id": "code-sym-signet-eval-1d27d16584d5",
       "title": "ToolCall",
       "type": "concept",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-24T15:04:45",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -212,8 +289,8 @@
       "id": "code-sym-signet-eval-206a52b7b8e4",
       "title": "CliExitCode",
       "type": "concept",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-12T02:10:33",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -223,8 +300,8 @@
       "id": "code-sym-signet-eval-24957ac972ef",
       "title": "CodexPermissionResponse",
       "type": "concept",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-24T15:04:45",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -234,8 +311,8 @@
       "id": "code-sym-signet-eval-24d0cb9147d4",
       "title": "Preflight",
       "type": "concept",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-12T02:10:33",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -245,8 +322,8 @@
       "id": "code-sym-signet-eval-2686c4ffeb7a",
       "title": "PreflightViolation",
       "type": "concept",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-24T15:04:46",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -256,8 +333,8 @@
       "id": "code-sym-signet-eval-275cbe92a8a3",
       "title": "RuleId",
       "type": "concept",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-12T02:10:33",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -267,8 +344,8 @@
       "id": "code-sym-signet-eval-28be9fc6dc2d",
       "title": "Command",
       "type": "concept",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-24T15:04:46",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -278,8 +355,30 @@
       "id": "code-sym-signet-eval-2ca611844f11",
       "title": "HookAdapter",
       "type": "concept",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-24T15:04:46",
+      "weight": 0.01
+    },
+    {
+      "domains": [
+        "code",
+        "python"
+      ],
+      "id": "code-sym-signet-eval-30abea207a45",
+      "title": "CallToolResult",
+      "type": "concept",
+      "updated_at": "2026-04-02T00:37:42",
+      "weight": 0.01
+    },
+    {
+      "domains": [
+        "code",
+        "python"
+      ],
+      "id": "code-sym-signet-eval-324ce5c5f43e",
+      "title": "EnsureConfig",
+      "type": "concept",
+      "updated_at": "2026-04-02T00:37:36",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -289,8 +388,8 @@
       "id": "code-sym-signet-eval-32e60c6afb76",
       "title": "FieldPath",
       "type": "concept",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-12T02:10:33",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -300,8 +399,8 @@
       "id": "code-sym-signet-eval-33132ade651a",
       "title": "CompiledPolicy",
       "type": "concept",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-24T15:04:45",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -311,8 +410,8 @@
       "id": "code-sym-signet-eval-34de3df90ba8",
       "title": "EnforcementState",
       "type": "concept",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-12T02:10:33",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -322,8 +421,8 @@
       "id": "code-sym-signet-eval-3525ca839e94",
       "title": "InjectCommandAllowlist",
       "type": "concept",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-24T15:04:45",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -333,8 +432,8 @@
       "id": "code-sym-signet-eval-3d4678aea139",
       "title": "Preflight",
       "type": "concept",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-24T15:04:46",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -344,8 +443,8 @@
       "id": "code-sym-signet-eval-3f281541792f",
       "title": "PolicyPath",
       "type": "concept",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-12T02:10:33",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -355,8 +454,8 @@
       "id": "code-sym-signet-eval-3f2f2f9c6bb1",
       "title": "FixResult",
       "type": "concept",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-12T02:10:33",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -366,8 +465,30 @@
       "id": "code-sym-signet-eval-4090c4a9df77",
       "title": "InjectCommandEntry",
       "type": "concept",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-24T15:04:45",
+      "weight": 0.01
+    },
+    {
+      "domains": [
+        "code",
+        "python"
+      ],
+      "id": "code-sym-signet-eval-4112a2997e6a",
+      "title": "Tool",
+      "type": "concept",
+      "updated_at": "2026-04-02T00:37:43",
+      "weight": 0.01
+    },
+    {
+      "domains": [
+        "code",
+        "python"
+      ],
+      "id": "code-sym-signet-eval-469c61dc3027",
+      "title": "CompiledPolicy",
+      "type": "concept",
+      "updated_at": "2026-04-02T00:37:36",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -377,8 +498,19 @@
       "id": "code-sym-signet-eval-47c329f4d795",
       "title": "HookResponse",
       "type": "concept",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-24T15:04:46",
+      "weight": 0.01
+    },
+    {
+      "domains": [
+        "code",
+        "python"
+      ],
+      "id": "code-sym-signet-eval-4abaf2ed93da",
+      "title": "Decision",
+      "type": "concept",
+      "updated_at": "2026-04-02T00:37:36",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -388,8 +520,8 @@
       "id": "code-sym-signet-eval-5175fb0751a5",
       "title": "GateConfig",
       "type": "concept",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-24T15:04:45",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -399,8 +531,8 @@
       "id": "code-sym-signet-eval-5240bf0328b8",
       "title": "InjectConfig",
       "type": "concept",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-24T15:04:45",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -410,8 +542,8 @@
       "id": "code-sym-signet-eval-5a85256144ef",
       "title": "Cli",
       "type": "concept",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-24T15:04:46",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -421,8 +553,8 @@
       "id": "code-sym-signet-eval-6622fa4726b7",
       "title": "PreflightError",
       "type": "concept",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-12T02:10:33",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -432,8 +564,8 @@
       "id": "code-sym-signet-eval-66707c4a17a7",
       "title": "UpstreamConfig",
       "type": "concept",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-24T15:04:46",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -443,8 +575,8 @@
       "id": "code-sym-signet-eval-69d94fc188a1",
       "title": "CodexPermissionDecision",
       "type": "concept",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-24T15:04:45",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -454,8 +586,8 @@
       "id": "code-sym-signet-eval-70d3b6024c38",
       "title": "PauseEntry",
       "type": "concept",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-12T02:10:33",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -465,8 +597,30 @@
       "id": "code-sym-signet-eval-710bbcc9bcff",
       "title": "InjectMode",
       "type": "concept",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-24T15:04:45",
+      "weight": 0.01
+    },
+    {
+      "domains": [
+        "code",
+        "python"
+      ],
+      "id": "code-sym-signet-eval-739b29099c20",
+      "title": "GateConfig",
+      "type": "concept",
+      "updated_at": "2026-04-02T00:37:37",
+      "weight": 0.01
+    },
+    {
+      "domains": [
+        "code",
+        "rust"
+      ],
+      "id": "code-sym-signet-eval-73ba719e1523",
+      "title": "ToolCall",
+      "type": "concept",
+      "updated_at": "2026-04-02T00:37:41",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -476,8 +630,30 @@
       "id": "code-sym-signet-eval-7701260b92f6",
       "title": "SignetMcpServer",
       "type": "concept",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-24T15:04:46",
+      "weight": 0.01
+    },
+    {
+      "domains": [
+        "code",
+        "python"
+      ],
+      "id": "code-sym-signet-eval-8082b0b127db",
+      "title": "SignetMcpServer",
+      "type": "concept",
+      "updated_at": "2026-04-02T00:37:43",
+      "weight": 0.01
+    },
+    {
+      "domains": [
+        "code",
+        "python"
+      ],
+      "id": "code-sym-signet-eval-8442832cf738",
+      "title": "Cli",
+      "type": "concept",
+      "updated_at": "2026-04-02T00:37:44",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -487,8 +663,19 @@
       "id": "code-sym-signet-eval-85f3a75ac3ce",
       "title": "Timestamp",
       "type": "concept",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-12T02:10:33",
+      "weight": 0.01
+    },
+    {
+      "domains": [
+        "code",
+        "python"
+      ],
+      "id": "code-sym-signet-eval-8a03ad4b3fd5",
+      "title": "EvaluationResult",
+      "type": "concept",
+      "updated_at": "2026-04-02T00:37:37",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -498,8 +685,8 @@
       "id": "code-sym-signet-eval-8f28884c29da",
       "title": "PreflightHistoryFilter",
       "type": "concept",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-12T02:10:33",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -509,8 +696,8 @@
       "id": "code-sym-signet-eval-95b76164bcf5",
       "title": "CompiledRule",
       "type": "concept",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-24T15:04:45",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -520,8 +707,19 @@
       "id": "code-sym-signet-eval-97431ed7f7e1",
       "title": "HookOutput",
       "type": "concept",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-24T15:04:46",
+      "weight": 0.01
+    },
+    {
+      "domains": [
+        "code",
+        "python"
+      ],
+      "id": "code-sym-signet-eval-9836e1885a79",
+      "title": "CompiledRule",
+      "type": "concept",
+      "updated_at": "2026-04-02T00:37:36",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -531,8 +729,8 @@
       "id": "code-sym-signet-eval-9a18de66b132",
       "title": "Diagnostic",
       "type": "concept",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-12T02:10:33",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -542,8 +740,8 @@
       "id": "code-sym-signet-eval-9ecb2f543b3a",
       "title": "ValidateMode",
       "type": "concept",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-12T02:10:33",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -553,8 +751,30 @@
       "id": "code-sym-signet-eval-9ed6ca35e44f",
       "title": "UpstreamConnection",
       "type": "concept",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-24T15:04:46",
+      "weight": 0.01
+    },
+    {
+      "domains": [
+        "code",
+        "rust"
+      ],
+      "id": "code-sym-signet-eval-a2af1ee9ded8",
+      "title": "EvaluationResult",
+      "type": "concept",
+      "updated_at": "2026-04-02T00:37:40",
+      "weight": 0.01
+    },
+    {
+      "domains": [
+        "code",
+        "rust"
+      ],
+      "id": "code-sym-signet-eval-a329f20c0dfc",
+      "title": "CompiledRule",
+      "type": "concept",
+      "updated_at": "2026-04-02T00:37:39",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -564,8 +784,8 @@
       "id": "code-sym-signet-eval-a3dc2bec41f8",
       "title": "McpToolResponse",
       "type": "concept",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-12T02:10:33",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -575,8 +795,8 @@
       "id": "code-sym-signet-eval-a40063605d39",
       "title": "PolicyRule",
       "type": "concept",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-12T02:10:33",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -586,8 +806,8 @@
       "id": "code-sym-signet-eval-a4011e89af72",
       "title": "HookEvent",
       "type": "concept",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-24T15:04:46",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -597,8 +817,8 @@
       "id": "code-sym-signet-eval-a4d42b39ff74",
       "title": "PreflightSessionFilter",
       "type": "concept",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-12T02:10:33",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -608,8 +828,8 @@
       "id": "code-sym-signet-eval-a4d640bef76e",
       "title": "VaultMeta",
       "type": "concept",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-24T15:04:46",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -619,8 +839,8 @@
       "id": "code-sym-signet-eval-a4f4f62165c3",
       "title": "Policy",
       "type": "concept",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-12T02:10:33",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -630,8 +850,8 @@
       "id": "code-sym-signet-eval-a7cd1eb88eed",
       "title": "MigrationResult",
       "type": "concept",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-12T02:10:33",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -641,8 +861,19 @@
       "id": "code-sym-signet-eval-a9e6aa779575",
       "title": "FixChange",
       "type": "concept",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-12T02:10:33",
+      "weight": 0.01
+    },
+    {
+      "domains": [
+        "code",
+        "python"
+      ],
+      "id": "code-sym-signet-eval-abd32ae73e3c",
+      "title": "ListToolsResult",
+      "type": "concept",
+      "updated_at": "2026-04-02T00:37:42",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -652,8 +883,19 @@
       "id": "code-sym-signet-eval-acc1cd4ccb16",
       "title": "PauseScope",
       "type": "concept",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-12T02:10:33",
+      "weight": 0.01
+    },
+    {
+      "domains": [
+        "code",
+        "rust"
+      ],
+      "id": "code-sym-signet-eval-ae5e6f813e40",
+      "title": "CompiledPolicy",
+      "type": "concept",
+      "updated_at": "2026-04-02T00:37:39",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -663,8 +905,8 @@
       "id": "code-sym-signet-eval-b216b235c099",
       "title": "Decision",
       "type": "concept",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-24T15:04:45",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -674,8 +916,8 @@
       "id": "code-sym-signet-eval-b2bffbf5a472",
       "title": "CodexPermissionOutput",
       "type": "concept",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-24T15:04:45",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -685,8 +927,8 @@
       "id": "code-sym-signet-eval-b8093564cdf7",
       "title": "ProxyServer",
       "type": "concept",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-24T15:04:46",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -696,8 +938,30 @@
       "id": "code-sym-signet-eval-b97f23b7a608",
       "title": "InjectPayload",
       "type": "concept",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-24T15:04:45",
+      "weight": 0.01
+    },
+    {
+      "domains": [
+        "code",
+        "rust"
+      ],
+      "id": "code-sym-signet-eval-bd4371a637ca",
+      "title": "Decision",
+      "type": "concept",
+      "updated_at": "2026-04-02T00:37:40",
+      "weight": 0.01
+    },
+    {
+      "domains": [
+        "code",
+        "python"
+      ],
+      "id": "code-sym-signet-eval-bff8c704354d",
+      "title": "ServerInfo",
+      "type": "concept",
+      "updated_at": "2026-04-02T00:37:43",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -707,8 +971,8 @@
       "id": "code-sym-signet-eval-c1adfe396aa5",
       "title": "EvaluationResult",
       "type": "concept",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-24T15:04:45",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -718,8 +982,19 @@
       "id": "code-sym-signet-eval-c1c1081e81e5",
       "title": "DiagnosticSeverity",
       "type": "concept",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-24T15:04:45",
+      "weight": 0.01
+    },
+    {
+      "domains": [
+        "code",
+        "python"
+      ],
+      "id": "code-sym-signet-eval-c1ecc27cae9a",
+      "title": "Content",
+      "type": "concept",
+      "updated_at": "2026-04-02T00:37:42",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -729,8 +1004,19 @@
       "id": "code-sym-signet-eval-c4d1c56e06de",
       "title": "DiffLine",
       "type": "concept",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-12T02:10:33",
+      "weight": 0.01
+    },
+    {
+      "domains": [
+        "code",
+        "python"
+      ],
+      "id": "code-sym-signet-eval-c9b650ebd271",
+      "title": "Command",
+      "type": "concept",
+      "updated_at": "2026-04-02T00:37:44",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -740,8 +1026,19 @@
       "id": "code-sym-signet-eval-cc19c400db0a",
       "title": "run.TestInput",
       "type": "concept",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-24T15:04:46",
+      "weight": 0.01
+    },
+    {
+      "domains": [
+        "code",
+        "python"
+      ],
+      "id": "code-sym-signet-eval-cee5a46f70f8",
+      "title": "PolicyConfig",
+      "type": "concept",
+      "updated_at": "2026-04-02T00:42:29",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -751,8 +1048,8 @@
       "id": "code-sym-signet-eval-d5c70c95aac4",
       "title": "ClearedOverride",
       "type": "concept",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-12T02:10:33",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -762,8 +1059,8 @@
       "id": "code-sym-signet-eval-d96983c01a37",
       "title": "ClearedOverrideKind",
       "type": "concept",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-12T02:10:33",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -773,8 +1070,8 @@
       "id": "code-sym-signet-eval-dd7cf73f4994",
       "title": "PolicyConfig",
       "type": "concept",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-24T15:04:45",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -784,8 +1081,8 @@
       "id": "code-sym-signet-eval-e73ec591c56b",
       "title": "SoftConstraint",
       "type": "concept",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-24T15:04:46",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -795,8 +1092,8 @@
       "id": "code-sym-signet-eval-e9b254a7732f",
       "title": "HookInput",
       "type": "concept",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-24T15:04:46",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -806,8 +1103,8 @@
       "id": "code-sym-signet-eval-ecd4107cdfdf",
       "title": "PolicyFix",
       "type": "concept",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-24T15:04:45",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -817,8 +1114,8 @@
       "id": "code-sym-signet-eval-f34cd53a8b6f",
       "title": "FromCommandSpec",
       "type": "concept",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-24T15:04:45",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -828,8 +1125,8 @@
       "id": "code-sym-signet-eval-f40e6046d039",
       "title": "ProxyConfig",
       "type": "concept",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-24T15:04:46",
+      "weight": 0.01
     },
     {
       "domains": [
@@ -839,11 +1136,21 @@
       "id": "code-sym-signet-eval-fdb86c4342e9",
       "title": "PreflightDeactivationScope",
       "type": "concept",
-      "updated_at": "2026-05-30T14:50:14",
-      "weight": 0.5
+      "updated_at": "2026-05-12T02:10:33",
+      "weight": 0.01
+    },
+    {
+      "domains": [
+        "code",
+        "python"
+      ],
+      "id": "code-sym-signet-eval-fdbaba0ce037",
+      "title": "PolicyRule",
+      "type": "concept",
+      "updated_at": "2026-04-02T00:37:37",
+      "weight": 0.01
     }
   ],
   "repo": "signet-eval",
-  "source_updated_at": "2026-05-30T14:50:14",
-  "version": 1
+  "version": 2
 }
