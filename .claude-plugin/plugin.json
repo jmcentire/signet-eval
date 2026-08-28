@@ -1,7 +1,7 @@
 {
   "name": "signet-eval",
-  "description": "Deterministic policy enforcement for AI agent tool calls. Controls what actions are allowed, denied, or require confirmation.",
-  "version": "3.2.0",
+  "description": "Deterministic policy enforcement for AI agent tool calls across Claude Code, Codex, Antigravity, and OpenCode.",
+  "version": "3.12.2",
   "author": {
     "name": "Jeremy McEntire",
     "url": "https://github.com/jmcentire"
@@ -13,6 +13,8 @@
     "security",
     "authorization",
     "claude-code",
+    "codex",
+    "antigravity",
     "mcp"
   ],
   "categories": [

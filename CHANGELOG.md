@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+## [3.12.2] - 2026-08-27
+
+### Added
+- Added a ready-to-use Antigravity hook configuration at `hooks/antigravity-hooks.json`, plus setup and protocol documentation in the README and project site.
+- Added regression coverage for live Antigravity command, file, multi-edit, MCP, allow, deny, spoofed-identity, and malformed-input payloads. The `test` CLI now exercises the same adapter parser as hook mode.
+
+### Fixed
+- Antigravity now parses its native nested `toolCall.name` and `toolCall.args` payload instead of treating valid requests as malformed, and emits Antigravity-native top-level `decision` / `reason` responses.
+- Native Antigravity commands and file operations are normalized to Signet's canonical `Bash`, `Read`, `Write`, `Edit`, and `MultiEdit` policy fields so existing protections apply without Antigravity-specific duplicate rules.
+- Antigravity `call_mcp_tool` requests now evaluate as canonical `mcp__<server>__<tool>` calls with unwrapped arguments. The native wrapper remains authoritative over lookalike fields, and incomplete or malformed wrappers fail closed.
+
 ## [3.12.1] - 2026-08-01
 
 ### Added

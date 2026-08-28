@@ -2,12 +2,12 @@ domains:
   - signet-eval
 
 name: signet-eval
-description: Deterministic policy enforcement for AI agent tool calls. Rust single binary. Claude Code PreToolUse hook + MCP management server + MCP proxy.
-version: 3.12.1
+description: Deterministic policy enforcement for AI agent tool calls. Rust single binary. Claude Code, Codex, Antigravity, and OpenCode hooks + MCP management server + MCP proxy.
+version: 3.12.2
 author: Jeremy McEntire <jmc@cageandmirror.com>
 license: MIT
 repository: https://github.com/jmcentire/signet-eval
-tags: signet, security, policy, ai-safety, claude-code, mcp, rust
+tags: signet, security, policy, ai-safety, claude-code, codex, antigravity, mcp, rust
 audience: public
 
 work_policy:

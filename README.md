@@ -68,6 +68,27 @@ Then add `~/.codex/hooks.json` or `<repo>/.codex/hooks.json`:
 }
 ```
 
+For Antigravity, add this block to `~/.gemini/config/hooks.json` (merge it with any existing hook groups):
+
+```json
+{
+  "signet": {
+    "enabled": true,
+    "PreToolUse": [{
+      "matcher": "*",
+      "hooks": [{
+        "type": "command",
+        "command": "/bin/bash -lc 'source ~/.profile >/dev/null 2>&1 || true; exec signet-eval --adapter antigravity'",
+        "timeout": 30,
+        "statusMessage": "Checking Signet policy"
+      }]
+    }]
+  }
+}
+```
+
+The same configuration is available at [`hooks/antigravity-hooks.json`](hooks/antigravity-hooks.json).
+
 **2. Done.** Every tool call now passes through policy evaluation. The default policy blocks destructive operations, protects its own configuration, and allows everything else.
 
 **3. (Optional) Customize** — talk to Claude with the MCP server:
@@ -302,6 +323,7 @@ claude mcp add --scope user --transport stdio signet-proxy -- signet-eval proxy
 | `signet-eval` | Hook evaluation (default, 25ms) |
 | `signet-eval --adapter codex` | Codex `PreToolUse` hook evaluation |
 | `signet-eval --adapter codex-permission` | Codex `PermissionRequest` hook evaluation |
+| `signet-eval --adapter antigravity` | Antigravity `PreToolUse` hook evaluation |
 | `signet-eval init` | Write default policy with locked self-protection rules |
 | `signet-eval rules` | Show current policy rules (locked rules tagged) |
 | `signet-eval validate` | Check policy for errors |
@@ -345,7 +367,7 @@ signet-eval is a **seatbelt, not a cage**. Understanding what it does and doesn'
 
 ### What it protects against
 
-**A cooperative agent making mistakes.** Claude Code and Codex follow hook protocols — they call signet-eval around tool use and respect the supported responses. Within those protocols, signet-eval reliably enforces policy:
+**A cooperative agent making mistakes.** Claude Code, Codex, and Antigravity follow hook protocols — they call signet-eval around tool use and respect the supported responses. Within those protocols, signet-eval reliably enforces policy:
 
 - Blocks destructive commands (`rm`, `mkfs`, piped remote execution)
 - Enforces spending limits across tool calls
@@ -356,6 +378,8 @@ signet-eval is a **seatbelt, not a cage**. Understanding what it does and doesn'
 This is the normal operating mode. The agent isn't trying to escape — it's trying to be helpful and the policy keeps it in bounds.
 
 Codex support has one important semantic difference: `PreToolUse` is currently deny-only for enforcement, so Signet `ALLOW` emits no output and Signet `ASK` is converted to a deny at that stage. The `PermissionRequest` adapter explicitly allows or denies requests Codex was already going to send through approval; Signet `ASK` defers to Codex's normal approval prompt.
+
+Antigravity sends a nested `toolCall` payload and expects a top-level `decision` response. The adapter normalizes native command and file tools to Signet's canonical policy names, unwraps `call_mcp_tool` into `mcp__<server>__<tool>`, and fails closed when the native wrapper is malformed.
 
 ### What it does NOT protect against
 
