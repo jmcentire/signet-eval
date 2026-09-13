@@ -5,9 +5,9 @@
   "description": "Deterministic policy enforcement and MCP management for AI agent tool calls.",
   "version": "3.12.2",
   "repository": {
-    "url": "https://github.com/jmcentire/signet-eval",
+    "url": "https://github.com/wandercom/signet-eval",
     "source": "github"
   },
-  "websiteUrl": "https://github.com/jmcentire/signet-eval",
+  "websiteUrl": "https://github.com/wandercom/signet-eval",
   "packages": []
 }

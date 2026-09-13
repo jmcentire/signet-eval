@@ -9,7 +9,7 @@ Deterministic policy enforcement for AI agent tool calls. Integrated tool calls 
 cargo install signet-eval
 
 # from source
-git clone https://github.com/jmcentire/signet-eval
+git clone https://github.com/wandercom/signet-eval
 cd signet-eval
 cargo install --path .
 ```

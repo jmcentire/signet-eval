@@ -6,7 +6,7 @@ description: Deterministic policy enforcement for AI agent tool calls. Rust sing
 version: 3.12.2
 author: Jeremy McEntire <jmc@cageandmirror.com>
 license: MIT
-repository: https://github.com/jmcentire/signet-eval
+repository: https://github.com/wandercom/signet-eval
 tags: signet, security, policy, ai-safety, claude-code, codex, antigravity, mcp, rust
 audience: public
 
